@@ -14,6 +14,8 @@ A Discord bot that previews supported social links, focused on Threads.
 - Pixiv
 - Bluesky
 - Bilibili
+- 巴哈姆特 (`forum.gamer.com.tw`, `m.gamer.com.tw`)
+- PTT (`ptt.cc`, `www.ptt.cc`)
 
 ## Current preview behavior
 
@@ -32,6 +34,8 @@ A Discord bot that previews supported social links, focused on Threads.
 - Pixiv: FixEmbed fallback
 - Bluesky: FixEmbed fallback
 - Bilibili: custom Discord embed with thumbnail, title, and description
+- 巴哈姆特: custom Discord embed with title, summary, and image when the page is publicly accessible
+- PTT: custom Discord embed with title, trimmed article text, and first linked image if one exists
 
 ## Features
 
@@ -188,6 +192,14 @@ This is a Discord limitation. Custom embeds do not provide the same inline video
 ### Multi-image Threads posts only show one image
 
 This is also a Discord embed limitation. A custom embed can only present one main image cleanly.
+
+### Bahamut restricted boards may not show full content
+
+Some 巴哈姆特 boards are behind login or content-warning gates. In those cases, the bot can only show what the page exposes without logging in.
+
+### PTT adult boards require the over18 cookie
+
+The bot already sets the `over18=1` cookie in Playwright for PTT. If a page still blocks preview, the article may be unavailable or removed.
 
 ## Security notes
 

@@ -50,6 +50,14 @@ const THREADS_HOSTS = new Set([
   "threads.com",
   "www.threads.com",
 ]);
+const BAHAMUT_HOSTS = new Set([
+  "forum.gamer.com.tw",
+  "m.gamer.com.tw",
+]);
+const PTT_HOSTS = new Set([
+  "ptt.cc",
+  "www.ptt.cc",
+]);
 const BILIBILI_HOSTS = new Set([
   "bilibili.com",
   "www.bilibili.com",
@@ -72,6 +80,8 @@ const SUPPORTED_HOSTS = new Set([
   "www.pixiv.net",
   "bsky.app",
   "www.bsky.app",
+  ...BAHAMUT_HOSTS,
+  ...PTT_HOSTS,
   "bilibili.com",
   "www.bilibili.com",
   "b23.tv",
@@ -216,6 +226,14 @@ function isBilibiliUrl(url) {
   return BILIBILI_HOSTS.has(new URL(url).hostname);
 }
 
+function isBahamutUrl(url) {
+  return BAHAMUT_HOSTS.has(new URL(url).hostname);
+}
+
+function isPttUrl(url) {
+  return PTT_HOSTS.has(new URL(url).hostname);
+}
+
 function extractBilibiliBvid(url) {
   const parsed = new URL(url);
   const match = parsed.pathname.match(/\/video\/(BV[a-zA-Z0-9]+)/);
@@ -319,6 +337,19 @@ async function fetchThreadsMetadata(url) {
   return result;
 }
 
+async function fetchPageProbeMetadata(url) {
+  const { stdout } = await execFileAsync(
+    THREADS_PROBE_NODE,
+    [THREADS_PROBE_SCRIPT, url],
+    {
+      timeout: THREADS_PROBE_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+
+  return JSON.parse(stdout);
+}
+
 function buildThreadsCompactEmbed(url, metadata) {
   const embed = new EmbedBuilder()
     .setColor(THREADS_EMBED_COLOR)
@@ -355,10 +386,96 @@ function buildThreadsLinkRow(url, label = "Open on Threads") {
   );
 }
 
+function buildBahamutEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(0xf08c2e)
+    .setURL(url)
+    .setFooter({ text: "巴哈姆特" });
+
+  if (metadata.title) {
+    embed.setTitle(trimDescription(metadata.title, 256));
+  }
+
+  if (metadata.author) {
+    embed.setAuthor({ name: trimDescription(metadata.author, 256) });
+  }
+
+  if (metadata.description) {
+    embed.setDescription(trimDescription(metadata.description, 1024));
+  }
+
+  if (metadata.image) {
+    embed.setImage(metadata.image);
+  }
+
+  return embed;
+}
+
+function buildPttEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(0x3b82f6)
+    .setURL(url)
+    .setFooter({ text: "PTT" });
+
+  if (metadata.title) {
+    embed.setTitle(trimDescription(metadata.title, 256));
+  }
+
+  if (metadata.author) {
+    embed.setAuthor({ name: trimDescription(metadata.author, 256) });
+  }
+
+  if (metadata.description) {
+    embed.setDescription(trimDescription(metadata.description, 1024));
+  }
+
+  if (metadata.image) {
+    embed.setImage(metadata.image);
+  }
+
+  return embed;
+}
+
 async function buildPreviewPayloads(urls) {
   const payloads = [];
 
   for (const url of urls) {
+    if (isBahamutUrl(url)) {
+      try {
+        const metadata = await fetchPageProbeMetadata(url);
+        if (metadata.restricted) {
+          console.log(`[preview] bahamut-restricted fallback ${url}`);
+          payloads.push({ content: buildEmbedUrl(url) });
+          continue;
+        }
+
+        console.log(`[preview] bahamut-custom ${url}`);
+        payloads.push({ embeds: [buildBahamutEmbed(url, metadata)] });
+        continue;
+      } catch (error) {
+        console.warn(`Could not fetch Bahamut metadata for ${url}:`, error.message);
+      }
+
+      console.log(`[preview] fixembed fallback ${url}`);
+      payloads.push({ content: buildEmbedUrl(url) });
+      continue;
+    }
+
+    if (isPttUrl(url)) {
+      try {
+        const metadata = await fetchPageProbeMetadata(url);
+        console.log(`[preview] ptt-custom ${url}`);
+        payloads.push({ embeds: [buildPttEmbed(url, metadata)] });
+        continue;
+      } catch (error) {
+        console.warn(`Could not fetch PTT metadata for ${url}:`, error.message);
+      }
+
+      console.log(`[preview] fixembed fallback ${url}`);
+      payloads.push({ content: buildEmbedUrl(url) });
+      continue;
+    }
+
     if (!isThreadsUrl(url)) {
       if (isBilibiliUrl(url)) {
         try {
