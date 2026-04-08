@@ -1,13 +1,10 @@
 # Discord Social Preview Bot
 
-This bot previews social posts in Discord by replying with either:
+A Discord bot that automatically previews social media posts when someone shares a link.
 
-- a compact custom Discord embed for Threads text-only posts
-- a [FixEmbed](https://fixembed.app/) URL for media-rich posts and other supported sites
+Supported platforms:
 
-Right now this project is configured for:
-
-- Meta Threads (`threads.net`)
+- Meta Threads (`threads.net`, `threads.com`)
 - X / Twitter
 - Instagram
 - Reddit
@@ -15,91 +12,139 @@ Right now this project is configured for:
 - Bluesky
 - Bilibili
 
-## Existing bot you can use right now
+## How it works
 
-If you do not need your own bot, you can use the hosted FixEmbed bot directly.
+When a user posts a supported link, the bot replies with a preview:
 
-Sources:
+| Post type | Preview method |
+|---|---|
+| Threads — text only | Custom Discord embed |
+| Threads — single image | Custom Discord embed with image |
+| Threads — video or multiple images | FixEmbed link (Discord unfurls it) |
+| All other platforms | FixEmbed link (Discord unfurls it) |
 
-- [FixEmbed home](https://fixembed.app/)
-- [FixEmbed docs](https://fixembed.app/docs)
+To ignore a link, include `nopreview` anywhere in your message.
 
-FixEmbed advertises multi-platform Discord previews including:
+---
 
-- Threads
-- X / Twitter
-- Instagram
-- Reddit
-- Pixiv
-- Bluesky
-- Bilibili
+## Prerequisites
 
-So if your goal is simply "make Threads posts preview in Discord," the fastest option is to invite FixEmbed instead of hosting anything yourself.
+- **Node.js 20 or later**
+- **Playwright Chromium** (used to fetch Threads metadata)
 
-## What this wrapper bot does
+---
 
-This project is for when you want your own bot identity but still want to use an existing preview service:
+## 1. Create a Discord bot
 
-1. A user posts a supported link.
-2. The bot detects it.
-3. For Threads text-only posts, the bot builds a compact custom embed from page metadata.
-4. For media-rich posts and other supported sites, the bot replies with a `fixembed.app/embed?url=...` link.
-5. If the bot has `Manage Messages`, it can try to suppress the original embed.
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**, give it a name
+3. Go to **Bot** → enable **Message Content Intent**
+4. Copy the bot token — you will need it in step 4
 
-## Setup
+### Invite the bot to your server
 
-1. Create a Discord bot in the Discord Developer Portal.
-2. Enable the `Message Content Intent`.
-3. Invite it with these permissions:
-   - `View Channels`
-   - `Send Messages`
-   - `Read Message History`
-   - `Embed Links`
-   - `Manage Messages` (optional)
-4. Copy `.env.example` to `.env`
-5. Fill in `DISCORD_TOKEN`
-6. Install dependencies:
+Go to **OAuth2 → URL Generator**, select:
+
+- Scopes: `bot`
+- Bot permissions:
+  - `View Channels`
+  - `Send Messages`
+  - `Read Message History`
+  - `Embed Links`
+  - `Manage Messages` *(optional — lets the bot hide the original link preview)*
+
+Open the generated URL and invite the bot.
+
+---
+
+## 2. Clone and install
 
 ```bash
+git clone https://github.com/Lanternko/discord-social-preview-bot.git
+cd discord-social-preview-bot
 npm install
 ```
 
-7. Start the bot:
+---
+
+## 3. Install Playwright browser
+
+The bot uses Playwright to fetch Threads post metadata. You need to install the Chromium browser once:
+
+```bash
+npx playwright install chromium
+npx playwright install-deps chromium
+```
+
+> `install-deps` installs system libraries required by Chromium. On some Linux servers you may need `sudo`.
+
+---
+
+## 4. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in your bot token:
+
+```env
+DISCORD_TOKEN=your_bot_token_here
+```
+
+---
+
+## 5. Start the bot
 
 ```bash
 npm start
 ```
 
-This project is pinned to Homebrew `node@22` because Playwright was unstable on the newer Node version installed on this machine.
+You should see `Logged in as YourBot#1234` in the terminal.
+
+---
+
+## Keep the bot running (optional)
+
+If you want the bot to stay online after closing the terminal, use **pm2**:
+
+```bash
+npm install -g pm2
+pm2 start src/index.js --name discord-bot
+pm2 save
+pm2 startup   # follow the printed instructions to auto-start on reboot
+```
+
+---
 
 ## Environment variables
 
-```env
-DISCORD_TOKEN=your_bot_token_here
-FIXEMBED_BASE_URL=https://fixembed.app/embed?url=
-SUPPRESS_ORIGINAL_EMBEDS=true
-REPLY_MODE=reply
+| Variable | Default | Description |
+|---|---|---|
+| `DISCORD_TOKEN` | *(required)* | Your Discord bot token |
+| `FIXEMBED_BASE_URL` | `https://fixembed.app/embed?url=` | Base URL for FixEmbed fallback |
+| `SUPPRESS_ORIGINAL_EMBEDS` | `true` | Hide the original link preview (requires Manage Messages) |
+| `REPLY_MODE` | `reply` | `reply` to thread-reply, `send` to send a new message |
+
+---
+
+## Troubleshooting
+
+**Bot replies twice to every message**
+You have two bot instances running with the same token. Check all your terminals and servers, and make sure only one instance is active.
+
+**Threads links cause an error or no response**
+Playwright or Chromium is not installed. Run:
+```bash
+npx playwright install chromium
+npx playwright install-deps chromium
 ```
 
-## Example
+**Bot is online but not responding**
+Make sure **Message Content Intent** is enabled in the Discord Developer Portal under your bot's settings.
 
-If someone posts:
+---
 
-```text
-https://www.threads.net/@username/post/ABC123
-```
+## Just want previews without hosting anything?
 
-The bot replies with:
-
-```text
-https://fixembed.app/embed?url=https%3A%2F%2Fwww.threads.net%2F%40username%2Fpost%2FABC123
-```
-
-Discord should then render the preview.
-
-## Notes
-
-- This project does not scrape Meta Threads or X directly.
-- Threads compact embeds are built from public page metadata.
-- Media-rich previews still depend on FixEmbed.
-- If you want slash commands, per-channel config, or support for more sites, that can be added next.
+[FixEmbed](https://fixembed.app/) offers a hosted bot that covers the same platforms. Invite it directly from their site if you do not need your own bot identity.
