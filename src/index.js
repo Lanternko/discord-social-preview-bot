@@ -274,10 +274,11 @@ async function buildPreviewPayloads(urls) {
     try {
       const metadata = await fetchThreadsMetadata(url);
 
-      if (metadata.twitterCard === "summary") {
-        console.log(
-          `[preview] threads-compact ${metadata.twitterCard} ${url}`,
-        );
+      const isTextOnly = !metadata.image;
+
+      if (isTextOnly || metadata.twitterCard === "summary") {
+        const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
+        console.log(`[preview] ${logLabel} ${metadata.twitterCard} ${url}`);
         payloads.push({ embeds: [buildThreadsCompactEmbed(url, metadata)] });
         continue;
       }
