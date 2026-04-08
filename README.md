@@ -1,10 +1,13 @@
 # Discord Social Preview Bot
 
-A Discord bot that previews supported social links, focused on Meta Threads.
+A Discord bot that previews supported social links, focused on Threads.
+
+<img width="620" height="755" alt="image" src="https://github.com/user-attachments/assets/6a096faa-3197-4b2a-90a5-2e081fe41dc0" />
+
 
 ## Supported platforms
 
-- Meta Threads (`threads.com`, `threads.net`)
+- Threads (`threads.com`, `threads.net`)
 - X / Twitter
 - Instagram
 - Reddit
