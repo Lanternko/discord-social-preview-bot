@@ -50,6 +50,11 @@ const THREADS_HOSTS = new Set([
   "threads.com",
   "www.threads.com",
 ]);
+const BILIBILI_HOSTS = new Set([
+  "bilibili.com",
+  "www.bilibili.com",
+  "b23.tv",
+]);
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
@@ -77,6 +82,7 @@ const IGNORE_MARKERS = ["fxignore", "previewignore", "nopreview"];
 const THREADS_EMBED_COLOR = 0x101010;
 const DEDUPE_WINDOW_MS = 60 * 1000;
 const recentReplies = new Map();
+const inFlightReplies = new Set();
 const threadsMetadataCache = new Map();
 const execFileAsync = promisify(execFile);
 
@@ -84,6 +90,25 @@ function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
   url.searchParams.delete("xmt");
   url.searchParams.delete("slof");
+  url.searchParams.delete("spm_id_from");
+  url.searchParams.delete("trackid");
+  url.searchParams.delete("vd_source");
+  url.searchParams.delete("from");
+  url.searchParams.delete("from_spmid");
+  url.searchParams.delete("seid");
+  url.searchParams.delete("share_source");
+  url.searchParams.delete("share_medium");
+  url.searchParams.delete("share_plat");
+  url.searchParams.delete("share_session_id");
+  url.searchParams.delete("share_tag");
+  url.searchParams.delete("timestamp");
+  url.searchParams.delete("unique_k");
+  url.searchParams.delete("upsig");
+  url.searchParams.delete("utm_source");
+  url.searchParams.delete("utm_medium");
+  url.searchParams.delete("utm_campaign");
+  url.searchParams.delete("utm_term");
+  url.searchParams.delete("utm_content");
   return url.toString();
 }
 
@@ -154,6 +179,10 @@ function buildReplyCacheKey(message, url) {
   return `${message.channelId}:${url}`;
 }
 
+function buildMessageProcessingKey(message, urls) {
+  return `${message.id}:${urls.join("|")}`;
+}
+
 function shouldSkipRecentReply(message, urls) {
   cleanupRecentReplies();
 
@@ -181,6 +210,71 @@ function trimDescription(text, limit) {
 
 function isThreadsUrl(url) {
   return THREADS_HOSTS.has(new URL(url).hostname);
+}
+
+function isBilibiliUrl(url) {
+  return BILIBILI_HOSTS.has(new URL(url).hostname);
+}
+
+function extractBilibiliBvid(url) {
+  const parsed = new URL(url);
+  const match = parsed.pathname.match(/\/video\/(BV[a-zA-Z0-9]+)/);
+  return match?.[1] || null;
+}
+
+async function fetchBilibiliMetadata(url) {
+  const bvid = extractBilibiliBvid(url);
+  if (!bvid) {
+    throw new Error("Could not extract Bilibili BVID");
+  }
+
+  const response = await fetch(
+    `https://api.bilibili.com/x/web-interface/view?bvid=${encodeURIComponent(bvid)}`,
+    {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://www.bilibili.com/",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Bilibili API returned ${response.status}`);
+  }
+
+  const payload = await response.json();
+  if (payload.code !== 0 || !payload.data) {
+    throw new Error(`Bilibili API error ${payload.code ?? "unknown"}`);
+  }
+
+  return {
+    title: payload.data.title || "Bilibili Video",
+    description: payload.data.desc || null,
+    image: payload.data.pic?.replace(/^http:\/\//i, "https://") || null,
+    author: payload.data.owner?.name || null,
+  };
+}
+
+function buildBilibiliEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(0x00a1d6)
+    .setURL(url)
+    .setTitle(trimDescription(metadata.title, 256))
+    .setFooter({ text: "Bilibili" });
+
+  if (metadata.author) {
+    embed.setAuthor({ name: metadata.author });
+  }
+
+  if (metadata.description) {
+    embed.setDescription(trimDescription(metadata.description, 512));
+  }
+
+  if (metadata.image) {
+    embed.setImage(metadata.image);
+  }
+
+  return embed;
 }
 
 async function fetchThreadsMetadata(url) {
@@ -266,6 +360,17 @@ async function buildPreviewPayloads(urls) {
 
   for (const url of urls) {
     if (!isThreadsUrl(url)) {
+      if (isBilibiliUrl(url)) {
+        try {
+          const metadata = await fetchBilibiliMetadata(url);
+          console.log(`[preview] bilibili-custom ${url}`);
+          payloads.push({ embeds: [buildBilibiliEmbed(url, metadata)] });
+          continue;
+        } catch (error) {
+          console.warn(`Could not fetch Bilibili metadata for ${url}:`, error.message);
+        }
+      }
+
       console.log(`[preview] fixembed non-threads ${url}`);
       payloads.push({ content: buildEmbedUrl(url) });
       continue;
@@ -376,18 +481,31 @@ client.on("messageCreate", async (message) => {
     return;
   }
 
+  const processingKey = buildMessageProcessingKey(message, urls);
+  if (inFlightReplies.has(processingKey)) {
+    console.log(`[preview] inflight skip ${urls.join(" ")}`);
+    return;
+  }
+
   if (shouldSkipRecentReply(message, urls)) {
     console.log(`[preview] dedupe skip ${urls.join(" ")}`);
     return;
   }
 
+  inFlightReplies.add(processingKey);
+  markRecentReplies(message, urls);
+
   try {
     const payloads = await buildPreviewPayloads(urls);
     await sendPreviews(message, payloads);
-    markRecentReplies(message, urls);
     await suppressOriginalEmbeds(message);
   } catch (error) {
+    for (const url of urls) {
+      recentReplies.delete(buildReplyCacheKey(message, url));
+    }
     console.error("Failed to create preview:", error);
+  } finally {
+    inFlightReplies.delete(processingKey);
   }
 });
 

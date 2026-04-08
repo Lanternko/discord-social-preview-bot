@@ -1,10 +1,10 @@
 # Discord Social Preview Bot
 
-A Discord bot that automatically previews social media posts when someone shares a link.
+A Discord bot that previews supported social links, focused on Meta Threads.
 
-Supported platforms:
+## Supported platforms
 
-- Meta Threads (`threads.net`, `threads.com`)
+- Meta Threads (`threads.com`, `threads.net`)
 - X / Twitter
 - Instagram
 - Reddit
@@ -12,139 +12,186 @@ Supported platforms:
 - Bluesky
 - Bilibili
 
-## How it works
+## Current preview behavior
 
-When a user posts a supported link, the bot replies with a preview:
+### Threads
 
-| Post type | Preview method |
-|---|---|
-| Threads — text only | Custom Discord embed |
-| Threads — single image | Custom Discord embed with image |
-| Threads — video or multiple images | FixEmbed link (Discord unfurls it) |
-| All other platforms | FixEmbed link (Discord unfurls it) |
+- Text-only posts: custom Discord embed
+- Single-image posts: custom Discord embed with image
+- Video posts: FixEmbed fallback so Discord can keep playable rich preview behavior
+- Multi-image posts: custom embed with the first image and a link button
 
-To ignore a link, include `nopreview` anywhere in your message.
+### Other platforms
 
----
+- X / Twitter: FixEmbed fallback
+- Instagram: FixEmbed fallback
+- Reddit: FixEmbed fallback
+- Pixiv: FixEmbed fallback
+- Bluesky: FixEmbed fallback
+- Bilibili: custom Discord embed with thumbnail, title, and description
 
-## Prerequisites
+## Features
 
-- **Node.js 20 or later**
-- **Playwright Chromium** (used to fetch Threads metadata)
+- Deduplicates repeated previews in the same channel
+- Suppresses the original embed if the bot has `Manage Messages`
+- Uses Playwright only for Threads metadata extraction
+- Normalizes common tracking query parameters before dedupe
 
----
+## Requirements
 
-## 1. Create a Discord bot
+- Node.js 20+
+- npm
+- Internet access
+- A Discord bot token
+
+For Threads support, this project also needs Playwright + Chromium.
+
+## Discord bot setup
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click **New Application**, give it a name
-3. Go to **Bot** → enable **Message Content Intent**
-4. Copy the bot token — you will need it in step 4
+2. Create an application
+3. Add a bot
+4. In **Bot**:
+   - enable `Message Content Intent`
+   - enable `Public Bot` if other people should be able to invite it
+5. In **Installation**:
+   - enable `Guild Install`
+6. Invite the bot with at least these permissions:
+   - `View Channels`
+   - `Send Messages`
+   - `Read Message History`
+   - `Embed Links`
+   - `Manage Messages` (optional, but recommended)
 
-### Invite the bot to your server
+## Environment variables
 
-Go to **OAuth2 → URL Generator**, select:
-
-- Scopes: `bot`
-- Bot permissions:
-  - `View Channels`
-  - `Send Messages`
-  - `Read Message History`
-  - `Embed Links`
-  - `Manage Messages` *(optional — lets the bot hide the original link preview)*
-
-Open the generated URL and invite the bot.
-
----
-
-## 2. Clone and install
-
-```bash
-git clone https://github.com/Lanternko/discord-social-preview-bot.git
-cd discord-social-preview-bot
-npm install
-```
-
----
-
-## 3. Install Playwright browser
-
-The bot uses Playwright to fetch Threads post metadata. You need to install the Chromium browser once:
-
-```bash
-npx playwright install chromium
-npx playwright install-deps chromium
-```
-
-> `install-deps` installs system libraries required by Chromium. On some Linux servers you may need `sudo`.
-
----
-
-## 4. Configure environment
+Copy `.env.example` to `.env`:
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in your bot token:
+Fill in:
 
 ```env
 DISCORD_TOKEN=your_bot_token_here
+FIXEMBED_BASE_URL=https://fixembed.app/embed?url=
+SUPPRESS_ORIGINAL_EMBEDS=true
+REPLY_MODE=reply
+THREADS_PROBE_TIMEOUT_MS=10000
+THREADS_METADATA_CACHE_TTL_MS=600000
+PLAYWRIGHT_GOTO_TIMEOUT_MS=8000
+PLAYWRIGHT_META_WAIT_TIMEOUT_MS=1500
 ```
 
----
+## Local setup
 
-## 5. Start the bot
+### macOS
 
 ```bash
+npm install
+npx playwright install chromium
 npm start
 ```
 
-You should see `Logged in as YourBot#1234` in the terminal.
+This repo also includes:
 
----
+- `start-bot.command`
+- `stop-bot.command`
 
-## Keep the bot running (optional)
+You can double-click them on macOS.
 
-If you want the bot to stay online after closing the terminal, use **pm2**:
+### Linux
 
 ```bash
-npm install -g pm2
-pm2 start src/index.js --name discord-bot
-pm2 save
-pm2 startup   # follow the printed instructions to auto-start on reboot
+npm install
+npx playwright install chromium
+sudo npx playwright install-deps chromium
+npm start
 ```
 
----
+### Windows
 
-## Environment variables
+```powershell
+npm install
+npx playwright install chromium
+npm start
+```
 
-| Variable | Default | Description |
-|---|---|---|
-| `DISCORD_TOKEN` | *(required)* | Your Discord bot token |
-| `FIXEMBED_BASE_URL` | `https://fixembed.app/embed?url=` | Base URL for FixEmbed fallback |
-| `SUPPRESS_ORIGINAL_EMBEDS` | `true` | Hide the original link preview (requires Manage Messages) |
-| `REPLY_MODE` | `reply` | `reply` to thread-reply, `send` to send a new message |
+## Docker
 
----
+The deployment files are:
+
+- [Dockerfile](./Dockerfile)
+- [.dockerignore](./.dockerignore)
+
+Build:
+
+```bash
+docker build -t discord-social-preview-bot .
+```
+
+Run:
+
+```bash
+docker run --rm \
+  --name discord-social-preview-bot \
+  --env-file .env \
+  discord-social-preview-bot
+```
+
+Background mode:
+
+```bash
+docker run -d \
+  --name discord-social-preview-bot \
+  --restart unless-stopped \
+  --env-file .env \
+  discord-social-preview-bot
+```
+
+## Project structure
+
+- [src/index.js](./src/index.js)
+- [src/threads-probe.cjs](./src/threads-probe.cjs)
+- [.env.example](./.env.example)
+- [start-bot.command](./start-bot.command)
+- [stop-bot.command](./stop-bot.command)
 
 ## Troubleshooting
 
-**Bot replies twice to every message**
-You have two bot instances running with the same token. Check all your terminals and servers, and make sure only one instance is active.
+### Bot replies twice to one message
 
-**Threads links cause an error or no response**
-Playwright or Chromium is not installed. Run:
-```bash
-npx playwright install chromium
-npx playwright install-deps chromium
-```
+This usually means one of these conditions:
 
-**Bot is online but not responding**
-Make sure **Message Content Intent** is enabled in the Discord Developer Portal under your bot's settings.
+- two bot instances are running with the same token
+- the bot was restarted but an older process was still alive
+- the message was processed concurrently before dedupe was recorded
 
----
+This project includes both recent-reply dedupe and in-flight dedupe, but you should still keep only one process running per token.
 
-## Just want previews without hosting anything?
+### Threads preview is slow
 
-[FixEmbed](https://fixembed.app/) offers a hosted bot that covers the same platforms. Invite it directly from their site if you do not need your own bot identity.
+Threads pages sometimes load media metadata late. You can tune:
+
+- `THREADS_PROBE_TIMEOUT_MS`
+- `PLAYWRIGHT_GOTO_TIMEOUT_MS`
+- `PLAYWRIGHT_META_WAIT_TIMEOUT_MS`
+
+### Video is not rendered as a custom Discord player
+
+This is a Discord limitation. Custom embeds do not provide the same inline video player behavior as external unfurls.
+
+### Multi-image Threads posts only show one image
+
+This is also a Discord embed limitation. A custom embed can only present one main image cleanly.
+
+## Security notes
+
+- Never commit `.env`
+- Never share your bot token
+- If a token was posted publicly, reset it immediately
+
+## License
+
+No license file is included yet.
