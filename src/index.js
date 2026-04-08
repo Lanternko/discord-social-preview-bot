@@ -1,0 +1,399 @@
+require("dotenv").config();
+
+const {
+  Client,
+  GatewayIntentBits,
+  PermissionsBitField,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+} = require("discord.js");
+const { execFile } = require("node:child_process");
+const path = require("node:path");
+const { promisify } = require("node:util");
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const FIXEMBED_BASE_URL =
+  process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=";
+const SUPPRESS_ORIGINAL_EMBEDS =
+  (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
+const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
+const THREADS_PROBE_NODE =
+  process.env.THREADS_PROBE_NODE || process.execPath;
+const THREADS_PROBE_SCRIPT =
+  process.env.THREADS_PROBE_SCRIPT || path.join(__dirname, "threads-probe.cjs");
+const THREADS_PROBE_TIMEOUT_MS = Number.parseInt(
+  process.env.THREADS_PROBE_TIMEOUT_MS || "10000",
+  10,
+);
+const THREADS_METADATA_CACHE_TTL_MS = Number.parseInt(
+  process.env.THREADS_METADATA_CACHE_TTL_MS || "600000",
+  10,
+);
+
+if (!DISCORD_TOKEN) {
+  throw new Error("Missing DISCORD_TOKEN. Add it to your .env file.");
+}
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+const THREADS_HOSTS = new Set([
+  "threads.net",
+  "www.threads.net",
+  "threads.com",
+  "www.threads.com",
+]);
+
+const SUPPORTED_HOSTS = new Set([
+  ...THREADS_HOSTS,
+  "x.com",
+  "www.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+  "instagram.com",
+  "www.instagram.com",
+  "reddit.com",
+  "www.reddit.com",
+  "redd.it",
+  "pixiv.net",
+  "www.pixiv.net",
+  "bsky.app",
+  "www.bsky.app",
+  "bilibili.com",
+  "www.bilibili.com",
+  "b23.tv",
+]);
+
+const URL_REGEX = /https?:\/\/[^\s<>()]+/gi;
+const IGNORE_MARKERS = ["fxignore", "previewignore", "nopreview"];
+const THREADS_EMBED_COLOR = 0x101010;
+const DEDUPE_WINDOW_MS = 60 * 1000;
+const recentReplies = new Map();
+const threadsMetadataCache = new Map();
+const execFileAsync = promisify(execFile);
+
+function normalizeUrl(rawUrl) {
+  const url = new URL(rawUrl);
+  url.searchParams.delete("xmt");
+  url.searchParams.delete("slof");
+  return url.toString();
+}
+
+function extractSupportedUrls(content) {
+  const matches = content.match(URL_REGEX) || [];
+  const urls = [];
+  const seen = new Set();
+
+  for (const raw of matches) {
+    let parsed;
+
+    try {
+      parsed = new URL(raw);
+    } catch {
+      continue;
+    }
+
+    if (!SUPPORTED_HOSTS.has(parsed.hostname)) {
+      continue;
+    }
+
+    const normalized = normalizeUrl(parsed.toString());
+    if (seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    urls.push(normalized);
+  }
+
+  return urls;
+}
+
+function buildEmbedUrl(originalUrl) {
+  return `${FIXEMBED_BASE_URL}${encodeURIComponent(originalUrl)}`;
+}
+
+function shouldIgnoreMessage(message) {
+  if (message.author.bot) {
+    return true;
+  }
+
+  const lower = message.content.toLowerCase();
+  return IGNORE_MARKERS.some((marker) => lower.includes(marker));
+}
+
+function cleanupRecentReplies() {
+  const now = Date.now();
+
+  for (const [key, timestamp] of recentReplies.entries()) {
+    if (now - timestamp > DEDUPE_WINDOW_MS) {
+      recentReplies.delete(key);
+    }
+  }
+}
+
+function cleanupThreadsMetadataCache() {
+  const now = Date.now();
+
+  for (const [url, entry] of threadsMetadataCache.entries()) {
+    if (now - entry.cachedAt > THREADS_METADATA_CACHE_TTL_MS) {
+      threadsMetadataCache.delete(url);
+    }
+  }
+}
+
+function buildReplyCacheKey(message, url) {
+  return `${message.channelId}:${url}`;
+}
+
+function shouldSkipRecentReply(message, urls) {
+  cleanupRecentReplies();
+
+  return urls.some((url) => {
+    const timestamp = recentReplies.get(buildReplyCacheKey(message, url));
+    return Boolean(timestamp);
+  });
+}
+
+function markRecentReplies(message, urls) {
+  const now = Date.now();
+
+  for (const url of urls) {
+    recentReplies.set(buildReplyCacheKey(message, url), now);
+  }
+}
+
+function trimDescription(text, limit) {
+  if (!text || text.length <= limit) {
+    return text;
+  }
+
+  return `${text.slice(0, limit - 1).trimEnd()}…`;
+}
+
+function isThreadsUrl(url) {
+  return THREADS_HOSTS.has(new URL(url).hostname);
+}
+
+async function fetchThreadsMetadata(url) {
+  cleanupThreadsMetadataCache();
+
+  const cached = threadsMetadataCache.get(url);
+  if (cached) {
+    console.log(`[threads-meta] cache-hit ${url}`);
+    return cached.metadata;
+  }
+
+  const { stdout } = await execFileAsync(
+    THREADS_PROBE_NODE,
+    [THREADS_PROBE_SCRIPT, url],
+    {
+      timeout: THREADS_PROBE_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+
+  const metadata = JSON.parse(stdout);
+
+  console.log(
+    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
+  );
+
+  const result = {
+    title: metadata.title,
+    description: metadata.description,
+    image: metadata.image,
+    twitterCard: metadata.twitterCard,
+    video: metadata.video,
+    imageCount: metadata.imageCount || 0,
+    videoCount: metadata.videoCount || 0,
+  };
+
+  threadsMetadataCache.set(url, {
+    metadata: result,
+    cachedAt: Date.now(),
+  });
+
+  return result;
+}
+
+function buildThreadsCompactEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(THREADS_EMBED_COLOR)
+    .setURL(url)
+    .setFooter({ text: "Threads" });
+
+  if (metadata.title) {
+    embed.setTitle(trimDescription(metadata.title, 256));
+  }
+
+  if (metadata.description) {
+    embed.setDescription(trimDescription(metadata.description, 4000));
+  }
+
+  return embed;
+}
+
+function buildThreadsMediaEmbed(url, metadata) {
+  const embed = buildThreadsCompactEmbed(url, metadata);
+
+  if (metadata.image) {
+    embed.setImage(metadata.image);
+  }
+
+  return embed;
+}
+
+function buildThreadsLinkRow(url, label = "Open on Threads") {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setLabel(label)
+      .setStyle(ButtonStyle.Link)
+      .setURL(url),
+  );
+}
+
+async function buildPreviewPayloads(urls) {
+  const payloads = [];
+
+  for (const url of urls) {
+    if (!isThreadsUrl(url)) {
+      console.log(`[preview] fixembed non-threads ${url}`);
+      payloads.push({ content: buildEmbedUrl(url) });
+      continue;
+    }
+
+    try {
+      const metadata = await fetchThreadsMetadata(url);
+
+      if (metadata.twitterCard === "summary") {
+        console.log(
+          `[preview] threads-compact ${metadata.twitterCard} ${url}`,
+        );
+        payloads.push({ embeds: [buildThreadsCompactEmbed(url, metadata)] });
+        continue;
+      }
+
+      if (metadata.video || metadata.videoCount > 0) {
+        console.log(
+          `[preview] fixembed video ${url}`,
+        );
+        payloads.push({ content: buildEmbedUrl(url) });
+        continue;
+      }
+
+      if (
+        metadata.twitterCard === "summary_large_image" &&
+        metadata.image &&
+        metadata.imageCount <= 1
+      ) {
+        console.log(`[preview] threads-single-image ${url}`);
+        payloads.push({ embeds: [buildThreadsMediaEmbed(url, metadata)] });
+        continue;
+      }
+
+      if (metadata.imageCount > 1) {
+        console.log(`[preview] threads-multi-image ${url}`);
+        payloads.push({
+          embeds: [buildThreadsMediaEmbed(url, metadata)],
+          components: [buildThreadsLinkRow(url)],
+        });
+        continue;
+      }
+
+      console.log(`[preview] threads-generic ${metadata.twitterCard} ${url}`);
+      payloads.push({ embeds: [buildThreadsCompactEmbed(url, metadata)] });
+      continue;
+    } catch (error) {
+      console.warn(`Could not fetch Threads metadata for ${url}:`, error.message);
+    }
+
+    console.log(`[preview] fixembed fallback ${url}`);
+    payloads.push({ content: buildEmbedUrl(url) });
+  }
+
+  return payloads;
+}
+
+async function suppressOriginalEmbeds(message) {
+  if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild()) {
+    return;
+  }
+
+  const me = message.guild.members.me;
+  if (!me) {
+    return;
+  }
+
+  const permissions = message.channel.permissionsFor(me);
+  if (!permissions?.has(PermissionsBitField.Flags.ManageMessages)) {
+    return;
+  }
+
+  try {
+    await message.suppressEmbeds(true);
+  } catch (error) {
+    console.warn("Could not suppress original embeds:", error.message);
+  }
+}
+
+async function sendPreviews(message, payloads) {
+  for (const payload of payloads) {
+    const outgoing = {
+      ...payload,
+      allowedMentions: { repliedUser: false },
+    };
+
+    if (REPLY_MODE === "send") {
+      await message.channel.send(outgoing);
+      continue;
+    }
+
+    await message.reply(outgoing);
+  }
+}
+
+client.once("clientReady", () => {
+  console.log(`Logged in as ${client.user.tag}`);
+});
+
+client.on("messageCreate", async (message) => {
+  if (shouldIgnoreMessage(message)) {
+    return;
+  }
+
+  const urls = extractSupportedUrls(message.content);
+  if (urls.length === 0) {
+    return;
+  }
+
+  if (shouldSkipRecentReply(message, urls)) {
+    console.log(`[preview] dedupe skip ${urls.join(" ")}`);
+    return;
+  }
+
+  try {
+    const payloads = await buildPreviewPayloads(urls);
+    await sendPreviews(message, payloads);
+    markRecentReplies(message, urls);
+    await suppressOriginalEmbeds(message);
+  } catch (error) {
+    console.error("Failed to create preview:", error);
+  }
+});
+
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.once(signal, () => {
+    process.exit(0);
+  });
+}
+
+client.login(DISCORD_TOKEN);
