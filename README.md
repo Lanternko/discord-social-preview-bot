@@ -127,11 +127,6 @@ npm start
 
 ## Docker
 
-The deployment files are:
-
-- [Dockerfile](./Dockerfile)
-- [.dockerignore](./.dockerignore)
-
 Build:
 
 ```bash
@@ -156,14 +151,6 @@ docker run -d \
   --env-file .env \
   discord-social-preview-bot
 ```
-
-## Project structure
-
-- [src/index.js](./src/index.js)
-- [src/threads-probe.cjs](./src/threads-probe.cjs)
-- [.env.example](./.env.example)
-- [start-bot.command](./start-bot.command)
-- [stop-bot.command](./stop-bot.command)
 
 ## Troubleshooting
 
