@@ -16,6 +16,14 @@ const { promisify } = require("node:util");
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const FIXEMBED_BASE_URL =
   process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=";
+const FIXER_TWITTER = process.env.FIXER_TWITTER || "fxtwitter.com";
+const FIXER_THREADS = process.env.FIXER_THREADS || "fixthreads.seria.moe";
+const FIXER_THREADS_SECONDARY =
+  process.env.FIXER_THREADS_SECONDARY || "threadsez.net";
+const FIXER_REDDIT = process.env.FIXER_REDDIT || "rxddit.com";
+const FIXER_PIXIV = process.env.FIXER_PIXIV || "phixiv.net";
+const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
+const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -152,7 +160,47 @@ function extractSupportedUrls(content) {
   return urls;
 }
 
-function buildEmbedUrl(originalUrl) {
+function replaceHostFixer(originalUrl, fixerHost) {
+  const parsed = new URL(originalUrl);
+  parsed.hostname = fixerHost;
+  return parsed.toString();
+}
+
+function buildFallbackUrl(originalUrl) {
+  const hostname = new URL(originalUrl).hostname;
+
+  if (
+    [
+      "x.com",
+      "www.x.com",
+      "twitter.com",
+      "www.twitter.com",
+      "mobile.twitter.com",
+    ].includes(hostname)
+  ) {
+    return replaceHostFixer(originalUrl, FIXER_TWITTER);
+  }
+
+  if (THREADS_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_THREADS);
+  }
+
+  if (["reddit.com", "www.reddit.com"].includes(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_REDDIT);
+  }
+
+  if (["pixiv.net", "www.pixiv.net"].includes(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_PIXIV);
+  }
+
+  if (["bsky.app", "www.bsky.app"].includes(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_BLUESKY);
+  }
+
+  if (BILIBILI_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_BILIBILI);
+  }
+
   return `${FIXEMBED_BASE_URL}${encodeURIComponent(originalUrl)}`;
 }
 
@@ -445,7 +493,7 @@ async function buildPreviewPayloads(urls) {
         const metadata = await fetchPageProbeMetadata(url);
         if (metadata.restricted) {
           console.log(`[preview] bahamut-restricted fallback ${url}`);
-          payloads.push({ content: buildEmbedUrl(url) });
+          payloads.push({ content: buildFallbackUrl(url) });
           continue;
         }
 
@@ -457,7 +505,7 @@ async function buildPreviewPayloads(urls) {
       }
 
       console.log(`[preview] fixembed fallback ${url}`);
-      payloads.push({ content: buildEmbedUrl(url) });
+      payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
 
@@ -472,24 +520,19 @@ async function buildPreviewPayloads(urls) {
       }
 
       console.log(`[preview] fixembed fallback ${url}`);
-      payloads.push({ content: buildEmbedUrl(url) });
+      payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
 
     if (!isThreadsUrl(url)) {
       if (isBilibiliUrl(url)) {
-        try {
-          const metadata = await fetchBilibiliMetadata(url);
-          console.log(`[preview] bilibili-custom ${url}`);
-          payloads.push({ embeds: [buildBilibiliEmbed(url, metadata)] });
-          continue;
-        } catch (error) {
-          console.warn(`Could not fetch Bilibili metadata for ${url}:`, error.message);
-        }
+        console.log(`[preview] bilibili-fixer ${url}`);
+        payloads.push({ content: buildFallbackUrl(url) });
+        continue;
       }
 
       console.log(`[preview] fixembed non-threads ${url}`);
-      payloads.push({ content: buildEmbedUrl(url) });
+      payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
 
@@ -509,7 +552,7 @@ async function buildPreviewPayloads(urls) {
         console.log(
           `[preview] fixembed video ${url}`,
         );
-        payloads.push({ content: buildEmbedUrl(url) });
+        payloads.push({ content: buildFallbackUrl(url) });
         continue;
       }
 
@@ -540,7 +583,7 @@ async function buildPreviewPayloads(urls) {
     }
 
     console.log(`[preview] fixembed fallback ${url}`);
-    payloads.push({ content: buildEmbedUrl(url) });
+    payloads.push({ content: buildFallbackUrl(url) });
   }
 
   return payloads;
