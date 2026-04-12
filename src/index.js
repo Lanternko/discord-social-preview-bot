@@ -23,6 +23,7 @@ const FIXER_THREADS_SECONDARY =
 const FIXER_REDDIT = process.env.FIXER_REDDIT || "rxddit.com";
 const FIXER_PIXIV = process.env.FIXER_PIXIV || "phixiv.net";
 const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
+const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -194,6 +195,10 @@ function buildFallbackUrl(originalUrl) {
 
   if (["bsky.app", "www.bsky.app"].includes(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_BLUESKY);
+  }
+
+  if (BILIBILI_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_BILIBILI);
   }
 
   return `${FIXEMBED_BASE_URL}${encodeURIComponent(originalUrl)}`;
@@ -521,14 +526,9 @@ async function buildPreviewPayloads(urls) {
 
     if (!isThreadsUrl(url)) {
       if (isBilibiliUrl(url)) {
-        try {
-          const metadata = await fetchBilibiliMetadata(url);
-          console.log(`[preview] bilibili-custom ${url}`);
-          payloads.push({ embeds: [buildBilibiliEmbed(url, metadata)] });
-          continue;
-        } catch (error) {
-          console.warn(`Could not fetch Bilibili metadata for ${url}:`, error.message);
-        }
+        console.log(`[preview] bilibili-fixer ${url}`);
+        payloads.push({ content: buildFallbackUrl(url) });
+        continue;
       }
 
       console.log(`[preview] fixembed non-threads ${url}`);
