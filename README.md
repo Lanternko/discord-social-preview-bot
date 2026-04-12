@@ -1,9 +1,10 @@
 # Discord Social Preview Bot
 
-A Discord bot that previews supported social links, focused on Threads.
+可以在 Discord 預覽社群貼文的機器人！
 
 <img width="620" height="755" alt="image" src="https://github.com/user-attachments/assets/6a096faa-3197-4b2a-90a5-2e081fe41dc0" />
 
+4.12 更新：Bilibili 影片嵌入、Threads 多圖顯示、修復資安漏洞
 
 ## Supported platforms
 
