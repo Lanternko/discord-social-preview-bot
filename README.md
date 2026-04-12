@@ -101,12 +101,12 @@ npx playwright install chromium
 npm start
 ```
 
-This repo also includes:
+For local macOS use, you can keep your own `start-bot.command` and `stop-bot.command` outside Git.
 
-- `start-bot.command`
-- `stop-bot.command`
+Public startup scripts in this repo:
 
-You can double-click them on macOS.
+- `scripts/start.sh`
+- `scripts/stop.sh`
 
 ### Linux
 
@@ -151,6 +151,15 @@ docker run -d \
   --env-file .env \
   discord-social-preview-bot
 ```
+
+## Project structure
+
+- [src/index.js](./src/index.js)
+- [src/threads-probe.cjs](./src/threads-probe.cjs)
+- [.env.example](./.env.example)
+- `start-bot.command` / `stop-bot.command`: local-only macOS shortcuts, intentionally gitignored
+- [scripts/start.sh](./scripts/start.sh)
+- [scripts/stop.sh](./scripts/stop.sh)
 
 ## Troubleshooting
 
