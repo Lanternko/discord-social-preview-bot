@@ -115,6 +115,24 @@ const SERVER_COUNT_COMMAND = {
   name: "servers",
   description: "顯示目前機器人加入的伺服器數量",
 };
+const REQUIRED_CHANNEL_PERMISSIONS = [
+  {
+    flag: PermissionsBitField.Flags.ViewChannel,
+    name: "ViewChannel",
+  },
+  {
+    flag: PermissionsBitField.Flags.SendMessages,
+    name: "SendMessages",
+  },
+  {
+    flag: PermissionsBitField.Flags.ReadMessageHistory,
+    name: "ReadMessageHistory",
+  },
+  {
+    flag: PermissionsBitField.Flags.EmbedLinks,
+    name: "EmbedLinks",
+  },
+];
 
 function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
@@ -639,6 +657,41 @@ async function buildPreviewPayloads(urls) {
   return payloads;
 }
 
+function describeMessageLocation(message) {
+  const guildName = message.guild?.name || "DM";
+  const channelName =
+    "name" in message.channel && message.channel.name
+      ? `#${message.channel.name}`
+      : message.channelId;
+  return `guild="${guildName}" channel="${channelName}"`;
+}
+
+function getMissingChannelPermissions(message) {
+  if (!message.inGuild()) {
+    return [];
+  }
+
+  const me = message.guild.members.me;
+  if (!me) {
+    return ["BotMemberUnavailable"];
+  }
+
+  const permissions = message.channel.permissionsFor(me);
+  if (!permissions) {
+    return ["PermissionsUnavailable"];
+  }
+
+  return REQUIRED_CHANNEL_PERMISSIONS.filter(
+    (permission) => !permissions.has(permission.flag),
+  ).map((permission) => permission.name);
+}
+
+function logMissingChannelPermissions(message, missingPermissions) {
+  console.warn(
+    `[permissions] missing=${missingPermissions.join(",")} ${describeMessageLocation(message)}`,
+  );
+}
+
 async function suppressOriginalEmbeds(message) {
   if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild()) {
     return;
@@ -651,17 +704,28 @@ async function suppressOriginalEmbeds(message) {
 
   const permissions = message.channel.permissionsFor(me);
   if (!permissions?.has(PermissionsBitField.Flags.ManageMessages)) {
+    console.warn(
+      `[permissions] missing=ManageMessages ${describeMessageLocation(message)} while suppressing embeds`,
+    );
     return;
   }
 
   try {
     await message.suppressEmbeds(true);
   } catch (error) {
-    console.warn("Could not suppress original embeds:", error.message);
+    console.warn(
+      `[preview] suppress failed ${describeMessageLocation(message)}: ${error.message}`,
+    );
   }
 }
 
 async function sendPreviews(message, payloads) {
+  const missingPermissions = getMissingChannelPermissions(message);
+  if (missingPermissions.length > 0) {
+    logMissingChannelPermissions(message, missingPermissions);
+    return false;
+  }
+
   for (const payload of payloads) {
     const outgoing = {
       ...payload,
@@ -675,6 +739,8 @@ async function sendPreviews(message, payloads) {
 
     await message.reply(outgoing);
   }
+
+  return true;
 }
 
 async function ensureApplicationCommands() {
@@ -746,13 +812,19 @@ client.on("messageCreate", async (message) => {
 
   try {
     const payloads = await buildPreviewPayloads(urls);
-    await sendPreviews(message, payloads);
+    const sent = await sendPreviews(message, payloads);
+    if (!sent) {
+      return;
+    }
     await suppressOriginalEmbeds(message);
   } catch (error) {
     for (const url of urls) {
       recentReplies.delete(buildReplyCacheKey(message, url));
     }
-    console.error("Failed to create preview:", error);
+    console.error(
+      `[preview] failed ${describeMessageLocation(message)}:`,
+      error,
+    );
   } finally {
     inFlightReplies.delete(processingKey);
   }
