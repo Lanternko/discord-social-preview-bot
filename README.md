@@ -47,6 +47,7 @@
 - Uses Playwright only for Threads metadata extraction
 - Normalizes common tracking query parameters before dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
+- Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
 
 ## Requirements
 
@@ -166,6 +167,10 @@ docker run -d \
 - [scripts/stop.sh](./scripts/stop.sh)
 
 ## Troubleshooting
+
+### `/servers` command does not appear yet
+
+Global application commands can take a little while to propagate in Discord after the bot starts or restarts. If needed, restart the bot and wait a few minutes.
 
 ### Bot replies twice to one message
 

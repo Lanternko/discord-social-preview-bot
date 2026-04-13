@@ -111,6 +111,10 @@ const recentReplies = new Map();
 const inFlightReplies = new Set();
 const threadsMetadataCache = new Map();
 const execFileAsync = promisify(execFile);
+const SERVER_COUNT_COMMAND = {
+  name: "servers",
+  description: "顯示目前機器人加入的伺服器數量",
+};
 
 function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
@@ -673,8 +677,47 @@ async function sendPreviews(message, payloads) {
   }
 }
 
-client.once("clientReady", () => {
+async function ensureApplicationCommands() {
+  const commands = await client.application.commands.fetch();
+  const existing = commands.find(
+    (command) => command.name === SERVER_COUNT_COMMAND.name,
+  );
+
+  if (!existing) {
+    await client.application.commands.create(SERVER_COUNT_COMMAND);
+    console.log(`[commands] registered /${SERVER_COUNT_COMMAND.name}`);
+    return;
+  }
+
+  if (existing.description !== SERVER_COUNT_COMMAND.description) {
+    await existing.edit(SERVER_COUNT_COMMAND);
+    console.log(`[commands] updated /${SERVER_COUNT_COMMAND.name}`);
+  }
+}
+
+client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  try {
+    await ensureApplicationCommands();
+  } catch (error) {
+    console.error("Failed to register application commands:", error);
+  }
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+
+  if (interaction.commandName !== SERVER_COUNT_COMMAND.name) {
+    return;
+  }
+
+  await interaction.reply({
+    content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
+    ephemeral: true,
+  });
 });
 
 client.on("messageCreate", async (message) => {
