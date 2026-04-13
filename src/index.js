@@ -24,6 +24,7 @@ const FIXER_REDDIT = process.env.FIXER_REDDIT || "rxddit.com";
 const FIXER_PIXIV = process.env.FIXER_PIXIV || "phixiv.net";
 const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
 const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
+const FIXER_FACEBOOK = process.env.FIXER_FACEBOOK || "facebed.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -71,6 +72,12 @@ const BILIBILI_HOSTS = new Set([
   "www.bilibili.com",
   "b23.tv",
 ]);
+const FACEBOOK_HOSTS = new Set([
+  "facebook.com",
+  "www.facebook.com",
+  "m.facebook.com",
+  "fb.watch",
+]);
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
@@ -88,6 +95,7 @@ const SUPPORTED_HOSTS = new Set([
   "www.pixiv.net",
   "bsky.app",
   "www.bsky.app",
+  ...FACEBOOK_HOSTS,
   ...BAHAMUT_HOSTS,
   ...PTT_HOSTS,
   "bilibili.com",
@@ -199,6 +207,10 @@ function buildFallbackUrl(originalUrl) {
 
   if (BILIBILI_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_BILIBILI);
+  }
+
+  if (FACEBOOK_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_FACEBOOK);
   }
 
   return `${FIXEMBED_BASE_URL}${encodeURIComponent(originalUrl)}`;
@@ -341,6 +353,39 @@ function buildBilibiliEmbed(url, metadata) {
   }
 
   return embed;
+}
+
+async function buildBilibiliFallbackUrl(url) {
+  const parsed = new URL(url);
+
+  if (parsed.hostname !== "b23.tv") {
+    return replaceHostFixer(url, FIXER_BILIBILI);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    const finalUrl = normalizeUrl(response.url || url);
+    const finalParsed = new URL(finalUrl);
+    if (finalParsed.hostname === "www.bilibili.com" || finalParsed.hostname === "bilibili.com") {
+      return replaceHostFixer(finalUrl, FIXER_BILIBILI);
+    }
+  } catch (error) {
+    console.warn(`Could not expand b23.tv short link for ${url}:`, error.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  return replaceHostFixer(url, FIXER_BILIBILI);
 }
 
 async function fetchThreadsMetadata(url) {
@@ -526,8 +571,9 @@ async function buildPreviewPayloads(urls) {
 
     if (!isThreadsUrl(url)) {
       if (isBilibiliUrl(url)) {
-        console.log(`[preview] bilibili-fixer ${url}`);
-        payloads.push({ content: buildFallbackUrl(url) });
+        const fallbackUrl = await buildBilibiliFallbackUrl(url);
+        console.log(`[preview] bilibili-fixer ${url} -> ${fallbackUrl}`);
+        payloads.push({ content: fallbackUrl });
         continue;
       }
 
