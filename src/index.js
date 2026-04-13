@@ -355,6 +355,39 @@ function buildBilibiliEmbed(url, metadata) {
   return embed;
 }
 
+async function buildBilibiliFallbackUrl(url) {
+  const parsed = new URL(url);
+
+  if (parsed.hostname !== "b23.tv") {
+    return replaceHostFixer(url, FIXER_BILIBILI);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+      },
+    });
+
+    const finalUrl = normalizeUrl(response.url || url);
+    const finalParsed = new URL(finalUrl);
+    if (finalParsed.hostname === "www.bilibili.com" || finalParsed.hostname === "bilibili.com") {
+      return replaceHostFixer(finalUrl, FIXER_BILIBILI);
+    }
+  } catch (error) {
+    console.warn(`Could not expand b23.tv short link for ${url}:`, error.message);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  return replaceHostFixer(url, FIXER_BILIBILI);
+}
+
 async function fetchThreadsMetadata(url) {
   cleanupThreadsMetadataCache();
 
@@ -538,8 +571,9 @@ async function buildPreviewPayloads(urls) {
 
     if (!isThreadsUrl(url)) {
       if (isBilibiliUrl(url)) {
-        console.log(`[preview] bilibili-fixer ${url}`);
-        payloads.push({ content: buildFallbackUrl(url) });
+        const fallbackUrl = await buildBilibiliFallbackUrl(url);
+        console.log(`[preview] bilibili-fixer ${url} -> ${fallbackUrl}`);
+        payloads.push({ content: fallbackUrl });
         continue;
       }
 

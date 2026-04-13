@@ -45,6 +45,7 @@ A Discord bot that previews supported social links, focused on Threads.
 - Suppresses the original embed if the bot has `Manage Messages`
 - Uses Playwright only for Threads metadata extraction
 - Normalizes common tracking query parameters before dedupe
+- Bilibili short links (`b23.tv`) are expanded before fixer routing
 
 ## Requirements
 
