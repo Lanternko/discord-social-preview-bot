@@ -14,6 +14,7 @@ A Discord bot that previews supported social links, focused on Threads.
 - Pixiv
 - Bluesky
 - Bilibili
+- Facebook (`facebook.com`, `m.facebook.com`, `fb.watch`)
 - 巴哈姆特 (`forum.gamer.com.tw`, `m.gamer.com.tw`)
 - PTT (`ptt.cc`, `www.ptt.cc`)
 
@@ -28,12 +29,13 @@ A Discord bot that previews supported social links, focused on Threads.
 
 ### Other platforms
 
-- X / Twitter: FixEmbed fallback
-- Instagram: FixEmbed fallback
-- Reddit: FixEmbed fallback
-- Pixiv: FixEmbed fallback
-- Bluesky: FixEmbed fallback
-- Bilibili: custom Discord embed with thumbnail, title, and description
+- X / Twitter: dedicated fixer fallback
+- Instagram: generic FixEmbed fallback
+- Reddit: dedicated fixer fallback
+- Pixiv: dedicated fixer fallback
+- Bluesky: dedicated fixer fallback
+- Bilibili: dedicated fixer fallback
+- Facebook: dedicated fixer fallback
 - 巴哈姆特: custom Discord embed with title, summary, and image when the page is publicly accessible
 - PTT: custom Discord embed with title, trimmed article text, and first linked image if one exists
 

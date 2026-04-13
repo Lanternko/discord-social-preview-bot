@@ -24,6 +24,7 @@ const FIXER_REDDIT = process.env.FIXER_REDDIT || "rxddit.com";
 const FIXER_PIXIV = process.env.FIXER_PIXIV || "phixiv.net";
 const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
 const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
+const FIXER_FACEBOOK = process.env.FIXER_FACEBOOK || "facebed.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -71,6 +72,12 @@ const BILIBILI_HOSTS = new Set([
   "www.bilibili.com",
   "b23.tv",
 ]);
+const FACEBOOK_HOSTS = new Set([
+  "facebook.com",
+  "www.facebook.com",
+  "m.facebook.com",
+  "fb.watch",
+]);
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
@@ -88,6 +95,7 @@ const SUPPORTED_HOSTS = new Set([
   "www.pixiv.net",
   "bsky.app",
   "www.bsky.app",
+  ...FACEBOOK_HOSTS,
   ...BAHAMUT_HOSTS,
   ...PTT_HOSTS,
   "bilibili.com",
@@ -199,6 +207,10 @@ function buildFallbackUrl(originalUrl) {
 
   if (BILIBILI_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_BILIBILI);
+  }
+
+  if (FACEBOOK_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_FACEBOOK);
   }
 
   return `${FIXEMBED_BASE_URL}${encodeURIComponent(originalUrl)}`;
