@@ -116,6 +116,10 @@ const SERVER_COUNT_COMMAND = {
   name: "servers",
   description: "顯示目前機器人加入的伺服器數量",
 };
+const DEBUG_PERMS_COMMAND = {
+  name: "debug-perms",
+  description: "檢查目前頻道裡機器人的權限",
+};
 const REQUIRED_CHANNEL_PERMISSIONS = [
   {
     flag: PermissionsBitField.Flags.ViewChannel,
@@ -777,21 +781,54 @@ async function sendPreviews(message, payloads) {
 }
 
 async function ensureApplicationCommands() {
+  const expectedCommands = [SERVER_COUNT_COMMAND, DEBUG_PERMS_COMMAND];
   const commands = await client.application.commands.fetch();
-  const existing = commands.find(
-    (command) => command.name === SERVER_COUNT_COMMAND.name,
+  for (const expectedCommand of expectedCommands) {
+    const existing = commands.find(
+      (command) => command.name === expectedCommand.name,
+    );
+
+    if (!existing) {
+      await client.application.commands.create(expectedCommand);
+      console.log(`[commands] registered /${expectedCommand.name}`);
+      continue;
+    }
+
+    if (existing.description !== expectedCommand.description) {
+      await existing.edit(expectedCommand);
+      console.log(`[commands] updated /${expectedCommand.name}`);
+    }
+  }
+}
+
+function buildPermissionDebugMessage(interaction) {
+  if (!interaction.inGuild()) {
+    return "這個指令只能在伺服器頻道內使用。";
+  }
+
+  const missingPermissions = getMissingChannelPermissions(interaction);
+  const me = interaction.guild.members.me;
+  const permissions = me ? interaction.channel.permissionsFor(me) : null;
+  const hasManageMessages = permissions?.has(
+    PermissionsBitField.Flags.ManageMessages,
   );
 
-  if (!existing) {
-    await client.application.commands.create(SERVER_COUNT_COMMAND);
-    console.log(`[commands] registered /${SERVER_COUNT_COMMAND.name}`);
-    return;
+  const lines = [
+    `伺服器：${interaction.guild.name}`,
+    `頻道：${"name" in interaction.channel && interaction.channel.name ? `#${interaction.channel.name}` : interaction.channelId}`,
+  ];
+
+  if (missingPermissions.length === 0) {
+    lines.push("必要權限：都已具備");
+  } else {
+    lines.push(`缺少必要權限：${missingPermissions.join(", ")}`);
   }
 
-  if (existing.description !== SERVER_COUNT_COMMAND.description) {
-    await existing.edit(SERVER_COUNT_COMMAND);
-    console.log(`[commands] updated /${SERVER_COUNT_COMMAND.name}`);
-  }
+  lines.push(
+    `ManageMessages：${hasManageMessages ? "有" : "沒有"}`,
+  );
+
+  return lines.join("\n");
 }
 
 client.once("clientReady", async () => {
@@ -809,14 +846,20 @@ client.on("interactionCreate", async (interaction) => {
     return;
   }
 
-  if (interaction.commandName !== SERVER_COUNT_COMMAND.name) {
+  if (interaction.commandName === SERVER_COUNT_COMMAND.name) {
+    await interaction.reply({
+      content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
-  await interaction.reply({
-    content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
-    flags: MessageFlags.Ephemeral,
-  });
+  if (interaction.commandName === DEBUG_PERMS_COMMAND.name) {
+    await interaction.reply({
+      content: buildPermissionDebugMessage(interaction),
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 });
 
 client.on("messageCreate", async (message) => {

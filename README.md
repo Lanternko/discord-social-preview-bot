@@ -48,6 +48,7 @@
 - Normalizes common tracking query parameters before dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
 - Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
+- Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
 
 ## Requirements
 
@@ -170,7 +171,7 @@ docker run -d \
 
 ### `/servers` command does not appear yet
 
-Global application commands can take a little while to propagate in Discord after the bot starts or restarts. If needed, restart the bot and wait a few minutes.
+Global application commands such as `/servers` and `/debug-perms` can take a little while to propagate in Discord after the bot starts or restarts. If needed, restart the bot and wait a few minutes.
 
 ### Bot replies twice to one message
 
