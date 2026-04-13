@@ -750,7 +750,15 @@ async function sendPreviews(message, payloads) {
     };
 
     if (REPLY_MODE === "send") {
-      await message.channel.send(outgoing);
+      try {
+        await message.channel.send(outgoing);
+      } catch (error) {
+        const inferredMissingPermissions = inferMissingPermissionsFromError(error);
+        if (inferredMissingPermissions.length > 0) {
+          logMissingChannelPermissions(message, inferredMissingPermissions);
+        }
+        throw error;
+      }
       continue;
     }
 
