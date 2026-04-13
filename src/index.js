@@ -4,6 +4,7 @@ const {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
+  MessageFlags,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -692,6 +693,22 @@ function logMissingChannelPermissions(message, missingPermissions) {
   );
 }
 
+function inferMissingPermissionsFromError(error) {
+  const message = error?.message || "";
+  const code = error?.code;
+  const missingPermissions = [];
+
+  if (code === 160002 || /read message history/i.test(message)) {
+    missingPermissions.push("ReadMessageHistory");
+  }
+
+  if (code === 50013 || /missing permissions/i.test(message)) {
+    missingPermissions.push("MissingPermissions");
+  }
+
+  return [...new Set(missingPermissions)];
+}
+
 async function suppressOriginalEmbeds(message) {
   if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild()) {
     return;
@@ -737,7 +754,15 @@ async function sendPreviews(message, payloads) {
       continue;
     }
 
-    await message.reply(outgoing);
+    try {
+      await message.reply(outgoing);
+    } catch (error) {
+      const inferredMissingPermissions = inferMissingPermissionsFromError(error);
+      if (inferredMissingPermissions.length > 0) {
+        logMissingChannelPermissions(message, inferredMissingPermissions);
+      }
+      throw error;
+    }
   }
 
   return true;
@@ -782,7 +807,7 @@ client.on("interactionCreate", async (interaction) => {
 
   await interaction.reply({
     content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   });
 });
 
