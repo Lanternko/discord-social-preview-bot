@@ -1,10 +1,14 @@
 # Discord Social Preview Bot
 
-可以在 Discord 預覽社群貼文的機器人！
-
-<img width="620" height="755" alt="image" src="https://github.com/user-attachments/assets/6a096faa-3197-4b2a-90a5-2e081fe41dc0" />
+### 可以在 Discord 預覽社群貼文的機器人！
 
 4.12 更新：Bilibili 影片嵌入、Threads 多圖顯示、修復資安漏洞
+
+4.13 更新：FB 可以正確顯示（繞過登入要求）
+
+
+<img width="407" height="471" alt="image" src="https://github.com/user-attachments/assets/acd689ec-4443-457e-ac44-de4912b52d40" />
+
 
 ## Supported platforms
 
@@ -32,6 +36,7 @@
 
 - X / Twitter: dedicated fixer fallback
 - Instagram: generic FixEmbed fallback
+- Facebook: dedicated fixer fallback
 - Reddit: dedicated fixer fallback
 - Pixiv: dedicated fixer fallback
 - Bluesky: dedicated fixer fallback
@@ -165,41 +170,7 @@ docker run -d \
 - [scripts/start.sh](./scripts/start.sh)
 - [scripts/stop.sh](./scripts/stop.sh)
 
-## Troubleshooting
 
-### Bot replies twice to one message
-
-This usually means one of these conditions:
-
-- two bot instances are running with the same token
-- the bot was restarted but an older process was still alive
-- the message was processed concurrently before dedupe was recorded
-
-This project includes both recent-reply dedupe and in-flight dedupe, but you should still keep only one process running per token.
-
-### Threads preview is slow
-
-Threads pages sometimes load media metadata late. You can tune:
-
-- `THREADS_PROBE_TIMEOUT_MS`
-- `PLAYWRIGHT_GOTO_TIMEOUT_MS`
-- `PLAYWRIGHT_META_WAIT_TIMEOUT_MS`
-
-### Video is not rendered as a custom Discord player
-
-This is a Discord limitation. Custom embeds do not provide the same inline video player behavior as external unfurls.
-
-### Multi-image Threads posts only show one image
-
-This is also a Discord embed limitation. A custom embed can only present one main image cleanly.
-
-### Bahamut restricted boards may not show full content
-
-Some 巴哈姆特 boards are behind login or content-warning gates. In those cases, the bot can only show what the page exposes without logging in.
-
-### PTT adult boards require the over18 cookie
-
-The bot already sets the `over18=1` cookie in Playwright for PTT. If a page still blocks preview, the article may be unavailable or removed.
 
 ## Security notes
 
