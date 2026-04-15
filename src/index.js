@@ -699,7 +699,14 @@ async function buildPreviewPayloads(urls) {
 
       if (metadata.video || metadata.videoCount > 0) {
         console.log(`[preview] threads-video fixer ${url}`);
-        payloads.push({ content: buildFallbackUrl(url) });
+        payloads.push({
+          content: replaceHostFixer(url, FIXER_THREADS),
+          fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
+          embedFallback: {
+            embeds: [buildThreadsCompactEmbed(url, metadata)],
+            components: [buildThreadsLinkRow(url, "開啟 Threads 原文")],
+          },
+        });
         continue;
       }
 
@@ -855,7 +862,7 @@ async function sendPreviews(message, payloads) {
     // URL-only payloads rely on Discord to unfurl — track them for embed checks
     // (plain-text messages like Story reports must be excluded)
     const isUrlOnly = Boolean(payload.content && !payload.embeds && payload.content.startsWith("http"));
-    sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null });
+    sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null, embedFallback: payload.embedFallback ?? null });
   }
 
   return sent;
@@ -878,7 +885,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
 
   await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
 
-  for (const { sentMessage, fallbackContent } of urlMessages) {
+  for (const { sentMessage, fallbackContent, embedFallback } of urlMessages) {
     let fetched;
     try {
       fetched = await sentMessage.fetch();
@@ -919,7 +926,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         continue;
       }
 
-      console.log(`[preview] fallback also empty, giving up ${refetched.id}`);
+      console.log(`[preview] fallback also empty ${refetched.id}`);
+      if (embedFallback) {
+        try {
+          await refetched.edit({
+            content: "",
+            ...embedFallback,
+            allowedMentions: { repliedUser: false },
+          });
+          console.log(`[preview] embed fallback used ${refetched.id}`);
+          continue;
+        } catch (error) {
+          console.warn("[preview] could not edit to embed fallback:", error.message);
+        }
+      }
       try {
         await refetched.delete();
       } catch (error) {
@@ -929,7 +949,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    // No fallback — delete and apologise
+    // No fixer fallback — try embed fallback, then delete and apologise
+    if (embedFallback) {
+      try {
+        await fetched.edit({
+          content: "",
+          ...embedFallback,
+          allowedMentions: { repliedUser: false },
+        });
+        console.log(`[preview] embed fallback used ${fetched.id}`);
+        continue;
+      } catch (error) {
+        console.warn("[preview] could not edit to embed fallback:", error.message);
+      }
+    }
     try {
       await fetched.delete();
     } catch (error) {
