@@ -1081,8 +1081,10 @@ client.on("messageCreate", async (message) => {
   if (isMentioningBot(message)) {
     const text = message.content
       .replace(/<@!?\d+>/g, "")
+      .normalize("NFC")
       .trim();
     const textLower = text.toLowerCase();
+    console.log(`[mention] text=${JSON.stringify(text)} hex=${Buffer.from(text).toString("hex")}`);
 
     if (textLower === "抽籤") {
       const result = drawFortune();
