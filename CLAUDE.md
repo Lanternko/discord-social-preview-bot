@@ -22,8 +22,8 @@ Two files in `src/`:
 | Fallback / probe error | Fixer link (`FIXER_THREADS`) |
 
 ### Instagram
-- Primary: `FIXER_INSTAGRAM` (ddinstagram.com) — supports Stories
-- Fallback: FixEmbed (used if ddinstagram unfurl is empty after `EMBED_CHECK_DELAY_MS`)
+- **Stories** (`/stories/<username>/`): no fixer works — immediately replies with owner username in 西寶 voice; skips embed-check pipeline
+- **Posts / Reels**: Primary = `FIXER_INSTAGRAM` (ddinstagram.com); Fallback = FixEmbed (if unfurl empty after `EMBED_CHECK_DELAY_MS`)
 
 ### Other platforms
 
