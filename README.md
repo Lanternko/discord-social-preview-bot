@@ -8,7 +8,10 @@
 
 4.15 更新：預覽失敗時會道歉 orz
 
-<img width="407" height="471" alt="image" src="https://github.com/user-attachments/assets/acd689ec-4443-457e-ac44-de4912b52d40" />
+<img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
+<img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
+<img width="300" height="88" alt="image" src="https://github.com/user-attachments/assets/963324f8-ed11-4af3-b587-45d617573766" />
+
 
 
 ## Supported platforms
