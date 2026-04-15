@@ -305,6 +305,15 @@ function isInstagramUrl(url) {
   return INSTAGRAM_HOSTS.has(new URL(url).hostname);
 }
 
+// Returns the story owner username if the URL is an Instagram Story, otherwise null.
+// Story URL format: /stories/<username>/<mediaId>
+function extractInstagramStoryOwner(url) {
+  const parsed = new URL(url);
+  if (!INSTAGRAM_HOSTS.has(parsed.hostname)) return null;
+  const match = parsed.pathname.match(/^\/stories\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
 function isBilibiliUrl(url) {
   return BILIBILI_HOSTS.has(new URL(url).hostname);
 }
@@ -593,6 +602,13 @@ async function buildPreviewPayloads(urls) {
     }
 
     if (isInstagramUrl(url)) {
+      const storyOwner = extractInstagramStoryOwner(url);
+      if (storyOwner) {
+        // Stories cannot be previewed by any fixer — report the owner instead
+        console.log(`[preview] instagram-story owner=${storyOwner} ${url}`);
+        payloads.push({ content: `這是 **@${storyOwner}** 的限動！（限動沒辦法預覽…對不起>///<）` });
+        continue;
+      }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
       console.log(`[preview] instagram-fixer ${url}`);
       // fallbackContent is FixEmbed in case ddinstagram fails to unfurl
