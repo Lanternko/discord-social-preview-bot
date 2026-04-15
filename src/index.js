@@ -314,6 +314,24 @@ function extractInstagramStoryOwner(url) {
   return match ? match[1] : null;
 }
 
+// Fetches the display name for an Instagram username by probing their profile page.
+// og:title is typically "DisplayName (@username) • Instagram…"
+// Returns null on failure (caller should fall back to raw username).
+async function fetchInstagramDisplayName(username) {
+  const profileUrl = `https://www.instagram.com/${encodeURIComponent(username)}/`;
+  try {
+    const metadata = await fetchPageProbeMetadata(profileUrl);
+    if (metadata.title) {
+      // Match display name before " (@username)" or "（@username）"
+      const match = metadata.title.match(/^(.+?)\s*[（(]@/);
+      if (match) return match[1].trim();
+    }
+  } catch (error) {
+    console.warn(`[preview] could not fetch Instagram display name for ${username}:`, error.message);
+  }
+  return null;
+}
+
 function isBilibiliUrl(url) {
   return BILIBILI_HOSTS.has(new URL(url).hostname);
 }
@@ -605,8 +623,12 @@ async function buildPreviewPayloads(urls) {
       const storyOwner = extractInstagramStoryOwner(url);
       if (storyOwner) {
         // Stories cannot be previewed by any fixer — report the owner instead
-        console.log(`[preview] instagram-story owner=${storyOwner} ${url}`);
-        payloads.push({ content: `這是 **@${storyOwner}** 的限動！` });
+        const displayName = await fetchInstagramDisplayName(storyOwner);
+        const ownerLabel = displayName
+          ? `${displayName}（@${storyOwner}）`
+          : `@${storyOwner}`;
+        console.log(`[preview] instagram-story owner=${storyOwner} displayName=${displayName ?? "n/a"} ${url}`);
+        payloads.push({ content: `這是 **${ownerLabel}** 的限動！` });
         continue;
       }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
