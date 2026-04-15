@@ -69,6 +69,21 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
 
+## @西寶 mention responses
+
+When a user mentions the bot (@西寶), the bot checks the message text after stripping the mention:
+
+| Text | Response |
+|---|---|
+| `抽籤` | Weighted fortune draw: 大吉/中吉/小吉/末吉/吉/凶/大凶, with a tier-specific comment |
+| `道歉` | `"對不起對不起…我知道我不好…///"` |
+| *(blank)* | Random shy greeting (e.g. `"有、有什麼事嗎…？///"`) |
+| *(anything else)* | `"你…你在叫我嗎？///"` |
+
+Fortune tiers (weighted): 大吉 10%, 中吉 16%, 小吉 20%, 末吉 20%, 吉 15%, 凶 13%, 大凶 6%
+
+Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`.
+
 ## Ignore markers
 
 Users can suppress the bot by including `nopreview`, `previewignore`, or `fxignore` anywhere in their message.
@@ -89,6 +104,7 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`
 
 - New features go on a `feature/*` branch, never directly to `main`.
 - Open a PR to merge into `main`.
+- After changes are committed and pushed, restart the bot via `stop-bot.command` then `start-bot.command`.
 
 ## Notes
 
@@ -96,3 +112,4 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`
 - Dedup window: same channel + URL won't trigger a second reply within 60 seconds (`DEDUPE_WINDOW_MS`).
 - `inFlightReplies` Set prevents duplicate processing of the same message if `messageCreate` fires twice.
 - Log prefix convention: `[preview]`, `[threads-meta]` for easy filtering.
+- Mention text must be `.normalize("NFC")` before comparison — Discord can send CJK input in NFD form, causing strict equality to silently fail (e.g. `抽籤` not matching).
