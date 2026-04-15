@@ -53,6 +53,8 @@
 - Uses Playwright only for Threads metadata extraction
 - Normalizes common tracking query parameters before dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
+- Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
+- Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
 
 ## Requirements
 
@@ -172,6 +174,45 @@ docker run -d \
 - [scripts/stop.sh](./scripts/stop.sh)
 
 
+## Troubleshooting
+
+### `/servers` command does not appear yet
+
+Global application commands such as `/servers` and `/debug-perms` can take a little while to propagate in Discord after the bot starts or restarts. If needed, restart the bot and wait a few minutes.
+
+### Bot replies twice to one message
+
+This usually means one of these conditions:
+
+- two bot instances are running with the same token
+- the bot was restarted but an older process was still alive
+- the message was processed concurrently before dedupe was recorded
+
+This project includes both recent-reply dedupe and in-flight dedupe, but you should still keep only one process running per token.
+
+### Threads preview is slow
+
+Threads pages sometimes load media metadata late. You can tune:
+
+- `THREADS_PROBE_TIMEOUT_MS`
+- `PLAYWRIGHT_GOTO_TIMEOUT_MS`
+- `PLAYWRIGHT_META_WAIT_TIMEOUT_MS`
+
+### Video is not rendered as a custom Discord player
+
+This is a Discord limitation. Custom embeds do not provide the same inline video player behavior as external unfurls.
+
+### Multi-image Threads posts only show one image
+
+This is also a Discord embed limitation. A custom embed can only present one main image cleanly.
+
+### Bahamut restricted boards may not show full content
+
+Some 巴哈姆特 boards are behind login or content-warning gates. In those cases, the bot can only show what the page exposes without logging in.
+
+### PTT adult boards require the over18 cookie
+
+The bot already sets the `over18=1` cookie in Playwright for PTT. If a page still blocks preview, the article may be unavailable or removed.
 
 ## Security notes
 

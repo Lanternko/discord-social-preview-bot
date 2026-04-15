@@ -4,6 +4,7 @@ const {
   Client,
   GatewayIntentBits,
   PermissionsBitField,
+  MessageFlags,
   EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
@@ -119,6 +120,32 @@ const recentReplies = new Map();
 const inFlightReplies = new Set();
 const threadsMetadataCache = new Map();
 const execFileAsync = promisify(execFile);
+const SERVER_COUNT_COMMAND = {
+  name: "servers",
+  description: "顯示目前機器人加入的伺服器數量",
+};
+const DEBUG_PERMS_COMMAND = {
+  name: "debug-perms",
+  description: "檢查目前頻道裡機器人的權限",
+};
+const REQUIRED_CHANNEL_PERMISSIONS = [
+  {
+    flag: PermissionsBitField.Flags.ViewChannel,
+    name: "ViewChannel",
+  },
+  {
+    flag: PermissionsBitField.Flags.SendMessages,
+    name: "SendMessages",
+  },
+  {
+    flag: PermissionsBitField.Flags.ReadMessageHistory,
+    name: "ReadMessageHistory",
+  },
+  {
+    flag: PermissionsBitField.Flags.EmbedLinks,
+    name: "EmbedLinks",
+  },
+];
 
 function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
@@ -709,6 +736,57 @@ async function buildPreviewPayloads(urls) {
   return payloads;
 }
 
+function describeMessageLocation(message) {
+  const guildName = message.guild?.name || "DM";
+  const channelName =
+    "name" in message.channel && message.channel.name
+      ? `#${message.channel.name}`
+      : message.channelId;
+  return `guild="${guildName}" channel="${channelName}"`;
+}
+
+function getMissingChannelPermissions(message) {
+  if (!message.inGuild()) {
+    return [];
+  }
+
+  const me = message.guild.members.me;
+  if (!me) {
+    return ["BotMemberUnavailable"];
+  }
+
+  const permissions = message.channel.permissionsFor(me);
+  if (!permissions) {
+    return ["PermissionsUnavailable"];
+  }
+
+  return REQUIRED_CHANNEL_PERMISSIONS.filter(
+    (permission) => !permissions.has(permission.flag),
+  ).map((permission) => permission.name);
+}
+
+function logMissingChannelPermissions(message, missingPermissions) {
+  console.warn(
+    `[permissions] missing=${missingPermissions.join(",")} ${describeMessageLocation(message)}`,
+  );
+}
+
+function inferMissingPermissionsFromError(error) {
+  const message = error?.message || "";
+  const code = error?.code;
+  const missingPermissions = [];
+
+  if (code === 160002 || /read message history/i.test(message)) {
+    missingPermissions.push("ReadMessageHistory");
+  }
+
+  if (code === 50013 || /missing permissions/i.test(message)) {
+    missingPermissions.push("MissingPermissions");
+  }
+
+  return [...new Set(missingPermissions)];
+}
+
 async function suppressOriginalEmbeds(message) {
   if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild()) {
     return;
@@ -721,17 +799,28 @@ async function suppressOriginalEmbeds(message) {
 
   const permissions = message.channel.permissionsFor(me);
   if (!permissions?.has(PermissionsBitField.Flags.ManageMessages)) {
+    console.warn(
+      `[permissions] missing=ManageMessages ${describeMessageLocation(message)} while suppressing embeds`,
+    );
     return;
   }
 
   try {
     await message.suppressEmbeds(true);
   } catch (error) {
-    console.warn("Could not suppress original embeds:", error.message);
+    console.warn(
+      `[preview] suppress failed ${describeMessageLocation(message)}: ${error.message}`,
+    );
   }
 }
 
 async function sendPreviews(message, payloads) {
+  const missingPermissions = getMissingChannelPermissions(message);
+  if (missingPermissions.length > 0) {
+    logMissingChannelPermissions(message, missingPermissions);
+    return false;
+  }
+
   const sent = [];
 
   for (const payload of payloads) {
@@ -740,9 +829,28 @@ async function sendPreviews(message, payloads) {
       allowedMentions: { repliedUser: false },
     };
 
-    const sentMessage = REPLY_MODE === "send"
-      ? await message.channel.send(outgoing)
-      : await message.reply(outgoing);
+    let sentMessage;
+    if (REPLY_MODE === "send") {
+      try {
+        sentMessage = await message.channel.send(outgoing);
+      } catch (error) {
+        const inferredMissingPermissions = inferMissingPermissionsFromError(error);
+        if (inferredMissingPermissions.length > 0) {
+          logMissingChannelPermissions(message, inferredMissingPermissions);
+        }
+        throw error;
+      }
+    } else {
+      try {
+        sentMessage = await message.reply(outgoing);
+      } catch (error) {
+        const inferredMissingPermissions = inferMissingPermissionsFromError(error);
+        if (inferredMissingPermissions.length > 0) {
+          logMissingChannelPermissions(message, inferredMissingPermissions);
+        }
+        throw error;
+      }
+    }
 
     // URL-only payloads rely on Discord to unfurl — track them for embed checks
     // (plain-text messages like Story reports must be excluded)
@@ -831,9 +939,66 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
   }
 }
 
-client.once("clientReady", () => {
+async function ensureApplicationCommands() {
+  const expectedCommands = [SERVER_COUNT_COMMAND, DEBUG_PERMS_COMMAND];
+  const commands = await client.application.commands.fetch();
+  for (const expectedCommand of expectedCommands) {
+    const existing = commands.find(
+      (command) => command.name === expectedCommand.name,
+    );
+
+    if (!existing) {
+      await client.application.commands.create(expectedCommand);
+      console.log(`[commands] registered /${expectedCommand.name}`);
+      continue;
+    }
+
+    if (existing.description !== expectedCommand.description) {
+      await existing.edit(expectedCommand);
+      console.log(`[commands] updated /${expectedCommand.name}`);
+    }
+  }
+}
+
+function buildPermissionDebugMessage(interaction) {
+  if (!interaction.inGuild()) {
+    return "這個指令只能在伺服器頻道內使用。";
+  }
+
+  const missingPermissions = getMissingChannelPermissions(interaction);
+  const me = interaction.guild.members.me;
+  const permissions = me ? interaction.channel.permissionsFor(me) : null;
+  const hasManageMessages = permissions?.has(
+    PermissionsBitField.Flags.ManageMessages,
+  );
+
+  const lines = [
+    `伺服器：${interaction.guild.name}`,
+    `頻道：${"name" in interaction.channel && interaction.channel.name ? `#${interaction.channel.name}` : interaction.channelId}`,
+  ];
+
+  if (missingPermissions.length === 0) {
+    lines.push("必要權限：都已具備");
+  } else {
+    lines.push(`缺少必要權限：${missingPermissions.join(", ")}`);
+  }
+
+  lines.push(
+    `ManageMessages：${hasManageMessages ? "有" : "沒有"}`,
+  );
+
+  return lines.join("\n");
+}
+
+client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`目前已加入 ${client.guilds.cache.size} 個伺服器`);
+
+  try {
+    await ensureApplicationCommands();
+  } catch (error) {
+    console.error("Failed to register application commands:", error);
+  }
 });
 
 client.on("guildCreate", (guild) => {
@@ -846,6 +1011,27 @@ client.on("guildDelete", (guild) => {
   console.log(
     `離開伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
+});
+
+client.on("interactionCreate", async (interaction) => {
+  if (!interaction.isChatInputCommand()) {
+    return;
+  }
+
+  if (interaction.commandName === SERVER_COUNT_COMMAND.name) {
+    await interaction.reply({
+      content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (interaction.commandName === DEBUG_PERMS_COMMAND.name) {
+    await interaction.reply({
+      content: buildPermissionDebugMessage(interaction),
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 });
 
 client.on("messageCreate", async (message) => {
@@ -875,6 +1061,9 @@ client.on("messageCreate", async (message) => {
   try {
     const payloads = await buildPreviewPayloads(urls);
     const sent = await sendPreviews(message, payloads);
+    if (!sent) {
+      return;
+    }
     await suppressOriginalEmbeds(message);
     checkAndHandleEmptyEmbeds(message, sent).catch((error) => {
       console.warn("[preview] embed check failed:", error.message);
@@ -883,7 +1072,10 @@ client.on("messageCreate", async (message) => {
     for (const url of urls) {
       recentReplies.delete(buildReplyCacheKey(message, url));
     }
-    console.error("Failed to create preview:", error);
+    console.error(
+      `[preview] failed ${describeMessageLocation(message)}:`,
+      error,
+    );
   } finally {
     inFlightReplies.delete(processingKey);
   }
