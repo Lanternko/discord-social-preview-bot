@@ -1034,9 +1034,58 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
+const FORTUNE_RESULTS = [
+  { label: "大吉", weight: 5 },
+  { label: "中吉", weight: 15 },
+  { label: "小吉", weight: 20 },
+  { label: "末吉", weight: 20 },
+  { label: "吉",   weight: 15 },
+  { label: "凶",   weight: 15 },
+  { label: "大凶", weight: 10 },
+];
+
+function drawFortune() {
+  const total = FORTUNE_RESULTS.reduce((sum, r) => sum + r.weight, 0);
+  let rand = Math.floor(Math.random() * total);
+  for (const result of FORTUNE_RESULTS) {
+    rand -= result.weight;
+    if (rand < 0) return result.label;
+  }
+  return FORTUNE_RESULTS.at(-1).label;
+}
+
+function isMentioningBot(message) {
+  return message.mentions.has(client.user);
+}
+
 client.on("messageCreate", async (message) => {
   if (shouldIgnoreMessage(message)) {
     return;
+  }
+
+  // Handle @西寶 mentions before link detection
+  if (isMentioningBot(message)) {
+    const text = message.content
+      .replace(/<@!?\d+>/g, "")
+      .trim()
+      .toLowerCase();
+
+    if (text === "抽籤") {
+      const result = drawFortune();
+      await message.reply({
+        content: `抽到了… **${result}** ！`,
+        allowedMentions: { repliedUser: false },
+      });
+      return;
+    }
+
+    if (text === "") {
+      await message.reply({
+        content: "有、有什麼事嗎…？///" ,
+        allowedMentions: { repliedUser: false },
+      });
+      return;
+    }
   }
 
   const urls = extractSupportedUrls(message.content);
