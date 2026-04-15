@@ -705,13 +705,15 @@ async function buildPreviewPayloads(urls) {
 
       if (metadata.video || metadata.videoCount > 0) {
         console.log(`[preview] threads-video fixer ${url}`);
+        const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
+        const videoDesc = metadata.description
+          ? trimDescription(metadata.description, 3900) + "\n\n（影片無法載入，請點連結觀看）"
+          : "（影片無法載入，請點連結觀看）";
+        videoFallbackEmbed.setDescription(videoDesc);
         payloads.push({
           content: replaceHostFixer(url, FIXER_THREADS),
           fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
-          embedFallback: {
-            embeds: [buildThreadsCompactEmbed(url, metadata)],
-            components: [buildThreadsLinkRow(url, "開啟 Threads 原文")],
-          },
+          embedFallback: { embeds: [videoFallbackEmbed] },
         });
         continue;
       }
