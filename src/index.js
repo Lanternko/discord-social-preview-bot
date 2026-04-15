@@ -716,7 +716,8 @@ async function sendPreviews(message, payloads) {
       : await message.reply(outgoing);
 
     // URL-only payloads rely on Discord to unfurl — track them for embed checks
-    const isUrlOnly = Boolean(payload.content && !payload.embeds);
+    // (plain-text messages like Story reports must be excluded)
+    const isUrlOnly = Boolean(payload.content && !payload.embeds && payload.content.startsWith("http"));
     sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null });
   }
 
