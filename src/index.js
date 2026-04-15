@@ -729,11 +729,24 @@ async function buildPreviewPayloads(urls) {
       }
 
       if (metadata.imageCount > 1) {
-        console.log(`[preview] threads-multi-image ${url}`);
-        payloads.push({
-          embeds: [buildThreadsMediaEmbed(url, metadata)],
-          components: [buildThreadsLinkRow(url)],
-        });
+        const allImages = metadata.images && metadata.images.length > 1
+          ? metadata.images.slice(0, 10)
+          : null;
+
+        if (allImages) {
+          console.log(`[preview] threads-multi-image carousel count=${allImages.length} ${url}`);
+          const firstEmbed = buildThreadsMediaEmbed(url, { ...metadata, image: allImages[0] });
+          const restEmbeds = allImages.slice(1).map((imgUrl) =>
+            new EmbedBuilder().setURL(url).setImage(imgUrl).setColor(THREADS_EMBED_COLOR)
+          );
+          payloads.push({ embeds: [firstEmbed, ...restEmbeds] });
+        } else {
+          console.log(`[preview] threads-multi-image fallback ${url}`);
+          payloads.push({
+            embeds: [buildThreadsMediaEmbed(url, metadata)],
+            components: [buildThreadsLinkRow(url)],
+          });
+        }
         continue;
       }
 

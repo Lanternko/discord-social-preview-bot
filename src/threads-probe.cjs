@@ -123,6 +123,7 @@ async function readThreadsMetadata(page) {
           getMeta("name", "twitter:player:stream") ||
           candidateVideos[0]?.getAttribute("src") ||
           null,
+        images: candidateImages.map((img) => img.src).filter(Boolean),
         imageCount: candidateImages.length,
         videoCount: Math.max(
           candidateVideos.length,
