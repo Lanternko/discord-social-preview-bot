@@ -495,13 +495,14 @@ async function fetchThreadsMetadata(url) {
   const metadata = JSON.parse(stdout);
 
   console.log(
-    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
+    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
   );
 
   const result = {
     title: metadata.title,
     description: metadata.description,
     image: metadata.image,
+    images: metadata.images || [],
     twitterCard: metadata.twitterCard,
     video: metadata.video,
     imageCount: metadata.imageCount || 0,
@@ -706,6 +707,9 @@ async function buildPreviewPayloads(urls) {
       if (metadata.video || metadata.videoCount > 0) {
         console.log(`[preview] threads-video fixer ${url}`);
         const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
+        if (!metadata.title) {
+          videoFallbackEmbed.setTitle("Threads 影片貼文");
+        }
         const videoDesc = metadata.description
           ? trimDescription(metadata.description, 3900) + "\n\n（影片無法載入，請點連結觀看）"
           : "（影片無法載入，請點連結觀看）";
