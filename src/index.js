@@ -27,6 +27,8 @@ const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
 const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
 const FIXER_FACEBOOK = process.env.FIXER_FACEBOOK || "facebed.com";
 const FIXER_INSTAGRAM = process.env.FIXER_INSTAGRAM || "ddinstagram.com";
+const FIXER_INSTAGRAM_SECONDARY =
+  process.env.FIXER_INSTAGRAM_SECONDARY || "fxstagram.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -554,7 +556,7 @@ function buildThreadsMediaEmbed(url, metadata) {
   return embed;
 }
 
-function buildThreadsLinkRow(url, label = "Open on Threads") {
+function buildThreadsLinkRow(url, label = "查看全部圖片") {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setLabel(label)
@@ -667,8 +669,12 @@ async function buildPreviewPayloads(urls) {
       }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
       console.log(`[preview] instagram-fixer ${url}`);
-      // fallbackContent is FixEmbed in case ddinstagram fails to unfurl
-      payloads.push({ content: primaryUrl, fallbackContent: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}` });
+      // fallbackContent: fxstagram; embedFallback: FixEmbed (last resort URL, no further embed check)
+      payloads.push({
+        content: primaryUrl,
+        fallbackContent: replaceHostFixer(url, FIXER_INSTAGRAM_SECONDARY),
+        embedFallback: { content: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}` },
+      });
       continue;
     }
 
@@ -699,7 +705,16 @@ async function buildPreviewPayloads(urls) {
 
       if (metadata.video || metadata.videoCount > 0) {
         console.log(`[preview] threads-video fixer ${url}`);
-        payloads.push({ content: buildFallbackUrl(url) });
+        const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
+        const videoDesc = metadata.description
+          ? trimDescription(metadata.description, 3900) + "\n\n（影片無法載入，請點連結觀看）"
+          : "（影片無法載入，請點連結觀看）";
+        videoFallbackEmbed.setDescription(videoDesc);
+        payloads.push({
+          content: replaceHostFixer(url, FIXER_THREADS),
+          fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
+          embedFallback: { embeds: [videoFallbackEmbed] },
+        });
         continue;
       }
 
@@ -855,7 +870,7 @@ async function sendPreviews(message, payloads) {
     // URL-only payloads rely on Discord to unfurl — track them for embed checks
     // (plain-text messages like Story reports must be excluded)
     const isUrlOnly = Boolean(payload.content && !payload.embeds && payload.content.startsWith("http"));
-    sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null });
+    sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null, embedFallback: payload.embedFallback ?? null });
   }
 
   return sent;
@@ -878,7 +893,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
 
   await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
 
-  for (const { sentMessage, fallbackContent } of urlMessages) {
+  for (const { sentMessage, fallbackContent, embedFallback } of urlMessages) {
     let fetched;
     try {
       fetched = await sentMessage.fetch();
@@ -919,7 +934,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         continue;
       }
 
-      console.log(`[preview] fallback also empty, giving up ${refetched.id}`);
+      console.log(`[preview] fallback also empty ${refetched.id}`);
+      if (embedFallback) {
+        try {
+          await refetched.edit({
+            content: "",
+            ...embedFallback,
+            allowedMentions: { repliedUser: false },
+          });
+          console.log(`[preview] embed fallback used ${refetched.id}`);
+          continue;
+        } catch (error) {
+          console.warn("[preview] could not edit to embed fallback:", error.message);
+        }
+      }
       try {
         await refetched.delete();
       } catch (error) {
@@ -929,7 +957,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    // No fallback — delete and apologise
+    // No fixer fallback — try embed fallback, then delete and apologise
+    if (embedFallback) {
+      try {
+        await fetched.edit({
+          content: "",
+          ...embedFallback,
+          allowedMentions: { repliedUser: false },
+        });
+        console.log(`[preview] embed fallback used ${fetched.id}`);
+        continue;
+      } catch (error) {
+        console.warn("[preview] could not edit to embed fallback:", error.message);
+      }
+    }
     try {
       await fetched.delete();
     } catch (error) {
