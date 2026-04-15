@@ -25,6 +25,7 @@ const FIXER_PIXIV = process.env.FIXER_PIXIV || "phixiv.net";
 const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
 const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
 const FIXER_FACEBOOK = process.env.FIXER_FACEBOOK || "facebed.com";
+const FIXER_INSTAGRAM = process.env.FIXER_INSTAGRAM || "ddinstagram.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -38,6 +39,10 @@ const THREADS_PROBE_TIMEOUT_MS = Number.parseInt(
 );
 const THREADS_METADATA_CACHE_TTL_MS = Number.parseInt(
   process.env.THREADS_METADATA_CACHE_TTL_MS || "600000",
+  10,
+);
+const EMBED_CHECK_DELAY_MS = Number.parseInt(
+  process.env.EMBED_CHECK_DELAY_MS || "5000",
   10,
 );
 
@@ -58,6 +63,10 @@ const THREADS_HOSTS = new Set([
   "www.threads.net",
   "threads.com",
   "www.threads.com",
+]);
+const INSTAGRAM_HOSTS = new Set([
+  "instagram.com",
+  "www.instagram.com",
 ]);
 const BAHAMUT_HOSTS = new Set([
   "forum.gamer.com.tw",
@@ -81,13 +90,12 @@ const FACEBOOK_HOSTS = new Set([
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
+  ...INSTAGRAM_HOSTS,
   "x.com",
   "www.x.com",
   "twitter.com",
   "www.twitter.com",
   "mobile.twitter.com",
-  "instagram.com",
-  "www.instagram.com",
   "reddit.com",
   "www.reddit.com",
   "redd.it",
@@ -116,6 +124,7 @@ function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
   url.searchParams.delete("xmt");
   url.searchParams.delete("slof");
+  // Bilibili tracking params
   url.searchParams.delete("spm_id_from");
   url.searchParams.delete("trackid");
   url.searchParams.delete("vd_source");
@@ -130,11 +139,17 @@ function normalizeUrl(rawUrl) {
   url.searchParams.delete("timestamp");
   url.searchParams.delete("unique_k");
   url.searchParams.delete("upsig");
+  // Universal UTM params
   url.searchParams.delete("utm_source");
   url.searchParams.delete("utm_medium");
   url.searchParams.delete("utm_campaign");
   url.searchParams.delete("utm_term");
   url.searchParams.delete("utm_content");
+  // Instagram-specific tracking params
+  if (INSTAGRAM_HOSTS.has(url.hostname)) {
+    url.searchParams.delete("igsh");
+    url.searchParams.delete("igshid");
+  }
   return url.toString();
 }
 
@@ -191,6 +206,10 @@ function buildFallbackUrl(originalUrl) {
 
   if (THREADS_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_THREADS);
+  }
+
+  if (INSTAGRAM_HOSTS.has(hostname)) {
+    return replaceHostFixer(originalUrl, FIXER_INSTAGRAM);
   }
 
   if (["reddit.com", "www.reddit.com"].includes(hostname)) {
@@ -280,6 +299,10 @@ function trimDescription(text, limit) {
 
 function isThreadsUrl(url) {
   return THREADS_HOSTS.has(new URL(url).hostname);
+}
+
+function isInstagramUrl(url) {
+  return INSTAGRAM_HOSTS.has(new URL(url).hostname);
 }
 
 function isBilibiliUrl(url) {
@@ -549,7 +572,7 @@ async function buildPreviewPayloads(urls) {
         console.warn(`Could not fetch Bahamut metadata for ${url}:`, error.message);
       }
 
-      console.log(`[preview] fixembed fallback ${url}`);
+      console.log(`[preview] bahamut fallback ${url}`);
       payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
@@ -564,20 +587,28 @@ async function buildPreviewPayloads(urls) {
         console.warn(`Could not fetch PTT metadata for ${url}:`, error.message);
       }
 
-      console.log(`[preview] fixembed fallback ${url}`);
+      console.log(`[preview] ptt fallback ${url}`);
       payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
 
-    if (!isThreadsUrl(url)) {
-      if (isBilibiliUrl(url)) {
-        const fallbackUrl = await buildBilibiliFallbackUrl(url);
-        console.log(`[preview] bilibili-fixer ${url} -> ${fallbackUrl}`);
-        payloads.push({ content: fallbackUrl });
-        continue;
-      }
+    if (isInstagramUrl(url)) {
+      const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
+      console.log(`[preview] instagram-fixer ${url}`);
+      // fallbackContent is FixEmbed in case ddinstagram fails to unfurl
+      payloads.push({ content: primaryUrl, fallbackContent: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}` });
+      continue;
+    }
 
-      console.log(`[preview] fixembed non-threads ${url}`);
+    if (isBilibiliUrl(url)) {
+      const fallbackUrl = await buildBilibiliFallbackUrl(url);
+      console.log(`[preview] bilibili-fixer ${url} -> ${fallbackUrl}`);
+      payloads.push({ content: fallbackUrl });
+      continue;
+    }
+
+    if (!isThreadsUrl(url)) {
+      console.log(`[preview] fixer non-threads ${url}`);
       payloads.push({ content: buildFallbackUrl(url) });
       continue;
     }
@@ -595,9 +626,7 @@ async function buildPreviewPayloads(urls) {
       }
 
       if (metadata.video || metadata.videoCount > 0) {
-        console.log(
-          `[preview] fixembed video ${url}`,
-        );
+        console.log(`[preview] threads-video fixer ${url}`);
         payloads.push({ content: buildFallbackUrl(url) });
         continue;
       }
@@ -628,7 +657,7 @@ async function buildPreviewPayloads(urls) {
       console.warn(`Could not fetch Threads metadata for ${url}:`, error.message);
     }
 
-    console.log(`[preview] fixembed fallback ${url}`);
+    console.log(`[preview] threads fixer fallback ${url}`);
     payloads.push({ content: buildFallbackUrl(url) });
   }
 
@@ -658,23 +687,119 @@ async function suppressOriginalEmbeds(message) {
 }
 
 async function sendPreviews(message, payloads) {
+  const sent = [];
+
   for (const payload of payloads) {
     const outgoing = {
       ...payload,
       allowedMentions: { repliedUser: false },
     };
 
-    if (REPLY_MODE === "send") {
-      await message.channel.send(outgoing);
+    const sentMessage = REPLY_MODE === "send"
+      ? await message.channel.send(outgoing)
+      : await message.reply(outgoing);
+
+    // URL-only payloads rely on Discord to unfurl — track them for embed checks
+    const isUrlOnly = Boolean(payload.content && !payload.embeds);
+    sent.push({ sentMessage, isUrlOnly, fallbackContent: payload.fallbackContent ?? null });
+  }
+
+  return sent;
+}
+
+async function apologyReply(originalMessage) {
+  try {
+    await originalMessage.reply({
+      content: "抱歉，預覽載入失敗 🙏",
+      allowedMentions: { repliedUser: false },
+    });
+  } catch (error) {
+    console.warn("[preview] could not send apology:", error.message);
+  }
+}
+
+async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
+  const urlMessages = sent.filter((s) => s.isUrlOnly);
+  if (urlMessages.length === 0) return;
+
+  await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
+
+  for (const { sentMessage, fallbackContent } of urlMessages) {
+    let fetched;
+    try {
+      fetched = await sentMessage.fetch();
+    } catch {
       continue;
     }
 
-    await message.reply(outgoing);
+    if (fetched.embeds.length > 0) continue;
+
+    console.log(`[preview] empty-embed detected ${fetched.id}`);
+
+    // Try fallback fixer before giving up
+    if (fallbackContent) {
+      console.log(`[preview] trying fallback embed ${fetched.id}`);
+      try {
+        await fetched.edit({
+          content: fallbackContent,
+          allowedMentions: { repliedUser: false },
+        });
+      } catch (error) {
+        console.warn("[preview] could not edit to fallback:", error.message);
+        await apologyReply(originalMessage);
+        continue;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
+
+      let refetched;
+      try {
+        refetched = await fetched.fetch();
+      } catch {
+        await apologyReply(originalMessage);
+        continue;
+      }
+
+      if (refetched.embeds.length > 0) {
+        console.log(`[preview] fallback embed succeeded ${refetched.id}`);
+        continue;
+      }
+
+      console.log(`[preview] fallback also empty, giving up ${refetched.id}`);
+      try {
+        await refetched.delete();
+      } catch (error) {
+        console.warn("[preview] could not delete failed fallback message:", error.message);
+      }
+      await apologyReply(originalMessage);
+      continue;
+    }
+
+    // No fallback — delete and apologise
+    try {
+      await fetched.delete();
+    } catch (error) {
+      console.warn("[preview] could not delete empty embed message:", error.message);
+    }
+    await apologyReply(originalMessage);
   }
 }
 
 client.once("clientReady", () => {
   console.log(`Logged in as ${client.user.tag}`);
+  console.log(`目前已加入 ${client.guilds.cache.size} 個伺服器`);
+});
+
+client.on("guildCreate", (guild) => {
+  console.log(
+    `加入新伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
+  );
+});
+
+client.on("guildDelete", (guild) => {
+  console.log(
+    `離開伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
+  );
 });
 
 client.on("messageCreate", async (message) => {
@@ -703,8 +828,11 @@ client.on("messageCreate", async (message) => {
 
   try {
     const payloads = await buildPreviewPayloads(urls);
-    await sendPreviews(message, payloads);
+    const sent = await sendPreviews(message, payloads);
     await suppressOriginalEmbeds(message);
+    checkAndHandleEmptyEmbeds(message, sent).catch((error) => {
+      console.warn("[preview] embed check failed:", error.message);
+    });
   } catch (error) {
     for (const url of urls) {
       recentReplies.delete(buildReplyCacheKey(message, url));
