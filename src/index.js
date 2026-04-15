@@ -27,6 +27,8 @@ const FIXER_BLUESKY = process.env.FIXER_BLUESKY || "bskx.app";
 const FIXER_BILIBILI = process.env.FIXER_BILIBILI || "vxbilibili.com";
 const FIXER_FACEBOOK = process.env.FIXER_FACEBOOK || "facebed.com";
 const FIXER_INSTAGRAM = process.env.FIXER_INSTAGRAM || "ddinstagram.com";
+const FIXER_INSTAGRAM_SECONDARY =
+  process.env.FIXER_INSTAGRAM_SECONDARY || "fxstagram.com";
 const SUPPRESS_ORIGINAL_EMBEDS =
   (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true";
 const REPLY_MODE = (process.env.REPLY_MODE || "reply").toLowerCase();
@@ -667,8 +669,12 @@ async function buildPreviewPayloads(urls) {
       }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
       console.log(`[preview] instagram-fixer ${url}`);
-      // fallbackContent is FixEmbed in case ddinstagram fails to unfurl
-      payloads.push({ content: primaryUrl, fallbackContent: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}` });
+      // fallbackContent: fxstagram; embedFallback: FixEmbed (last resort URL, no further embed check)
+      payloads.push({
+        content: primaryUrl,
+        fallbackContent: replaceHostFixer(url, FIXER_INSTAGRAM_SECONDARY),
+        embedFallback: { content: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}` },
+      });
       continue;
     }
 
