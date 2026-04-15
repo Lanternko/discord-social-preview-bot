@@ -710,7 +710,7 @@ async function sendPreviews(message, payloads) {
 async function apologyReply(originalMessage) {
   try {
     await originalMessage.reply({
-      content: "抱歉，預覽載入失敗 🙏",
+      content: "對不起對不起…預覽載入失敗了…我知道我不好… ///",
       allowedMentions: { repliedUser: false },
     });
   } catch (error) {
