@@ -1035,13 +1035,13 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 const FORTUNE_RESULTS = [
-  { label: "大吉", weight: 5 },
-  { label: "中吉", weight: 15 },
+  { label: "大吉", weight: 10 },
+  { label: "中吉", weight: 16 },
   { label: "小吉", weight: 20 },
   { label: "末吉", weight: 20 },
   { label: "吉",   weight: 15 },
-  { label: "凶",   weight: 15 },
-  { label: "大凶", weight: 10 },
+  { label: "凶",   weight: 13 },
+  { label: "大凶", weight: 6 },
 ];
 
 const FORTUNE_COMMENTS = {
