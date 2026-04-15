@@ -606,7 +606,7 @@ async function buildPreviewPayloads(urls) {
       if (storyOwner) {
         // Stories cannot be previewed by any fixer — report the owner instead
         console.log(`[preview] instagram-story owner=${storyOwner} ${url}`);
-        payloads.push({ content: `這是 **@${storyOwner}** 的限動！（限動沒辦法預覽…對不起>///<）` });
+        payloads.push({ content: `這是 **@${storyOwner}** 的限動！` });
         continue;
       }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
