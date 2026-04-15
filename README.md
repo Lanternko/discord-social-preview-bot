@@ -1,11 +1,12 @@
 # Discord Social Preview Bot
 
-### 可以在 Discord 預覽社群貼文的機器人！
+### 可以在 Discord 預覽社群貼文的機器人！#支援 Threads
 
 4.12 更新：Bilibili 影片嵌入、Threads 多圖顯示、修復資安漏洞
 
 4.13 更新：FB 可以正確顯示（繞過登入要求）
 
+4.15 更新：預覽失敗時會道歉 orz
 
 <img width="407" height="471" alt="image" src="https://github.com/user-attachments/assets/acd689ec-4443-457e-ac44-de4912b52d40" />
 
