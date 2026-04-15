@@ -84,18 +84,27 @@ async function readThreadsMetadata(page) {
         return element?.getAttribute("content")?.trim() || null;
       };
 
+      const getBestSrc = (img) => {
+        if (img.srcset) {
+          const candidates = img.srcset.split(",")
+            .map((s) => { const p = s.trim().split(/\s+/); return { url: p[0], w: parseInt(p[1]) || 0 }; })
+            .filter((c) => c.url.startsWith("http"))
+            .sort((a, b) => b.w - a.w);
+          if (candidates.length > 0) return candidates[0].url;
+        }
+        return img.currentSrc || img.src || img.getAttribute("src") || null;
+      };
+
+      // 只取主貼文範圍的圖（viewport 內）；留言在 viewport 以下
+      const viewportHeight = window.innerHeight;
       const mediaContainer = document.querySelector("article") || document.body;
       const candidateImages = Array.from(
         mediaContainer.querySelectorAll("img"),
       ).filter((img) => {
         const rect = img.getBoundingClientRect();
-        const src = img.getAttribute("src") || "";
-
-        if (!src) {
-          return false;
-        }
-
-        return rect.width >= 160 && rect.height >= 160;
+        if (rect.top >= viewportHeight) return false; // 留言區
+        const src = getBestSrc(img);
+        return src && rect.width >= 160 && rect.height >= 160;
       });
 
       const candidateVideos = Array.from(document.querySelectorAll("video"));
@@ -123,6 +132,7 @@ async function readThreadsMetadata(page) {
           getMeta("name", "twitter:player:stream") ||
           candidateVideos[0]?.getAttribute("src") ||
           null,
+        images: candidateImages.map((img) => getBestSrc(img)).filter(Boolean),
         imageCount: candidateImages.length,
         videoCount: Math.max(
           candidateVideos.length,
