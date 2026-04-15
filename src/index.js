@@ -556,7 +556,7 @@ function buildThreadsMediaEmbed(url, metadata) {
   return embed;
 }
 
-function buildThreadsLinkRow(url, label = "Open on Threads") {
+function buildThreadsLinkRow(url, label = "查看全部圖片") {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setLabel(label)
