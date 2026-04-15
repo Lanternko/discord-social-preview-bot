@@ -23,6 +23,10 @@ const PTT_HOSTS = new Set([
   "ptt.cc",
   "www.ptt.cc",
 ]);
+const INSTAGRAM_HOSTS = new Set([
+  "instagram.com",
+  "www.instagram.com",
+]);
 
 function trimText(text, limit) {
   if (!text) {
@@ -231,6 +235,23 @@ async function readPttMetadata(page) {
   });
 }
 
+async function readInstagramMetadata(page) {
+  return page.evaluate(() => {
+    const getMeta = (attribute, name) => {
+      const selector = `meta[${attribute}="${name}"]`;
+      const element = document.head.querySelector(selector);
+      return element?.getAttribute("content")?.trim() || null;
+    };
+
+    return {
+      title: getMeta("property", "og:title") || document.title || null,
+      description: getMeta("property", "og:description") || null,
+      image: getMeta("property", "og:image") || null,
+      metaTagCount: document.head.querySelectorAll("meta").length,
+    };
+  });
+}
+
 async function main() {
   const url = process.argv[2];
 
@@ -253,6 +274,8 @@ async function main() {
         metadata = await readBahamutMetadata(page);
       } else if (PTT_HOSTS.has(hostname)) {
         metadata = await readPttMetadata(page);
+      } else if (INSTAGRAM_HOSTS.has(hostname)) {
+        metadata = await readInstagramMetadata(page);
       } else {
         throw new Error(`Unsupported probe host: ${hostname}`);
       }
