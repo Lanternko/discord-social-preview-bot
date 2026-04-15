@@ -8,6 +8,8 @@
 
 4.15 更新：預覽失敗時會道歉 orz
 
+4.16 更新：Threads 影片三段 fallback、Instagram 多段 fallback（fxstagram）、Threads 多圖全圖集顯示、運勢抽籤
+
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
 <img width="300" height="88" alt="image" src="https://github.com/user-attachments/assets/963324f8-ed11-4af3-b587-45d617573766" />
@@ -31,23 +33,44 @@
 
 ### Threads
 
-- Text-only posts: custom Discord embed
-- Single-image posts: custom Discord embed with image
-- Video posts: FixEmbed fallback so Discord can keep playable rich preview behavior
-- Multi-image posts: custom embed with the first image and a link button
+| 貼文類型 | 預覽行為 |
+|---|---|
+| 純文字 | 自訂 embed（標題＋內文） |
+| 單張圖片 | 自訂 embed（標題＋內文＋圖片） |
+| 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery） |
+| 影片 | 依序嘗試 fixthreads → threadsez → 資訊卡 fallback（見下方） |
+
+### Instagram
+
+| 貼文類型 | 預覽行為 |
+|---|---|
+| 限時動態 | 無法預覽，直接回報作者名稱 |
+| 貼文 / Reels | 依序嘗試 ddinstagram → fxstagram → FixEmbed |
 
 ### Other platforms
 
-- X / Twitter: dedicated fixer fallback
-- Instagram: generic FixEmbed fallback
-- Facebook: dedicated fixer fallback
-- Reddit: dedicated fixer fallback
-- Pixiv: dedicated fixer fallback
-- Bluesky: dedicated fixer fallback
-- Bilibili: dedicated fixer fallback
-- Facebook: dedicated fixer fallback
-- 巴哈姆特: custom Discord embed with title, summary, and image when the page is publicly accessible
-- PTT: custom Discord embed with title, trimmed article text, and first linked image if one exists
+| 平台 | 預覽行為 |
+|---|---|
+| X / Twitter | fxtwitter fixer |
+| Reddit | rxddit fixer |
+| Pixiv | phixiv fixer |
+| Bluesky | bskx fixer |
+| Bilibili | vxbilibili fixer |
+| Facebook | facebed fixer |
+| 巴哈姆特 | 自訂 embed（標題＋摘要＋圖片，需公開可存取） |
+| PTT | 自訂 embed（標題＋文章內文＋第一張圖片） |
+
+## Known limitations & fallback behavior
+
+以下情形無法顯示完整影片或圖片，但 bot 會盡力提供替代資訊：
+
+| 情形 | Bot 的反應 |
+|---|---|
+| Threads 影片（所有 fixer 失敗） | 資訊卡：作者名稱＋貼文文案＋「影片無法載入，請點連結觀看」 |
+| Instagram 限時動態 | 文字訊息：「這是 **@xxx** 的限動！」（無任何第三方服務支援） |
+| Instagram Reels（所有 fixer 失敗） | FixEmbed 連結（最後防線，Discord 自行嘗試 unfurl） |
+| 巴哈姆特限制板 / 登入牆 | 顯示公開部分，內文可能為空 |
+| 已刪除 / 私人 / 被限流的貼文 | 道歉訊息：「對不起對不起…預覽載入失敗了…」 |
 
 ## Features
 
@@ -204,10 +227,6 @@ Threads pages sometimes load media metadata late. You can tune:
 ### Video is not rendered as a custom Discord player
 
 This is a Discord limitation. Custom embeds do not provide the same inline video player behavior as external unfurls.
-
-### Multi-image Threads posts only show one image
-
-This is also a Discord embed limitation. A custom embed can only present one main image cleanly.
 
 ### Bahamut restricted boards may not show full content
 
