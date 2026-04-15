@@ -305,8 +305,15 @@ function isInstagramUrl(url) {
   return INSTAGRAM_HOSTS.has(new URL(url).hostname);
 }
 
-// Returns the story owner username if the URL is an Instagram Story, otherwise null.
-// Story URL format: /stories/<username>/<mediaId>
+// Returns true if the URL path indicates an Instagram Story (with or without mediaId).
+function isInstagramStoryUrl(url) {
+  const parsed = new URL(url);
+  return INSTAGRAM_HOSTS.has(parsed.hostname) &&
+    parsed.pathname.startsWith("/stories/");
+}
+
+// Returns the story owner username, or null if not a story / username unreadable.
+// Story URL format: /stories/<username>[/<mediaId>]
 function extractInstagramStoryOwner(url) {
   const parsed = new URL(url);
   if (!INSTAGRAM_HOSTS.has(parsed.hostname)) return null;
@@ -620,8 +627,8 @@ async function buildPreviewPayloads(urls) {
     }
 
     if (isInstagramUrl(url)) {
-      const storyOwner = extractInstagramStoryOwner(url);
-      if (storyOwner) {
+      const storyOwner = isInstagramStoryUrl(url) ? extractInstagramStoryOwner(url) : null;
+      if (storyOwner != null || isInstagramStoryUrl(url)) {
         // Stories cannot be previewed by any fixer — report the owner instead
         const displayName = await fetchInstagramDisplayName(storyOwner);
         const ownerLabel = displayName
