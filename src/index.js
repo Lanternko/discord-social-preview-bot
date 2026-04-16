@@ -36,18 +36,20 @@ const THREADS_PROBE_NODE =
   process.env.THREADS_PROBE_NODE || process.execPath;
 const THREADS_PROBE_SCRIPT =
   process.env.THREADS_PROBE_SCRIPT || path.join(__dirname, "threads-probe.cjs");
-const THREADS_PROBE_TIMEOUT_MS = Number.parseInt(
-  process.env.THREADS_PROBE_TIMEOUT_MS || "10000",
-  10,
-);
-const THREADS_METADATA_CACHE_TTL_MS = Number.parseInt(
-  process.env.THREADS_METADATA_CACHE_TTL_MS || "600000",
-  10,
-);
-const EMBED_CHECK_DELAY_MS = Number.parseInt(
-  process.env.EMBED_CHECK_DELAY_MS || "5000",
-  10,
-);
+function parsePositiveIntEnv(name, defaultValue) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return defaultValue;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    console.warn(`[config] invalid ${name}="${raw}", using default ${defaultValue}`);
+    return defaultValue;
+  }
+  return parsed;
+}
+
+const THREADS_PROBE_TIMEOUT_MS = parsePositiveIntEnv("THREADS_PROBE_TIMEOUT_MS", 10000);
+const THREADS_METADATA_CACHE_TTL_MS = parsePositiveIntEnv("THREADS_METADATA_CACHE_TTL_MS", 600000);
+const EMBED_CHECK_DELAY_MS = parsePositiveIntEnv("EMBED_CHECK_DELAY_MS", 5000);
 
 if (!DISCORD_TOKEN) {
   throw new Error("Missing DISCORD_TOKEN. Add it to your .env file.");
@@ -474,6 +476,26 @@ async function buildBilibiliFallbackUrl(url) {
   return replaceHostFixer(url, FIXER_BILIBILI);
 }
 
+async function runProbe(url) {
+  const { stdout, stderr } = await execFileAsync(
+    THREADS_PROBE_NODE,
+    [THREADS_PROBE_SCRIPT, url],
+    {
+      timeout: THREADS_PROBE_TIMEOUT_MS,
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  if (stderr && stderr.trim()) {
+    console.warn(`[probe] stderr ${url}: ${stderr.trim()}`);
+  }
+  try {
+    return JSON.parse(stdout);
+  } catch (error) {
+    const preview = stdout.slice(0, 200).replace(/\s+/g, " ");
+    throw new Error(`probe returned invalid JSON for ${url}: ${error.message} (stdout: ${preview})`);
+  }
+}
+
 async function fetchThreadsMetadata(url) {
   cleanupThreadsMetadataCache();
 
@@ -483,16 +505,7 @@ async function fetchThreadsMetadata(url) {
     return cached.metadata;
   }
 
-  const { stdout } = await execFileAsync(
-    THREADS_PROBE_NODE,
-    [THREADS_PROBE_SCRIPT, url],
-    {
-      timeout: THREADS_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    },
-  );
-
-  const metadata = JSON.parse(stdout);
+  const metadata = await runProbe(url);
 
   console.log(
     `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
@@ -518,16 +531,7 @@ async function fetchThreadsMetadata(url) {
 }
 
 async function fetchPageProbeMetadata(url) {
-  const { stdout } = await execFileAsync(
-    THREADS_PROBE_NODE,
-    [THREADS_PROBE_SCRIPT, url],
-    {
-      timeout: THREADS_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    },
-  );
-
-  return JSON.parse(stdout);
+  return runProbe(url);
 }
 
 function buildThreadsCompactEmbed(url, metadata) {
@@ -657,15 +661,20 @@ async function buildPreviewPayloads(urls) {
     }
 
     if (isInstagramUrl(url)) {
-      const storyOwner = isInstagramStoryUrl(url) ? extractInstagramStoryOwner(url) : null;
-      if (storyOwner != null || isInstagramStoryUrl(url)) {
+      if (isInstagramStoryUrl(url)) {
         // Stories cannot be previewed by any fixer — report the owner instead
-        const displayName = await fetchInstagramDisplayName(storyOwner);
-        const ownerLabel = displayName
-          ? `${displayName}（@${storyOwner}）`
-          : `@${storyOwner}`;
-        console.log(`[preview] instagram-story owner=${storyOwner} displayName=${displayName ?? "n/a"} ${url}`);
-        payloads.push({ content: `這是 **${ownerLabel}** 的限動！` });
+        const storyOwner = extractInstagramStoryOwner(url);
+        if (storyOwner) {
+          const displayName = await fetchInstagramDisplayName(storyOwner);
+          const ownerLabel = displayName
+            ? `${displayName}（@${storyOwner}）`
+            : `@${storyOwner}`;
+          console.log(`[preview] instagram-story owner=${storyOwner} displayName=${displayName ?? "n/a"} ${url}`);
+          payloads.push({ content: `這是 **${ownerLabel}** 的限動！` });
+        } else {
+          console.log(`[preview] instagram-story unknown-owner ${url}`);
+          payloads.push({ content: "這是 Instagram 限動（但我抓不到是誰發的…抱歉）" });
+        }
         continue;
       }
       const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
