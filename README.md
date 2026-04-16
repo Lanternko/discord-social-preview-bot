@@ -77,7 +77,7 @@
 - Deduplicates repeated previews in the same channel
 - Suppresses the original embed if the bot has `Manage Messages`
 - Uses Playwright only for Threads metadata extraction
-- Normalizes common tracking query parameters before dedupe
+- Strips common tracking parameters (`fbclid`, `gclid`, `mibextid`, `utm_*`, `igsh`, etc.) from URLs before replying — protects the poster from leaking share-tracking info, and improves dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
 - Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
 - Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
