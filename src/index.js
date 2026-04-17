@@ -68,6 +68,9 @@ const GROQ_MODELS = (
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
 const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "qwen-3-235b-a22b-instruct-2507";
 
+const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+
 // Unified AI knobs (apply to whichever provider is active).
 // GEMINI_TIMEOUT_MS / GEMINI_MAX_REPLY_CHARS kept as deprecated aliases.
 const AI_TIMEOUT_MS = parsePositiveIntEnv(
@@ -1472,21 +1475,67 @@ async function callCerebras(userTurn) {
   });
 }
 
+async function callDeepSeek(userTurn) {
+  const body = {
+    model: DEEPSEEK_MODEL,
+    messages: [
+      { role: "system", content: AI_PERSONA },
+      { role: "user", content: userTurn },
+    ],
+    temperature: 0.9,
+    top_p: 0.95,
+    max_tokens: 180,
+  };
+  const label = `deepseek:${DEEPSEEK_MODEL}`;
+
+  return withAbortTimeout(AI_TIMEOUT_MS, label, async (signal) => {
+    const response = await fetch("https://api.deepseek.com/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    logRateHeaders(label, response);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.warn(`[ai] ${label} http ${response.status}: ${errText.slice(0, 200)}`);
+      return null;
+    }
+
+    const payload = await response.json();
+    const text = payload?.choices?.[0]?.message?.content?.trim();
+    if (!text) {
+      const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
+      console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
+      return null;
+    }
+    return text;
+  });
+}
+
 // Build the provider fallback chain once at startup. Each entry has a label
 // (for logging) and a call fn that returns string|null.
 //
-// Default priority order (smart → fallback):
-//   1. Cerebras (Qwen 235B default — largest + best Chinese + 1M TPD)
-//   2. Groq models in GROQ_MODELS order (70B first, 8B as Groq-internal fallback)
-//   3. Gemini (last resort, has billing trap history)
+// Default priority order (paid/reliable → free → last resort):
+//   1. DeepSeek (paid, fastest reliable, V3 flagship — user-paid so prefer it)
+//   2. Cerebras (Qwen 235B free 1M TPD but queue_exceeded is common)
+//   3. Groq models in GROQ_MODELS order (70B → 8B fallback)
+//   4. Gemini (last resort, billing trap history)
 //
-// Rationale: Cerebras free tier has the most headroom (1M TPD) AND hosts the
-// largest model, so it's both the highest quality AND least likely to exhaust.
-// Groq serves as backup when Cerebras is slow/down.
+// Rationale: Any paid provider goes first since user is paying for reliability.
+// Free tiers follow in quality order. Chain falls through on any null return.
 function buildAIProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
 
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
+  }
   if (CEREBRAS_API_KEY && (!only || only === "cerebras")) {
     chain.push({ label: `cerebras:${CEREBRAS_MODEL}`, call: callCerebras });
   }

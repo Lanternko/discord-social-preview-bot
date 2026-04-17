@@ -68,13 +68,15 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
-| `GROQ_API_KEY` | — | Optional. If set, `@西寶` routes through Groq as first layer |
+| `DEEPSEEK_API_KEY` | — | Optional. If set, `@西寶` routes through DeepSeek first (paid, reliable) |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | DeepSeek model (`deepseek-chat` for V3.2, `deepseek-reasoner` for R1) |
+| `CEREBRAS_API_KEY` | — | Optional. Second-layer (best Chinese quality via Qwen free tier) |
+| `CEREBRAS_MODEL` | `qwen-3-235b-a22b-instruct-2507` | Cerebras model (OpenAI-compatible at `api.cerebras.ai/v1/chat/completions`) |
+| `GROQ_API_KEY` | — | Optional. Third-layer (Groq free tier, fast but limited quota) |
 | `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated fallback chain within Groq. Legacy `GROQ_MODEL` read as single-item list |
-| `CEREBRAS_API_KEY` | — | Optional. Second-layer provider (best Chinese quality via Qwen) |
-| `CEREBRAS_MODEL` | `qwen-3-32b` | Cerebras model (OpenAI-compatible endpoint `api.cerebras.ai/v1/chat/completions`) |
-| `GEMINI_API_KEY` | — | Optional. Third-layer fallback |
+| `GEMINI_API_KEY` | — | Optional. Last-layer fallback |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model ID |
-| `AI_PROVIDER` | auto (full chain) | Force single provider: `groq`, `cerebras`, or `gemini`. Empty = full fallback chain |
+| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `cerebras`, `groq`, or `gemini`. Empty = full fallback chain |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
 | `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if this not set |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
@@ -97,11 +99,12 @@ Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellip
 
 `generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then iterates over `AI_PROVIDER_CHAIN` (built once at startup by `buildAIProviderChain()`). First non-null reply wins; on null/error move to next layer; chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 
-Default chain (when all keys set), ordered by quality-first:
-1. `cerebras:qwen-3-235b-a22b-instruct-2507` (Qwen 235B, best Chinese quality, 1M tokens/day free)
-2. `groq:llama-3.3-70b-versatile` (fast backup, 100k tokens/day free)
-3. `groq:llama-3.1-8b-instant` (Groq-internal fallback, 500k tokens/day free — lower quality)
-4. `gemini:gemini-2.0-flash` (last resort, has billing trap history)
+Default chain (when all keys set), ordered by paid-first → free-quality → fallback:
+1. `deepseek:deepseek-chat` (paid V3.2, reliable, no queue, flagship Chinese)
+2. `cerebras:qwen-3-235b-a22b-instruct-2507` (Qwen 235B free 1M TPD, but queue_exceeded common)
+3. `groq:llama-3.3-70b-versatile` (fast backup, 100k tokens/day free)
+4. `groq:llama-3.1-8b-instant` (Groq-internal fallback, 500k tokens/day free — lower quality)
+5. `gemini:gemini-2.0-flash` (last resort, has billing trap history)
 
 All provider calls use `withAbortTimeout()` for timeout + error handling; Groq + Cerebras share OpenAI-compatible format (`messages[]`, `Bearer` auth); Gemini uses its own REST shape (`contents[]`, `?key=`). Any failure per layer (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the next layer — bot never goes silent.
 

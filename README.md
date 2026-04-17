@@ -95,11 +95,27 @@
 | `道歉` | 固定台詞（寫死，不走 AI） |
 | 其他任何文字（含空白）| **有 AI key** → LLM 依西寶人格即時產生不重複的回覆<br>**沒有 key** → 隨機 4 句招呼 / `你…你在叫我嗎？` |
 
-### 啟用 AI 回覆（可選，免費）
+### 啟用 AI 回覆（可選，免費或超便宜付費）
 
-支援三個 provider，自動 fallback 鏈以「品質優先」排列：**Cerebras (Qwen 235B) → Groq (70B → 8B) → Gemini**。任何一層被 429 或失敗就掉下一層；全部失敗才走寫死回覆。
+支援四個 provider，自動 fallback 鏈以「付費優先→品質→fallback」排列：**DeepSeek (paid) → Cerebras (Qwen 235B) → Groq (70B → 8B) → Gemini**。任何一層被 429 或失敗就掉下一層；全部失敗才走寫死回覆。
 
-**第一層：Cerebras**（中文最強、1M tokens/day、最大模型）
+**第一層：DeepSeek**（付費但超便宜，~$0.001 美元/天）
+
+1. 到 [https://platform.deepseek.com/](https://platform.deepseek.com/)（手機或 Google 登入）
+2. 充值最少 $2 USD（大約可以用到地老天荒，Discord bot 一天才花幾毫錢）
+3. 到 API keys 頁面建立一把 key
+4. 模型選擇：`deepseek-chat`（V3.2 一般版）或 `deepseek-reasoner`（R1 推理版，較貴）
+5. 填入 `.env`：
+
+   ```env
+   DEEPSEEK_API_KEY=your_key_here
+   DEEPSEEK_MODEL=deepseek-chat
+   ```
+
+   優點：反應快、不 queue、品質頂尖、中文原生、實質無限流量。
+   缺點：中國公司、部分政治話題會偏審查、伺服器在中國延遲稍高。
+
+**第二層：Cerebras**（中文最強、1M tokens/day、最大模型）
 
 1. 到 [https://cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/)（Free tier）申請 key
 2. 可用模型（`curl https://api.cerebras.ai/v1/models` 查看，依帳號 tier 而異）：
@@ -113,7 +129,7 @@
    CEREBRAS_MODEL=qwen-3-235b-a22b-instruct-2507
    ```
 
-**第二層：Groq**（免費額度大、速度快、適合備援）
+**第三層：Groq**（免費額度大、速度快、適合備援）
 
 1. 到 [https://console.groq.com/keys](https://console.groq.com/keys)（Google 登入，按 Create，不用綁卡）
 2. 免費額度：Llama 3.3 70B 每日 100k tokens；Llama 3.1 8B 每日 500k tokens（更多 quota 但品質稍弱）
@@ -126,7 +142,7 @@
 
    `GROQ_MODELS` 逗號分隔會依序 fallback：70B 的 100k 爆了 → 自動用 8B 的 500k。
 
-**第三層：Gemini**
+**第四層：Gemini**
 
 ⚠️ 注意：若 Google Cloud 專案有綁 billing（含 $300 免費試用），**Gemini free tier 會被自動停用**（`limit: 0`）。建 key 時選「**Create API key in new project**」避免踩雷。
 
