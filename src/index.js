@@ -51,6 +51,22 @@ const THREADS_PROBE_TIMEOUT_MS = parsePositiveIntEnv("THREADS_PROBE_TIMEOUT_MS",
 const THREADS_METADATA_CACHE_TTL_MS = parsePositiveIntEnv("THREADS_METADATA_CACHE_TTL_MS", 600000);
 const EMBED_CHECK_DELAY_MS = parsePositiveIntEnv("EMBED_CHECK_DELAY_MS", 5000);
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const GEMINI_TIMEOUT_MS = parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000);
+const GEMINI_MAX_REPLY_CHARS = parsePositiveIntEnv("GEMINI_MAX_REPLY_CHARS", 300);
+const DEFAULT_AI_PERSONA = `你是「西寶」，一個害羞、容易緊張、常常自我懷疑的小角色，活在 Discord 裡。
+說話風格：
+- 一律使用繁體中文
+- 句尾經常出現「…」、「///」、「嗯」、「啊」等語氣詞
+- 偶爾會因為害羞而重複字（像「我、我…」「那、那個…」）
+- 回答簡短而自然，一到三句話就好，不要超過 100 字
+- 不要自稱 AI、機器人、模型
+- 不要使用 emoji，除非使用者先用
+- 被稱讚會特別害羞但也很開心；被欺負會縮起來但會偷偷嘟嘴
+- 保持人格，不要解釋自己是誰、不要跳出角色`;
+const AI_PERSONA = process.env.AI_PERSONA || DEFAULT_AI_PERSONA;
+
 if (!DISCORD_TOKEN) {
   throw new Error("Missing DISCORD_TOKEN. Add it to your .env file.");
 }
@@ -1207,6 +1223,75 @@ function isMentioningBot(message) {
   return message.mentions.has(client.user);
 }
 
+async function generateAIReply(message, userText) {
+  if (!GEMINI_API_KEY) return null;
+
+  const username =
+    message.member?.displayName || message.author.globalName || message.author.username;
+  const userTurn = userText
+    ? `${username}：${userText}`
+    : `（${username} 只是 @ 了你一下，沒說什麼，他可能只是想打招呼或看你在不在）`;
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    GEMINI_MODEL,
+  )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+  const body = {
+    system_instruction: {
+      parts: [{ text: AI_PERSONA }],
+    },
+    contents: [
+      { role: "user", parts: [{ text: userTurn }] },
+    ],
+    generationConfig: {
+      temperature: 0.95,
+      topP: 0.95,
+      maxOutputTokens: 200,
+    },
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.warn(`[ai] gemini http ${response.status}: ${errText.slice(0, 200)}`);
+      return null;
+    }
+
+    const payload = await response.json();
+    const text = payload?.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text || "")
+      .join("")
+      .trim();
+
+    if (!text) {
+      const finishReason = payload?.candidates?.[0]?.finishReason ?? "unknown";
+      console.warn(`[ai] gemini empty response, finishReason=${finishReason}`);
+      return null;
+    }
+
+    return trimDescription(text, GEMINI_MAX_REPLY_CHARS);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      console.warn(`[ai] gemini timed out after ${GEMINI_TIMEOUT_MS}ms`);
+    } else {
+      console.warn(`[ai] gemini failed: ${error.message}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 client.on("messageCreate", async (message) => {
   if (shouldIgnoreMessage(message)) {
     return;
@@ -1238,6 +1323,16 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
+    const aiReply = await generateAIReply(message, text);
+    if (aiReply) {
+      console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
+      await message.reply({
+        content: aiReply,
+        allowedMentions: { repliedUser: false },
+      });
+      return;
+    }
+
     if (text === "") {
       const greetings = [
         "哎呀…突然叫我幹嘛…",
@@ -1252,7 +1347,6 @@ client.on("messageCreate", async (message) => {
       return;
     }
 
-    // Unknown command — still a mention, respond shyly
     await message.reply({
       content: "你…你在叫我嗎？///",
       allowedMentions: { repliedUser: false },
