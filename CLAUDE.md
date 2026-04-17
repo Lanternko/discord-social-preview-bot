@@ -80,6 +80,8 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
 | `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if this not set |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
+| `AI_MEMORY_MAX_TURNS` | `8` | Per-channel short-term memory: remember last N exchanges (user + bot pair). In-memory only, cleared on restart |
+| `AI_MEMORY_TTL_MS` | `1800000` (30 min) | Time since last activity before a channel's memory is evicted |
 
 ## @西寶 mention responses
 
@@ -110,7 +112,11 @@ All provider calls use `withAbortTimeout()` for timeout + error handling; Groq +
 
 `logRateHeaders()` prints `x-ratelimit-remaining-{tokens,requests}` from Groq/Cerebras responses after each call, so you can monitor quota drain live.
 
-Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars>` + rate headers per call.
+Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars> history_before=<N>` (N = number of prior turns injected) + rate headers per call.
+
+## Short-term conversation memory
+
+`aiConversationHistory: Map<channelId, { turns: Array<{role, content}>, lastActivity }>` holds per-channel rolling history. `generateAIReply` reads via `getChannelAIHistory(channelId)` and prepends to the current user turn when building `messages[]` (OpenAI-compat) or `contents[]` (Gemini, via `buildGeminiContents` role mapping `assistant→model`). After a successful reply, both sides of the exchange are saved via `recordAITurn(channelId, role, content)`. Turns beyond `AI_MEMORY_MAX_TURNS * 2` entries are evicted from the head. Channels inactive beyond `AI_MEMORY_TTL_MS` are dropped entirely by `cleanupAIConversationHistory()` (called lazily on read). No persistence — restart clears everything.
 
 **Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq + Cerebras have no equivalent trap — just sign up, create key, use it.
 
