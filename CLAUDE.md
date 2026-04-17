@@ -68,10 +68,13 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
-| `GEMINI_API_KEY` | — | Optional. If set, `@西寶` free-form mentions use Gemini for replies |
+| `GROQ_API_KEY` | — | Optional. If set, `@西寶` free-form mentions route to Groq (preferred over Gemini) |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID (OpenAI-compatible endpoint) |
+| `GEMINI_API_KEY` | — | Optional. Fallback provider if Groq key not set |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model ID |
-| `GEMINI_TIMEOUT_MS` | `8000` | API timeout; on timeout → hardcoded fallback |
-| `GEMINI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim) |
+| `AI_PROVIDER` | auto (groq > gemini > none) | Force a provider: `groq`, `gemini`, or `none` |
+| `AI_TIMEOUT_MS` | `8000` | API timeout; on timeout → hardcoded fallback. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
+| `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if this not set |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
 
 ## @西寶 mention responses
@@ -82,13 +85,24 @@ When a user mentions the bot (@西寶), the bot checks the message text after st
 |---|---|
 | `抽籤` | Weighted fortune draw: 大吉/中吉/小吉/末吉/吉/凶/大凶, with a tier-specific comment (hardcoded, never routed to AI) |
 | `道歉` | `"對不起對不起…我知道我不好…///"` (hardcoded) |
-| *(blank or anything else)* | `generateAIReply` → if `GEMINI_API_KEY` set & call succeeds, returns Gemini response; otherwise falls back to the old random-greeting / `"你…你在叫我嗎？///"` |
+| *(blank or anything else)* | `generateAIReply` → if any AI provider is configured & call succeeds, returns LLM response; otherwise falls back to the old random-greeting / `"你…你在叫我嗎？///"` |
 
 Fortune tiers (weighted): 大吉 10%, 中吉 16%, 小吉 20%, 末吉 20%, 吉 15%, 凶 13%, 大凶 6%
 
 Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` (src/index.js); overridable via `AI_PERSONA` env var.
 
-AI call uses Gemini REST (`generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`). No SDK — native `fetch` + `AbortController`. Any failure (network, timeout, safety block, empty candidate) returns `null` and triggers the hardcoded fallback, so the bot never goes silent.
+## AI provider architecture
+
+`generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then dispatches based on `AI_PROVIDER`:
+- `groq` → `callGroq()` → OpenAI-compatible Chat Completions at `api.groq.com/openai/v1/chat/completions`
+- `gemini` → `callGemini()` → `generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`
+- `none` → returns `null` → mention handler falls back to hardcoded replies
+
+Both providers share `withAbortTimeout()` for timeout + error handling. Any failure (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the hardcoded fallback, so the bot never goes silent.
+
+Log prefix: `[ai]`. Startup prints `[ai] provider=<name> (<model>) timeout=<ms>` so you can confirm which provider is active.
+
+**Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq has no equivalent trap — just sign up, create key, use it.
 
 ## Ignore markers
 

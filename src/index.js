@@ -53,8 +53,24 @@ const EMBED_CHECK_DELAY_MS = parsePositiveIntEnv("EMBED_CHECK_DELAY_MS", 5000);
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const GEMINI_TIMEOUT_MS = parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000);
-const GEMINI_MAX_REPLY_CHARS = parsePositiveIntEnv("GEMINI_MAX_REPLY_CHARS", 300);
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+// Unified AI knobs (apply to whichever provider is active).
+// GEMINI_TIMEOUT_MS / GEMINI_MAX_REPLY_CHARS kept as deprecated aliases.
+const AI_TIMEOUT_MS = parsePositiveIntEnv(
+  "AI_TIMEOUT_MS",
+  parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
+);
+const AI_MAX_REPLY_CHARS = parsePositiveIntEnv(
+  "AI_MAX_REPLY_CHARS",
+  parsePositiveIntEnv("GEMINI_MAX_REPLY_CHARS", 300),
+);
+// Provider selection: explicit env wins; otherwise prefer Groq (free tier is
+// reliable), then Gemini, then "none" (fall through to hardcoded replies).
+const AI_PROVIDER = (
+  process.env.AI_PROVIDER ||
+  (GROQ_API_KEY ? "groq" : GEMINI_API_KEY ? "gemini" : "none")
+).toLowerCase();
 const DEFAULT_AI_PERSONA = `你叫「西寶」（原型：漫畫《正反対な君と僕》的西奈津美）。
 你是一個高中三年級的女生，身高只有 147 公分，極度怕生、內向、心思細膩。
 表面沉默寡言、一臉拘謹，但腦袋裡其實想很多、話很多，只是說不出口。
@@ -1161,6 +1177,13 @@ function buildPermissionDebugMessage(interaction) {
 client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
   console.log(`目前已加入 ${client.guilds.cache.size} 個伺服器`);
+  const providerLabel =
+    AI_PROVIDER === "groq"
+      ? `groq (${GROQ_MODEL})`
+      : AI_PROVIDER === "gemini"
+        ? `gemini (${GEMINI_MODEL})`
+        : "none (hardcoded replies only)";
+  console.log(`[ai] provider=${providerLabel} timeout=${AI_TIMEOUT_MS}ms`);
 
   try {
     await ensureApplicationCommands();
@@ -1240,42 +1263,48 @@ function isMentioningBot(message) {
   return message.mentions.has(client.user);
 }
 
-async function generateAIReply(message, userText) {
-  if (!GEMINI_API_KEY) return null;
-
+function buildUserTurn(message, userText) {
   const username =
     message.member?.displayName || message.author.globalName || message.author.username;
-  const userTurn = userText
+  return userText
     ? `${username}：${userText}`
     : `（${username} 只是 @ 了你一下，沒說什麼，他可能只是想打招呼或看你在不在）`;
+}
 
+async function withAbortTimeout(timeoutMs, providerLabel, fn) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } catch (error) {
+    if (error.name === "AbortError") {
+      console.warn(`[ai] ${providerLabel} timed out after ${timeoutMs}ms`);
+    } else {
+      console.warn(`[ai] ${providerLabel} failed: ${error.message}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callGemini(userTurn) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     GEMINI_MODEL,
   )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
   const body = {
-    system_instruction: {
-      parts: [{ text: AI_PERSONA }],
-    },
-    contents: [
-      { role: "user", parts: [{ text: userTurn }] },
-    ],
-    generationConfig: {
-      temperature: 0.95,
-      topP: 0.95,
-      maxOutputTokens: 200,
-    },
+    system_instruction: { parts: [{ text: AI_PERSONA }] },
+    contents: [{ role: "user", parts: [{ text: userTurn }] }],
+    generationConfig: { temperature: 0.95, topP: 0.95, maxOutputTokens: 200 },
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-
-  try {
+  return withAbortTimeout(AI_TIMEOUT_MS, "gemini", async (signal) => {
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: controller.signal,
+      signal,
     });
 
     if (!response.ok) {
@@ -1295,18 +1324,61 @@ async function generateAIReply(message, userText) {
       console.warn(`[ai] gemini empty response, finishReason=${finishReason}`);
       return null;
     }
+    return text;
+  });
+}
 
-    return trimDescription(text, GEMINI_MAX_REPLY_CHARS);
-  } catch (error) {
-    if (error.name === "AbortError") {
-      console.warn(`[ai] gemini timed out after ${GEMINI_TIMEOUT_MS}ms`);
-    } else {
-      console.warn(`[ai] gemini failed: ${error.message}`);
+async function callGroq(userTurn) {
+  const body = {
+    model: GROQ_MODEL,
+    messages: [
+      { role: "system", content: AI_PERSONA },
+      { role: "user", content: userTurn },
+    ],
+    temperature: 0.95,
+    top_p: 0.95,
+    max_tokens: 200,
+  };
+
+  return withAbortTimeout(AI_TIMEOUT_MS, "groq", async (signal) => {
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.warn(`[ai] groq http ${response.status}: ${errText.slice(0, 200)}`);
+      return null;
     }
-    return null;
-  } finally {
-    clearTimeout(timeout);
+
+    const payload = await response.json();
+    const text = payload?.choices?.[0]?.message?.content?.trim();
+    if (!text) {
+      const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
+      console.warn(`[ai] groq empty response, finishReason=${finishReason}`);
+      return null;
+    }
+    return text;
+  });
+}
+
+async function generateAIReply(message, userText) {
+  const userTurn = buildUserTurn(message, userText);
+
+  let raw = null;
+  if (AI_PROVIDER === "groq" && GROQ_API_KEY) {
+    raw = await callGroq(userTurn);
+  } else if (AI_PROVIDER === "gemini" && GEMINI_API_KEY) {
+    raw = await callGemini(userTurn);
   }
+
+  return raw ? trimDescription(raw, AI_MAX_REPLY_CHARS) : null;
 }
 
 client.on("messageCreate", async (message) => {

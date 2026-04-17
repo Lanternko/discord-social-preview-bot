@@ -81,7 +81,7 @@
 - Uses Playwright only for Threads metadata extraction
 - Strips common tracking parameters (`fbclid`, `gclid`, `mibextid`, `utm_*`, `igsh`, etc.) from URLs before replying — protects the poster from leaking share-tracking info, and improves dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
-- `@西寶` 有人格化 AI 回覆（Gemini 2.0 Flash，可選）
+- `@西寶` 有人格化 AI 回覆（支援 Groq / Gemini，可選）
 - Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
 - Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
 
@@ -93,20 +93,39 @@
 |---|---|
 | `抽籤` | 抽今日運勢（寫死，不走 AI） |
 | `道歉` | 固定台詞（寫死，不走 AI） |
-| 其他任何文字（含空白）| **有 `GEMINI_API_KEY`** → Gemini 依西寶人格即時產生不重複的回覆<br>**沒有 key** → 隨機 4 句招呼 / `你…你在叫我嗎？` |
+| 其他任何文字（含空白）| **有 AI key** → LLM 依西寶人格即時產生不重複的回覆<br>**沒有 key** → 隨機 4 句招呼 / `你…你在叫我嗎？` |
 
 ### 啟用 AI 回覆（可選，免費）
 
-1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 申請 API key（免費額度：每分鐘 15 req / 每日 1500 req，對 Discord 閒聊綽綽有餘）
-2. 填入 `.env`：
+目前支援兩個 provider：**Groq**（推薦）和 **Gemini**。優先順序：`AI_PROVIDER` → 有 Groq 用 Groq → 有 Gemini 用 Gemini → 關閉。
+
+**推薦：Groq**（免費額度大、無 billing 地雷）
+
+1. 到 [https://console.groq.com/keys](https://console.groq.com/keys)（Google 登入，按 Create，不用綁卡）
+2. 免費額度：Llama 3.3 70B 每分鐘 30 req / 每日 14,400 req
+3. 填入 `.env`：
+
+   ```env
+   GROQ_API_KEY=your_key_here
+   GROQ_MODEL=llama-3.3-70b-versatile
+   ```
+
+**備用：Gemini**
+
+⚠️ 注意：若你的 Google Cloud 專案有綁 billing account（包含 $300 免費試用），**free tier 會被自動停用**，需改用 paid tier 或建立另一個沒綁 billing 的新專案。
+
+1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 申請 API key
+2. 建 key 時選「**Create API key in new project**」避免踩上面那個坑
+3. 填入 `.env`：
 
    ```env
    GEMINI_API_KEY=your_key_here
    GEMINI_MODEL=gemini-2.0-flash
    ```
 
-3. 要改西寶的人格，在 `.env` 寫 `AI_PERSONA="你是..."` 覆蓋預設。
-4. AI 呼叫失敗（timeout、無額度、內容被擋）時會自動退回寫死回覆，不會讓西寶沉默。
+**自訂人格**：在 `.env` 寫 `AI_PERSONA="你是..."` 覆蓋預設。
+
+**安全網**：AI 呼叫失敗（timeout、無額度、內容被擋、key 錯誤）時會自動退回寫死回覆，不會讓西寶沉默。啟動時會印 `[ai] provider=...` 告訴你目前用哪個 provider。
 
 ## Requirements
 
