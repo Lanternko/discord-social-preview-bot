@@ -12,6 +12,8 @@
 
 4.17 更新：@西寶 接上 Gemini 2.0 Flash，閒聊回應變得個人化（需自備 GEMINI_API_KEY，免費）
 
+4.18 更新：多 provider AI chain 自動 fallback（DeepSeek → Cerebras Qwen 235B → Groq 70B → 8B → Gemini）、短期對話記憶（每頻道記 8 組）、persona v6（A~G 類情境分流、A+ 深度題、害羞拒絕、不自稱 AI）、修雙回應 bug
+
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
 <img width="300" height="88" alt="image" src="https://github.com/user-attachments/assets/963324f8-ed11-4af3-b587-45d617573766" />
@@ -81,7 +83,8 @@
 - Uses Playwright only for Threads metadata extraction
 - Strips common tracking parameters (`fbclid`, `gclid`, `mibextid`, `utm_*`, `igsh`, etc.) from URLs before replying — protects the poster from leaking share-tracking info, and improves dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
-- `@西寶` 有人格化 AI 回覆（支援 Groq / Gemini，可選）
+- `@西寶` 有人格化 AI 回覆（支援 DeepSeek / Cerebras Qwen / Groq / Gemini，chain fallback 可選）
+- AI 回覆有**短期對話記憶**（每頻道最近 8 組對話、TTL 30 分鐘）
 - Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
 - Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
 
