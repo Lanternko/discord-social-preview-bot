@@ -97,11 +97,11 @@ Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellip
 
 `generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then iterates over `AI_PROVIDER_CHAIN` (built once at startup by `buildAIProviderChain()`). First non-null reply wins; on null/error move to next layer; chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 
-Default chain (when all keys set):
-1. `groq:llama-3.3-70b-versatile` (best Chinese at Groq, 100k tokens/day free)
-2. `groq:llama-3.1-8b-instant` (same API, 500k tokens/day — 5× more room)
-3. `cerebras:qwen-3-32b` (1M tokens/day, native Chinese via Qwen)
-4. `gemini:gemini-2.0-flash` (if Gemini key works)
+Default chain (when all keys set), ordered by quality-first:
+1. `cerebras:qwen-3-235b-a22b-instruct-2507` (Qwen 235B, best Chinese quality, 1M tokens/day free)
+2. `groq:llama-3.3-70b-versatile` (fast backup, 100k tokens/day free)
+3. `groq:llama-3.1-8b-instant` (Groq-internal fallback, 500k tokens/day free — lower quality)
+4. `gemini:gemini-2.0-flash` (last resort, has billing trap history)
 
 All provider calls use `withAbortTimeout()` for timeout + error handling; Groq + Cerebras share OpenAI-compatible format (`messages[]`, `Bearer` auth); Gemini uses its own REST shape (`contents[]`, `?key=`). Any failure per layer (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the next layer — bot never goes silent.
 

@@ -1451,17 +1451,26 @@ async function callCerebras(userTurn) {
 
 // Build the provider fallback chain once at startup. Each entry has a label
 // (for logging) and a call fn that returns string|null.
+//
+// Default priority order (smart → fallback):
+//   1. Cerebras (Qwen 235B default — largest + best Chinese + 1M TPD)
+//   2. Groq models in GROQ_MODELS order (70B first, 8B as Groq-internal fallback)
+//   3. Gemini (last resort, has billing trap history)
+//
+// Rationale: Cerebras free tier has the most headroom (1M TPD) AND hosts the
+// largest model, so it's both the highest quality AND least likely to exhaust.
+// Groq serves as backup when Cerebras is slow/down.
 function buildAIProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
 
+  if (CEREBRAS_API_KEY && (!only || only === "cerebras")) {
+    chain.push({ label: `cerebras:${CEREBRAS_MODEL}`, call: callCerebras });
+  }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
       chain.push({ label: `groq:${model}`, call: (turn) => callGroq(turn, model) });
     }
-  }
-  if (CEREBRAS_API_KEY && (!only || only === "cerebras")) {
-    chain.push({ label: `cerebras:${CEREBRAS_MODEL}`, call: callCerebras });
   }
   if (GEMINI_API_KEY && (!only || only === "gemini")) {
     chain.push({ label: `gemini:${GEMINI_MODEL}`, call: callGemini });

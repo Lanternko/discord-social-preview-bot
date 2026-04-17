@@ -97,22 +97,9 @@
 
 ### 啟用 AI 回覆（可選，免費）
 
-支援三個 provider，自動 fallback 鏈：**Groq 模型們 → Cerebras → Gemini**。任何一層被 429 或失敗就掉下一層；全部失敗才走寫死回覆。
+支援三個 provider，自動 fallback 鏈以「品質優先」排列：**Cerebras (Qwen 235B) → Groq (70B → 8B) → Gemini**。任何一層被 429 或失敗就掉下一層；全部失敗才走寫死回覆。
 
-**第一層：Groq**（免費額度大、無 billing 地雷、推薦首選）
-
-1. 到 [https://console.groq.com/keys](https://console.groq.com/keys)（Google 登入，按 Create，不用綁卡）
-2. 免費額度：Llama 3.3 70B 每日 100k tokens；Llama 3.1 8B 每日 500k tokens（更多 quota 但品質稍弱）
-3. 填入 `.env`：
-
-   ```env
-   GROQ_API_KEY=your_key_here
-   GROQ_MODELS=llama-3.3-70b-versatile,llama-3.1-8b-instant
-   ```
-
-   `GROQ_MODELS` 逗號分隔會依序 fallback：70B 的 100k 爆了 → 自動用 8B 的 500k。
-
-**第二層：Cerebras**（中文最強、1M tokens/day）
+**第一層：Cerebras**（中文最強、1M tokens/day、最大模型）
 
 1. 到 [https://cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/)（Free tier）申請 key
 2. 可用模型（`curl https://api.cerebras.ai/v1/models` 查看，依帳號 tier 而異）：
@@ -125,6 +112,19 @@
    CEREBRAS_API_KEY=your_key_here
    CEREBRAS_MODEL=qwen-3-235b-a22b-instruct-2507
    ```
+
+**第二層：Groq**（免費額度大、速度快、適合備援）
+
+1. 到 [https://console.groq.com/keys](https://console.groq.com/keys)（Google 登入，按 Create，不用綁卡）
+2. 免費額度：Llama 3.3 70B 每日 100k tokens；Llama 3.1 8B 每日 500k tokens（更多 quota 但品質稍弱）
+3. 填入 `.env`：
+
+   ```env
+   GROQ_API_KEY=your_key_here
+   GROQ_MODELS=llama-3.3-70b-versatile,llama-3.1-8b-instant
+   ```
+
+   `GROQ_MODELS` 逗號分隔會依序 fallback：70B 的 100k 爆了 → 自動用 8B 的 500k。
 
 **第三層：Gemini**
 
