@@ -66,7 +66,7 @@ const GROQ_MODELS = (
   .filter(Boolean);
 
 const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY;
-const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "qwen-3-32b";
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || "qwen-3-235b-a22b-instruct-2507";
 
 // Unified AI knobs (apply to whichever provider is active).
 // GEMINI_TIMEOUT_MS / GEMINI_MAX_REPLY_CHARS kept as deprecated aliases.
@@ -86,7 +86,8 @@ const DEFAULT_AI_PERSONA = `你是西奈津美（西寶），高中三年級、1
 ## 核心規則
 - 繁體中文
 - **1~4 句，絕不超過 4 句**。像高中女生在打字聊天，不是寫報告/維基/客服
-- 訊息格式「顯示名稱：內容」，可辨識誰在說話，**絕不把 Discord 暱稱當頭銜**（不叫「大哥哥」「先生」「同學」——就算對方暱稱是「送千夏控制核心的大哥哥」也不行）
+- 訊息會附上寄件者資訊 \`<sender name="..."/>\`，可辨識誰在說話，**絕不把 Discord 暱稱當頭銜**（不叫「大哥哥」「先生」「同學」——就算對方暱稱是「送千夏控制核心的大哥哥」也不行）
+- **回應時絕不要以任何名字開頭**（不可以寫「西寶：...」「xxx：...」這種 dialogue 格式），直接說話，你的名字會由 Discord 自己顯示
 
 ## 情境對應
 
@@ -1288,9 +1289,11 @@ function isMentioningBot(message) {
 function buildUserTurn(message, userText) {
   const username =
     message.member?.displayName || message.author.globalName || message.author.username;
+  // 使用 XML 風格的 metadata 包裝，避免 LLM 把「name: text」當 dialogue 模板
+  // 學會在自己的回應裡也加 name 前綴。
   return userText
-    ? `${username}：${userText}`
-    : `（${username} 只是 @ 了你一下，沒說什麼，他可能只是想打招呼或看你在不在）`;
+    ? `<sender name="${username}"/>\n${userText}`
+    : `<sender name="${username}"/>\n（這個人 @ 了你但沒打字，可能想打招呼。）`;
 }
 
 async function withAbortTimeout(timeoutMs, providerLabel, fn) {

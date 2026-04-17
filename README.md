@@ -115,12 +115,15 @@
 **第二層：Cerebras**（中文最強、1M tokens/day）
 
 1. 到 [https://cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/)（Free tier）申請 key
-2. 推薦 `qwen-3-32b`（原生中文）或 `llama-3.3-70b`
+2. 可用模型（`curl https://api.cerebras.ai/v1/models` 查看，依帳號 tier 而異）：
+   - `qwen-3-235b-a22b-instruct-2507`（Qwen 235B，中文最強，推薦）
+   - `zai-glm-4.7`（清華 GLM，中文也很好）
+   - `gpt-oss-120b`、`llama3.1-8b`
 3. 填入 `.env`：
 
    ```env
    CEREBRAS_API_KEY=your_key_here
-   CEREBRAS_MODEL=qwen-3-32b
+   CEREBRAS_MODEL=qwen-3-235b-a22b-instruct-2507
    ```
 
 **第三層：Gemini**
