@@ -103,6 +103,11 @@ const DEFAULT_AI_PERSONA = `你是西奈津美（西寶），高中三年級、1
 → 直接 2~3 句簡短回答事實。不加內心戲、不加評論、不說教。
 例：「希特勒」→「那個…二戰時期德國的獨裁者，發動戰爭跟大屠殺…很可怕的歷史人物。」
 
+**A+ 深度題**（需要比較、分析、推理：Big 3 誰最強、X 跟 Y 差在哪、為什麼 Z、如何克制 W）
+→ 可以放寬到 **5~6 句**，用害羞但有料的方式給出真正的理由/比較/分析，不是流水帳。
+→ 有立場：不要「都很厲害很難比」結束，要給一個偏向並說為什麼（「硬要選的話…因為 X…」）。
+例：Big 3 誰最強→「喬科維奇的大滿貫最多…但納達爾紅土幾乎無敵…費德勒技術最優雅。硬要選的話，現在看數據是喬…但要看你偏好什麼。」
+
 **B 社交/撩你**（結婚嗎、吃布丁嗎、XX 是我老婆）
 → 害羞反應 1~2 句。**可以曖昧接受**，不只冷淡拒絕。
 例：吃布丁→「欸…布丁嗎…我、我也想吃…///」；結婚→「……才不要。」；老婆→「欸…你這樣真的沒問題嗎…」
@@ -1641,58 +1646,73 @@ client.on("messageCreate", async (message) => {
 
   // Handle @西寶 mentions before link detection
   if (isMentioningBot(message)) {
-    const text = message.content
-      .replace(/<@!?\d+>/g, "")
-      .normalize("NFC")
-      .trim();
-    const textLower = text.toLowerCase();
-
-    if (textLower === "抽籤") {
-      const result = drawFortune();
-      const comment = pickRandom(FORTUNE_COMMENTS[result]);
-      await message.reply({
-        content: `🎋 今日運勢：**${result}**\n${comment}`,
-        allowedMentions: { repliedUser: false },
-      });
+    // Dedup: messageCreate can fire twice for the same message (Discord
+    // gateway reconnects, etc). Without this, two parallel generateAIReply
+    // calls run — one may fall through to the hardcoded fallback while the
+    // other returns a successful AI reply, sending both to the user.
+    const mentionKey = `mention:${message.id}`;
+    if (inFlightReplies.has(mentionKey)) {
+      console.log(`[mention] inflight skip ${message.id}`);
       return;
     }
+    inFlightReplies.add(mentionKey);
 
-    if (textLower === "道歉") {
+    try {
+      const text = message.content
+        .replace(/<@!?\d+>/g, "")
+        .normalize("NFC")
+        .trim();
+      const textLower = text.toLowerCase();
+
+      if (textLower === "抽籤") {
+        const result = drawFortune();
+        const comment = pickRandom(FORTUNE_COMMENTS[result]);
+        await message.reply({
+          content: `🎋 今日運勢：**${result}**\n${comment}`,
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
+
+      if (textLower === "道歉") {
+        await message.reply({
+          content: "對不起對不起…我知道我不好…///",
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
+
+      const aiReply = await generateAIReply(message, text);
+      if (aiReply) {
+        console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
+        await message.reply({
+          content: aiReply,
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
+
+      if (text === "") {
+        const greetings = [
+          "哎呀…突然叫我幹嘛…",
+          "有、有什麼事嗎…？///",
+          "嗯…？叫我了嗎…",
+          "…在的在的…怎麼了嗎？",
+        ];
+        await message.reply({
+          content: pickRandom(greetings),
+          allowedMentions: { repliedUser: false },
+        });
+        return;
+      }
+
       await message.reply({
-        content: "對不起對不起…我知道我不好…///",
+        content: "你…你在叫我嗎？///",
         allowedMentions: { repliedUser: false },
       });
-      return;
+    } finally {
+      inFlightReplies.delete(mentionKey);
     }
-
-    const aiReply = await generateAIReply(message, text);
-    if (aiReply) {
-      console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
-      await message.reply({
-        content: aiReply,
-        allowedMentions: { repliedUser: false },
-      });
-      return;
-    }
-
-    if (text === "") {
-      const greetings = [
-        "哎呀…突然叫我幹嘛…",
-        "有、有什麼事嗎…？///",
-        "嗯…？叫我了嗎…",
-        "…在的在的…怎麼了嗎？",
-      ];
-      await message.reply({
-        content: pickRandom(greetings),
-        allowedMentions: { repliedUser: false },
-      });
-      return;
-    }
-
-    await message.reply({
-      content: "你…你在叫我嗎？///",
-      allowedMentions: { repliedUser: false },
-    });
     return;
   }
 
