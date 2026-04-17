@@ -68,12 +68,14 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
-| `GROQ_API_KEY` | — | Optional. If set, `@西寶` free-form mentions route to Groq (preferred over Gemini) |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID (OpenAI-compatible endpoint) |
-| `GEMINI_API_KEY` | — | Optional. Fallback provider if Groq key not set |
+| `GROQ_API_KEY` | — | Optional. If set, `@西寶` routes through Groq as first layer |
+| `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated fallback chain within Groq. Legacy `GROQ_MODEL` read as single-item list |
+| `CEREBRAS_API_KEY` | — | Optional. Second-layer provider (best Chinese quality via Qwen) |
+| `CEREBRAS_MODEL` | `qwen-3-32b` | Cerebras model (OpenAI-compatible endpoint `api.cerebras.ai/v1/chat/completions`) |
+| `GEMINI_API_KEY` | — | Optional. Third-layer fallback |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model ID |
-| `AI_PROVIDER` | auto (groq > gemini > none) | Force a provider: `groq`, `gemini`, or `none` |
-| `AI_TIMEOUT_MS` | `8000` | API timeout; on timeout → hardcoded fallback. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
+| `AI_PROVIDER` | auto (full chain) | Force single provider: `groq`, `cerebras`, or `gemini`. Empty = full fallback chain |
+| `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
 | `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if this not set |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
 
@@ -93,16 +95,21 @@ Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellip
 
 ## AI provider architecture
 
-`generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then dispatches based on `AI_PROVIDER`:
-- `groq` → `callGroq()` → OpenAI-compatible Chat Completions at `api.groq.com/openai/v1/chat/completions`
-- `gemini` → `callGemini()` → `generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`
-- `none` → returns `null` → mention handler falls back to hardcoded replies
+`generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then iterates over `AI_PROVIDER_CHAIN` (built once at startup by `buildAIProviderChain()`). First non-null reply wins; on null/error move to next layer; chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 
-Both providers share `withAbortTimeout()` for timeout + error handling. Any failure (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the hardcoded fallback, so the bot never goes silent.
+Default chain (when all keys set):
+1. `groq:llama-3.3-70b-versatile` (best Chinese at Groq, 100k tokens/day free)
+2. `groq:llama-3.1-8b-instant` (same API, 500k tokens/day — 5× more room)
+3. `cerebras:qwen-3-32b` (1M tokens/day, native Chinese via Qwen)
+4. `gemini:gemini-2.0-flash` (if Gemini key works)
 
-Log prefix: `[ai]`. Startup prints `[ai] provider=<name> (<model>) timeout=<ms>` so you can confirm which provider is active.
+All provider calls use `withAbortTimeout()` for timeout + error handling; Groq + Cerebras share OpenAI-compatible format (`messages[]`, `Bearer` auth); Gemini uses its own REST shape (`contents[]`, `?key=`). Any failure per layer (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the next layer — bot never goes silent.
 
-**Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq has no equivalent trap — just sign up, create key, use it.
+`logRateHeaders()` prints `x-ratelimit-remaining-{tokens,requests}` from Groq/Cerebras responses after each call, so you can monitor quota drain live.
+
+Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars>` + rate headers per call.
+
+**Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq + Cerebras have no equivalent trap — just sign up, create key, use it.
 
 ## Ignore markers
 

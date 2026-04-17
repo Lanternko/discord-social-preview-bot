@@ -97,35 +97,46 @@
 
 ### 啟用 AI 回覆（可選，免費）
 
-目前支援兩個 provider：**Groq**（推薦）和 **Gemini**。優先順序：`AI_PROVIDER` → 有 Groq 用 Groq → 有 Gemini 用 Gemini → 關閉。
+支援三個 provider，自動 fallback 鏈：**Groq 模型們 → Cerebras → Gemini**。任何一層被 429 或失敗就掉下一層；全部失敗才走寫死回覆。
 
-**推薦：Groq**（免費額度大、無 billing 地雷）
+**第一層：Groq**（免費額度大、無 billing 地雷、推薦首選）
 
 1. 到 [https://console.groq.com/keys](https://console.groq.com/keys)（Google 登入，按 Create，不用綁卡）
-2. 免費額度：Llama 3.3 70B 每分鐘 30 req / 每日 14,400 req
+2. 免費額度：Llama 3.3 70B 每日 100k tokens；Llama 3.1 8B 每日 500k tokens（更多 quota 但品質稍弱）
 3. 填入 `.env`：
 
    ```env
    GROQ_API_KEY=your_key_here
-   GROQ_MODEL=llama-3.3-70b-versatile
+   GROQ_MODELS=llama-3.3-70b-versatile,llama-3.1-8b-instant
    ```
 
-**備用：Gemini**
+   `GROQ_MODELS` 逗號分隔會依序 fallback：70B 的 100k 爆了 → 自動用 8B 的 500k。
 
-⚠️ 注意：若你的 Google Cloud 專案有綁 billing account（包含 $300 免費試用），**free tier 會被自動停用**，需改用 paid tier 或建立另一個沒綁 billing 的新專案。
+**第二層：Cerebras**（中文最強、1M tokens/day）
 
-1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 申請 API key
-2. 建 key 時選「**Create API key in new project**」避免踩上面那個坑
+1. 到 [https://cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/)（Free tier）申請 key
+2. 推薦 `qwen-3-32b`（原生中文）或 `llama-3.3-70b`
 3. 填入 `.env`：
 
    ```env
-   GEMINI_API_KEY=your_key_here
-   GEMINI_MODEL=gemini-2.0-flash
+   CEREBRAS_API_KEY=your_key_here
+   CEREBRAS_MODEL=qwen-3-32b
    ```
+
+**第三層：Gemini**
+
+⚠️ 注意：若 Google Cloud 專案有綁 billing（含 $300 免費試用），**Gemini free tier 會被自動停用**（`limit: 0`）。建 key 時選「**Create API key in new project**」避免踩雷。
+
+```env
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.0-flash
+```
 
 **自訂人格**：在 `.env` 寫 `AI_PERSONA="你是..."` 覆蓋預設。
 
-**安全網**：AI 呼叫失敗（timeout、無額度、內容被擋、key 錯誤）時會自動退回寫死回覆，不會讓西寶沉默。啟動時會印 `[ai] provider=...` 告訴你目前用哪個 provider。
+**強制單一 provider**：如果只想用某一層，設 `AI_PROVIDER=groq|cerebras|gemini`。留空 = 全鏈 fallback。
+
+**安全網**：AI 呼叫失敗（timeout、無額度、內容被擋、key 錯誤）都會自動退回下一層或寫死回覆，不會讓西寶沉默。啟動時會印 `[ai] chain=groq:... → cerebras:... → gemini:...` 告訴你目前的 fallback 順序。每次呼叫也會印 Groq/Cerebras 剩餘 tokens。
 
 ## Requirements
 
