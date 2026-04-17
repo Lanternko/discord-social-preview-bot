@@ -68,10 +68,17 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
-| `GEMINI_API_KEY` | — | Optional. If set, `@西寶` free-form mentions use Gemini for replies |
+| `DEEPSEEK_API_KEY` | — | Optional. If set, `@西寶` routes through DeepSeek first (paid, reliable) |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | DeepSeek model (`deepseek-chat` for V3.2, `deepseek-reasoner` for R1) |
+| `CEREBRAS_API_KEY` | — | Optional. Second-layer (best Chinese quality via Qwen free tier) |
+| `CEREBRAS_MODEL` | `qwen-3-235b-a22b-instruct-2507` | Cerebras model (OpenAI-compatible at `api.cerebras.ai/v1/chat/completions`) |
+| `GROQ_API_KEY` | — | Optional. Third-layer (Groq free tier, fast but limited quota) |
+| `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated fallback chain within Groq. Legacy `GROQ_MODEL` read as single-item list |
+| `GEMINI_API_KEY` | — | Optional. Last-layer fallback |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model ID |
-| `GEMINI_TIMEOUT_MS` | `8000` | API timeout; on timeout → hardcoded fallback |
-| `GEMINI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim) |
+| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `cerebras`, `groq`, or `gemini`. Empty = full fallback chain |
+| `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if this not set |
+| `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if this not set |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
 
 ## @西寶 mention responses
@@ -82,13 +89,30 @@ When a user mentions the bot (@西寶), the bot checks the message text after st
 |---|---|
 | `抽籤` | Weighted fortune draw: 大吉/中吉/小吉/末吉/吉/凶/大凶, with a tier-specific comment (hardcoded, never routed to AI) |
 | `道歉` | `"對不起對不起…我知道我不好…///"` (hardcoded) |
-| *(blank or anything else)* | `generateAIReply` → if `GEMINI_API_KEY` set & call succeeds, returns Gemini response; otherwise falls back to the old random-greeting / `"你…你在叫我嗎？///"` |
+| *(blank or anything else)* | `generateAIReply` → if any AI provider is configured & call succeeds, returns LLM response; otherwise falls back to the old random-greeting / `"你…你在叫我嗎？///"` |
 
 Fortune tiers (weighted): 大吉 10%, 中吉 16%, 小吉 20%, 末吉 20%, 吉 15%, 凶 13%, 大凶 6%
 
 Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` (src/index.js); overridable via `AI_PERSONA` env var.
 
-AI call uses Gemini REST (`generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`). No SDK — native `fetch` + `AbortController`. Any failure (network, timeout, safety block, empty candidate) returns `null` and triggers the hardcoded fallback, so the bot never goes silent.
+## AI provider architecture
+
+`generateAIReply(message, userText)` is the single entry point. It builds a `userTurn` string via `buildUserTurn()`, then iterates over `AI_PROVIDER_CHAIN` (built once at startup by `buildAIProviderChain()`). First non-null reply wins; on null/error move to next layer; chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
+
+Default chain (when all keys set), ordered by paid-first → free-quality → fallback:
+1. `deepseek:deepseek-chat` (paid V3.2, reliable, no queue, flagship Chinese)
+2. `cerebras:qwen-3-235b-a22b-instruct-2507` (Qwen 235B free 1M TPD, but queue_exceeded common)
+3. `groq:llama-3.3-70b-versatile` (fast backup, 100k tokens/day free)
+4. `groq:llama-3.1-8b-instant` (Groq-internal fallback, 500k tokens/day free — lower quality)
+5. `gemini:gemini-2.0-flash` (last resort, has billing trap history)
+
+All provider calls use `withAbortTimeout()` for timeout + error handling; Groq + Cerebras share OpenAI-compatible format (`messages[]`, `Bearer` auth); Gemini uses its own REST shape (`contents[]`, `?key=`). Any failure per layer (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the next layer — bot never goes silent.
+
+`logRateHeaders()` prints `x-ratelimit-remaining-{tokens,requests}` from Groq/Cerebras responses after each call, so you can monitor quota drain live.
+
+Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars>` + rate headers per call.
+
+**Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq + Cerebras have no equivalent trap — just sign up, create key, use it.
 
 ## Ignore markers
 
