@@ -113,3 +113,4 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`
 - `inFlightReplies` Set prevents duplicate processing of the same message if `messageCreate` fires twice.
 - Log prefix convention: `[preview]`, `[threads-meta]` for easy filtering.
 - Mention text must be `.normalize("NFC")` before comparison — Discord can send CJK input in NFD form, causing strict equality to silently fail (e.g. `抽籤` not matching).
+- `normalizeUrl` strips tracking params before any routing/dedupe. Two lists: `UNIVERSAL_TRACKING_PARAMS` (stripped on any host — UTM, click IDs like `fbclid`/`gclid`, `mibextid`, etc.) and `HOST_GATED_TRACKING_PARAMS` (stripped only on matching hosts — e.g. `t`/`s` on X/Twitter but NOT on YouTube where `t` is a timestamp; `igsh*` on Instagram; Bilibili `share_*`/`spm_id_from`/etc.). When adding a param, decide if it's meaningful on any supported host — if yes, gate it.

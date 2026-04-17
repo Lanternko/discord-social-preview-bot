@@ -92,6 +92,19 @@ const FACEBOOK_HOSTS = new Set([
   "m.facebook.com",
   "fb.watch",
 ]);
+const TWITTER_HOSTS = new Set([
+  "x.com",
+  "www.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+]);
+const YOUTUBE_HOSTS = new Set([
+  "youtube.com",
+  "www.youtube.com",
+  "m.youtube.com",
+  "youtu.be",
+]);
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
@@ -151,36 +164,91 @@ const REQUIRED_CHANNEL_PERMISSIONS = [
   },
 ];
 
+// Tracking / analytics params that leak personal info but never affect the
+// resource being referenced. Safe to strip on any host.
+const UNIVERSAL_TRACKING_PARAMS = [
+  // UTM (Urchin Tracking Module)
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "utm_name",
+  "utm_reader",
+  // Ad-network click IDs
+  "fbclid",   // Facebook
+  "gclid",    // Google Ads
+  "gbraid",   // Google (iOS)
+  "wbraid",   // Google (iOS)
+  "dclid",    // DoubleClick
+  "msclkid",  // Microsoft / Bing
+  "yclid",    // Yandex
+  "twclid",   // Twitter Ads
+  "ttclid",   // TikTok
+  "li_fat_id", // LinkedIn
+  // Meta (FB / IG / Threads) browser-extension share tracker
+  "mibextid",
+  // Email campaign
+  "mc_cid",
+  "mc_eid",
+  // Google Analytics cross-domain
+  "_ga",
+  "_gl",
+  // Generic referrer trackers
+  "ref_src",
+  "ref_url",
+  // Misc Meta
+  "xmt",
+  "slof",
+];
+
+// Params that are tracking on some hosts but meaningful on others, so they
+// must be gated. Keys are param names; values are host Sets where stripping
+// is safe (i.e. the param is tracking there).
+const HOST_GATED_TRACKING_PARAMS = [
+  // Instagram share tracker
+  { param: "igsh", hosts: INSTAGRAM_HOSTS },
+  { param: "igshid", hosts: INSTAGRAM_HOSTS },
+  // X / Twitter share analytics (t + s pair appears on share URLs; t= there
+  // is NOT a timestamp like on YouTube)
+  { param: "t", hosts: TWITTER_HOSTS },
+  { param: "s", hosts: TWITTER_HOSTS },
+  // YouTube share identifier / feature / share payload
+  // Note: do NOT strip `t` on YouTube — it is the timestamp jump.
+  { param: "si", hosts: YOUTUBE_HOSTS },
+  { param: "feature", hosts: YOUTUBE_HOSTS },
+  { param: "pp", hosts: YOUTUBE_HOSTS },
+  // Bilibili tracking/share (existing set, kept host-gated to avoid collisions)
+  { param: "spm_id_from", hosts: BILIBILI_HOSTS },
+  { param: "trackid", hosts: BILIBILI_HOSTS },
+  { param: "vd_source", hosts: BILIBILI_HOSTS },
+  { param: "from", hosts: BILIBILI_HOSTS },
+  { param: "from_spmid", hosts: BILIBILI_HOSTS },
+  { param: "seid", hosts: BILIBILI_HOSTS },
+  { param: "share_source", hosts: BILIBILI_HOSTS },
+  { param: "share_medium", hosts: BILIBILI_HOSTS },
+  { param: "share_plat", hosts: BILIBILI_HOSTS },
+  { param: "share_session_id", hosts: BILIBILI_HOSTS },
+  { param: "share_tag", hosts: BILIBILI_HOSTS },
+  { param: "timestamp", hosts: BILIBILI_HOSTS },
+  { param: "unique_k", hosts: BILIBILI_HOSTS },
+  { param: "upsig", hosts: BILIBILI_HOSTS },
+];
+
 function normalizeUrl(rawUrl) {
   const url = new URL(rawUrl);
-  url.searchParams.delete("xmt");
-  url.searchParams.delete("slof");
-  // Bilibili tracking params
-  url.searchParams.delete("spm_id_from");
-  url.searchParams.delete("trackid");
-  url.searchParams.delete("vd_source");
-  url.searchParams.delete("from");
-  url.searchParams.delete("from_spmid");
-  url.searchParams.delete("seid");
-  url.searchParams.delete("share_source");
-  url.searchParams.delete("share_medium");
-  url.searchParams.delete("share_plat");
-  url.searchParams.delete("share_session_id");
-  url.searchParams.delete("share_tag");
-  url.searchParams.delete("timestamp");
-  url.searchParams.delete("unique_k");
-  url.searchParams.delete("upsig");
-  // Universal UTM params
-  url.searchParams.delete("utm_source");
-  url.searchParams.delete("utm_medium");
-  url.searchParams.delete("utm_campaign");
-  url.searchParams.delete("utm_term");
-  url.searchParams.delete("utm_content");
-  // Instagram-specific tracking params
-  if (INSTAGRAM_HOSTS.has(url.hostname)) {
-    url.searchParams.delete("igsh");
-    url.searchParams.delete("igshid");
+
+  for (const param of UNIVERSAL_TRACKING_PARAMS) {
+    url.searchParams.delete(param);
   }
+
+  for (const { param, hosts } of HOST_GATED_TRACKING_PARAMS) {
+    if (hosts.has(url.hostname)) {
+      url.searchParams.delete(param);
+    }
+  }
+
   return url.toString();
 }
 
