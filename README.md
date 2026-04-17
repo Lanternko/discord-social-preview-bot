@@ -10,6 +10,8 @@
 
 4.16 更新：Threads 影片三段 fallback、Instagram 多段 fallback（fxstagram）、Threads 多圖全圖集顯示、運勢抽籤
 
+4.17 更新：@西寶 接上 Gemini 2.0 Flash，閒聊回應變得個人化（需自備 GEMINI_API_KEY，免費）
+
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
 <img width="300" height="88" alt="image" src="https://github.com/user-attachments/assets/963324f8-ed11-4af3-b587-45d617573766" />
@@ -79,8 +81,32 @@
 - Uses Playwright only for Threads metadata extraction
 - Strips common tracking parameters (`fbclid`, `gclid`, `mibextid`, `utm_*`, `igsh`, etc.) from URLs before replying — protects the poster from leaking share-tracking info, and improves dedupe
 - Bilibili short links (`b23.tv`) are expanded before fixer routing
+- `@西寶` 有人格化 AI 回覆（Gemini 2.0 Flash，可選）
 - Registers a `/servers` slash command so you can check how many guilds the bot is in from Discord
 - Registers a `/debug-perms` slash command so you can check the bot's channel permissions from Discord
+
+## @西寶 mention responses
+
+當訊息中 @ 到機器人時：
+
+| 輸入 | 回應 |
+|---|---|
+| `抽籤` | 抽今日運勢（寫死，不走 AI） |
+| `道歉` | 固定台詞（寫死，不走 AI） |
+| 其他任何文字（含空白）| **有 `GEMINI_API_KEY`** → Gemini 依西寶人格即時產生不重複的回覆<br>**沒有 key** → 隨機 4 句招呼 / `你…你在叫我嗎？` |
+
+### 啟用 AI 回覆（可選，免費）
+
+1. 到 [Google AI Studio](https://aistudio.google.com/apikey) 申請 API key（免費額度：每分鐘 15 req / 每日 1500 req，對 Discord 閒聊綽綽有餘）
+2. 填入 `.env`：
+
+   ```env
+   GEMINI_API_KEY=your_key_here
+   GEMINI_MODEL=gemini-2.0-flash
+   ```
+
+3. 要改西寶的人格，在 `.env` 寫 `AI_PERSONA="你是..."` 覆蓋預設。
+4. AI 呼叫失敗（timeout、無額度、內容被擋）時會自動退回寫死回覆，不會讓西寶沉默。
 
 ## Requirements
 

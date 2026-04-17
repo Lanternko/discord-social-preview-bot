@@ -68,6 +68,11 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
+| `GEMINI_API_KEY` | — | Optional. If set, `@西寶` free-form mentions use Gemini for replies |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Gemini model ID |
+| `GEMINI_TIMEOUT_MS` | `8000` | API timeout; on timeout → hardcoded fallback |
+| `GEMINI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply length (safety trim) |
+| `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
 
 ## @西寶 mention responses
 
@@ -75,14 +80,15 @@ When a user mentions the bot (@西寶), the bot checks the message text after st
 
 | Text | Response |
 |---|---|
-| `抽籤` | Weighted fortune draw: 大吉/中吉/小吉/末吉/吉/凶/大凶, with a tier-specific comment |
-| `道歉` | `"對不起對不起…我知道我不好…///"` |
-| *(blank)* | Random shy greeting (e.g. `"有、有什麼事嗎…？///"`) |
-| *(anything else)* | `"你…你在叫我嗎？///"` |
+| `抽籤` | Weighted fortune draw: 大吉/中吉/小吉/末吉/吉/凶/大凶, with a tier-specific comment (hardcoded, never routed to AI) |
+| `道歉` | `"對不起對不起…我知道我不好…///"` (hardcoded) |
+| *(blank or anything else)* | `generateAIReply` → if `GEMINI_API_KEY` set & call succeeds, returns Gemini response; otherwise falls back to the old random-greeting / `"你…你在叫我嗎？///"` |
 
 Fortune tiers (weighted): 大吉 10%, 中吉 16%, 小吉 20%, 末吉 20%, 吉 15%, 凶 13%, 大凶 6%
 
-Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`.
+Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` (src/index.js); overridable via `AI_PERSONA` env var.
+
+AI call uses Gemini REST (`generativelanguage.googleapis.com/v1beta/models/<model>:generateContent`). No SDK — native `fetch` + `AbortController`. Any failure (network, timeout, safety block, empty candidate) returns `null` and triggers the hardcoded fallback, so the bot never goes silent.
 
 ## Ignore markers
 
