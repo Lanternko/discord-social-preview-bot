@@ -21,6 +21,30 @@ async function buildThreadsPayload(url) {
       return { embeds: [buildThreadsCompactEmbed(url, metadata)] };
     }
 
+    if (metadata.imageCount > 1) {
+      const allImages =
+        metadata.images && metadata.images.length > 1
+          ? metadata.images.slice(0, 10)
+          : null;
+      const hasVideo = metadata.video || metadata.videoCount > 0;
+
+      if (allImages) {
+        console.log(
+          `[preview] threads-multi-image carousel count=${allImages.length} hasVideo=${hasVideo} ${url}`,
+        );
+        return {
+          embeds: buildThreadsCarouselEmbeds(url, metadata, allImages),
+        };
+      }
+      console.log(
+        `[preview] threads-multi-image fallback hasVideo=${hasVideo} ${url}`,
+      );
+      return {
+        embeds: [buildThreadsMediaEmbed(url, metadata)],
+        components: [buildThreadsLinkRow(url)],
+      };
+    }
+
     if (metadata.video || metadata.videoCount > 0) {
       console.log(`[preview] threads-video fixer ${url}`);
       const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
@@ -46,27 +70,6 @@ async function buildThreadsPayload(url) {
     ) {
       console.log(`[preview] threads-single-image ${url}`);
       return { embeds: [buildThreadsMediaEmbed(url, metadata)] };
-    }
-
-    if (metadata.imageCount > 1) {
-      const allImages =
-        metadata.images && metadata.images.length > 1
-          ? metadata.images.slice(0, 10)
-          : null;
-
-      if (allImages) {
-        console.log(
-          `[preview] threads-multi-image carousel count=${allImages.length} ${url}`,
-        );
-        return {
-          embeds: buildThreadsCarouselEmbeds(url, metadata, allImages),
-        };
-      }
-      console.log(`[preview] threads-multi-image fallback ${url}`);
-      return {
-        embeds: [buildThreadsMediaEmbed(url, metadata)],
-        components: [buildThreadsLinkRow(url)],
-      };
     }
 
     console.log(`[preview] threads-generic ${metadata.twitterCard} ${url}`);
