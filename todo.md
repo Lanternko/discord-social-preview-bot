@@ -73,3 +73,35 @@ Deferred work with design decisions already aligned. Pick up after blockers clea
 - 「點開看全部」是：（a）編輯原訊息展開全部 embeds、（b）跳轉到原貼文、（c）發 ephemeral follow-up 給點擊者？
 - 影響範圍：Threads 多圖 branch、其他平台目前是交給 fixer 處理不會受影響——確認一下 Bahamut / PTT probe 有沒有自組多圖 embed 的路徑
 - 3 張這個預設值是否要可調（env var `MULTI_IMAGE_PREVIEW_COUNT`）
+
+---
+
+## Threads `hasVideo` log 印出 URL 而不是 boolean
+
+**狀態**：想法階段，未開工。小 cosmetic bug，1 行修。
+
+**動機**：multi-image + video 混合貼文的 log 會印成這樣：
+
+```
+[preview] threads-multi-image carousel count=9 hasVideo=https://scontent-tpe1-1.cdn.../mp4?params... https://www.threads.com/...
+```
+
+`hasVideo=` 後面是整串 video URL 而不是 `true`/`false`。
+
+**Root cause**：[src/platforms/threads.js](src/platforms/threads.js)
+
+```js
+const hasVideo = metadata.video || metadata.videoCount > 0;
+```
+
+當 `metadata.video` 是 URL 字串時，`||` short-circuit 回傳 URL 本身而不是 boolean。
+
+**影響**：純 cosmetic — URL 是 truthy，後續 `if (allImages)` 判斷不受影響，功能完全正常。只是 log 很醜、grep 不好抓。
+
+**修法**：
+
+```js
+const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
+```
+
+**歷史**：這條是 PR #12 (`feat/threads-multi-image-priority`) 合進 main 時就有的 bug，不是 refactor 引入的。2026-04-19 lab shadow deploy 時從 bot.log 發現。
