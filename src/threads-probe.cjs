@@ -107,12 +107,21 @@ async function readThreadsMetadata(page) {
         return src && rect.width >= 160 && rect.height >= 160;
       });
 
-      const candidateVideos = Array.from(document.querySelectorAll("video"));
+      const inMainPost = (element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.top >= viewportHeight) return false;
+        return rect.width >= 160 && rect.height >= 160;
+      };
+
+      const candidateVideos = Array.from(
+        mediaContainer.querySelectorAll("video"),
+      ).filter(inMainPost);
       const videoPlayerMarkers = Array.from(
-        document.querySelectorAll('[role="group"], [aria-label]'),
+        mediaContainer.querySelectorAll('[role="group"], [aria-label]'),
       ).filter((element) => {
         const ariaLabel = element.getAttribute("aria-label") || "";
-        return ariaLabel.toLowerCase().includes("video player");
+        if (!ariaLabel.toLowerCase().includes("video player")) return false;
+        return inMainPost(element);
       });
 
       return {

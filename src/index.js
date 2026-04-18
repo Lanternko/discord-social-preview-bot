@@ -910,6 +910,29 @@ async function buildPreviewPayloads(urls) {
         continue;
       }
 
+      if (metadata.imageCount > 1) {
+        const allImages = metadata.images && metadata.images.length > 1
+          ? metadata.images.slice(0, 10)
+          : null;
+        const hasVideo = metadata.video || metadata.videoCount > 0;
+
+        if (allImages) {
+          console.log(`[preview] threads-multi-image carousel count=${allImages.length} hasVideo=${hasVideo} ${url}`);
+          const firstEmbed = buildThreadsMediaEmbed(url, { ...metadata, image: allImages[0] });
+          const restEmbeds = allImages.slice(1).map((imgUrl) =>
+            new EmbedBuilder().setURL(url).setImage(imgUrl).setColor(THREADS_EMBED_COLOR)
+          );
+          payloads.push({ embeds: [firstEmbed, ...restEmbeds] });
+        } else {
+          console.log(`[preview] threads-multi-image fallback hasVideo=${hasVideo} ${url}`);
+          payloads.push({
+            embeds: [buildThreadsMediaEmbed(url, metadata)],
+            components: [buildThreadsLinkRow(url)],
+          });
+        }
+        continue;
+      }
+
       if (metadata.video || metadata.videoCount > 0) {
         console.log(`[preview] threads-video fixer ${url}`);
         const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
@@ -935,28 +958,6 @@ async function buildPreviewPayloads(urls) {
       ) {
         console.log(`[preview] threads-single-image ${url}`);
         payloads.push({ embeds: [buildThreadsMediaEmbed(url, metadata)] });
-        continue;
-      }
-
-      if (metadata.imageCount > 1) {
-        const allImages = metadata.images && metadata.images.length > 1
-          ? metadata.images.slice(0, 10)
-          : null;
-
-        if (allImages) {
-          console.log(`[preview] threads-multi-image carousel count=${allImages.length} ${url}`);
-          const firstEmbed = buildThreadsMediaEmbed(url, { ...metadata, image: allImages[0] });
-          const restEmbeds = allImages.slice(1).map((imgUrl) =>
-            new EmbedBuilder().setURL(url).setImage(imgUrl).setColor(THREADS_EMBED_COLOR)
-          );
-          payloads.push({ embeds: [firstEmbed, ...restEmbeds] });
-        } else {
-          console.log(`[preview] threads-multi-image fallback ${url}`);
-          payloads.push({
-            embeds: [buildThreadsMediaEmbed(url, metadata)],
-            components: [buildThreadsLinkRow(url)],
-          });
-        }
         continue;
       }
 
