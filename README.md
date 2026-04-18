@@ -10,6 +10,7 @@
 
 **最近更新**
 
+- 4.19：新增 `/tier` 斜線指令（簡短 / 標準 / 精細），管理員可切換西寶回覆詳細度（per-guild 持久化）
 - 4.18：README 重寫新手安裝流程（五分鐘快速安裝）、標註「西寶」為可改的預設名稱、介紹適合串接的 AI
 - 4.17：`@西寶` 接上 AI，會很害羞地跟你閒聊（需自備 API key，可用全免費方案）
 - 4.15：預覽失敗時會道歉 orz、運勢抽籤
@@ -197,12 +198,36 @@ GEMINI_MODEL=gemini-2.0-flash
 
 </details>
 
-**進階調整**：
+### 切換回覆詳細度：`/tier`
+
+管理員專用斜線指令，per-guild 設定，重啟後仍保留（存在 `data/tier-settings.json`）：
+
+| Tier | UI 選項 | 總體句數 | A 知識 | A+ 深度比較 | B 社交撩 | E 做事 | 記憶深度 |
+|---|---|---|---|---|---|---|---|
+| `brief`（預設）| 簡短 | 1~4 句 | 2~3 | 3~4 | 1~2 | ≤4 | 8 輪 |
+| `standard` | 標準 | 2~8 句 | 3~5 | 6~8 | 2~3 | ≤8 | 20 輪 |
+| `detailed` | 精細 | 3~15 句 | 5~8 | 10~15 | 3~5 | ≤15 | 40 輪 |
+
+**使用方式**：
+
+- `/tier` → 顯示當前伺服器的詳細度設定
+- `/tier level:標準` → 切換到標準
+- 非管理員看不到這個指令
+
+**怎麼選**（個人建議）：
+
+- **brief**：最保持西寶「話很少」的害羞人設；A+ 比較題只給 3~4 句可能資訊不夠
+- **standard**：日常預設最平衡；A+ 6~8 句能給理由、E 做事 ≤8 句可給完整步驟
+- **detailed**：資訊量最大但成本最高（DeepSeek token 費用明顯上升、也容易讓西寶脫離人設）
+
+想要認真查資料就切 `detailed`，一般閒聊維持 `brief` 或 `standard`。
+
+### 進階環境變數
 
 - `AI_PROVIDER=deepseek` → 強制只用某一層（留空 = 全鏈 fallback）
-- `AI_PERSONA="你是..."` → 覆蓋預設人格
+- `AI_PERSONA="你是..."` → 覆蓋預設人格（可保留 `{SENTENCE_MIN}` / `{SENTENCE_MAX}` 等佔位符讓 tier 生效）
 - 完整變數表見 [.claude/rules/env.md](.claude/rules/env.md)
-- 設計細節見 [.claude/rules/ai-providers.md](.claude/rules/ai-providers.md)
+- 設計細節見 [.claude/rules/ai-providers.md](.claude/rules/ai-providers.md)、tier 細節見 [.claude/rules/persona.md](.claude/rules/persona.md)
 
 ---
 
@@ -276,9 +301,9 @@ docker run -d \
 - **原 embed 自動收起**：bot 有 `Manage Messages` 權限時會抑制原連結的預覽
 - **tracking 參數自動去除**：`fbclid` / `gclid` / `mibextid` / `utm_*` / `igsh` 等會在發送前移除，保護分享者不洩漏 tracking 資訊
 - **Bilibili 短連結**：`b23.tv` 會先展開再轉 fixer
-- **西寶短期記憶**：每頻道記住最近 8 組對話、30 分鐘 TTL
+- **西寶短期記憶**：每頻道記住最近幾組對話，容量隨 `/tier` 而變（簡短 8 / 標準 20 / 精細 40）、30 分鐘 TTL
 - **忽略標記**：訊息含 `nopreview` / `previewignore` / `fxignore` 任一字串 → bot 直接跳過
-- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）
+- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/tier`（管理員切換西寶詳細度，見 [上方](#切換回覆詳細度tier)）
 
 ---
 
@@ -288,9 +313,9 @@ docker run -d \
 
 最常見是 **Message Content Intent 忘了開**。回 Developer Portal → Bot → 確認 `MESSAGE CONTENT INTENT` 打勾，存檔後重啟 bot。
 
-### `/servers` 指令沒出現
+### `/servers` / `/tier` 指令沒出現
 
-Discord 全域 slash command 需要幾分鐘 propagate。重啟 bot 後等一下即可。
+Discord 全域 slash command 需要幾分鐘 propagate。重啟 bot 後等一下即可。想確認 bot 真的有註冊，看 `bot.log` 裡有沒有 `[commands] registered /tier` 這行（首次註冊）或 `[commands] updated /tier`（描述更新）。
 
 ### Bot 對同一則訊息回兩次
 
