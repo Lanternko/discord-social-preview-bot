@@ -9,9 +9,16 @@ const { trimDescription } = require("../utils");
 const {
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
-  buildThreadsLinkRow,
   buildThreadsCarouselEmbeds,
 } = require("../embeds");
+
+function buildTailHint(hiddenImages, hasVideo) {
+  const parts = [];
+  if (hiddenImages > 0) parts.push(`還有 ${hiddenImages} 張`);
+  if (hasVideo) parts.push("影片");
+  if (!parts.length) return null;
+  return `... ${parts.join(" + ")}`;
+}
 
 async function buildThreadsPayload(url) {
   try {
@@ -34,26 +41,38 @@ async function buildThreadsPayload(url) {
 
       if (allImages) {
         const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
-        const truncated = allImages.length > previewImages.length;
-        const needsButton = truncated || Boolean(hasVideo);
-        console.log(
-          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} button=${needsButton} ${url}`,
+        const hiddenImages = Math.max(
+          0,
+          (metadata.imageCount || allImages.length) - previewImages.length,
         );
-        const payload = {
-          embeds: buildThreadsCarouselEmbeds(url, metadata, previewImages),
+        const tailHint = buildTailHint(hiddenImages, Boolean(hasVideo));
+        console.log(
+          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} hint=${tailHint ? `"${tailHint}"` : "none"} ${url}`,
+        );
+        return {
+          embeds: buildThreadsCarouselEmbeds(
+            url,
+            metadata,
+            previewImages,
+            tailHint,
+          ),
         };
-        if (needsButton) {
-          payload.components = [buildThreadsLinkRow(url)];
-        }
-        return payload;
+      }
+      const fallbackEmbed = buildThreadsMediaEmbed(url, metadata);
+      const fallbackHint = buildTailHint(
+        Math.max(0, (metadata.imageCount || 1) - 1),
+        Boolean(hasVideo),
+      );
+      if (fallbackHint) {
+        const existing = fallbackEmbed.data?.description;
+        fallbackEmbed.setDescription(
+          existing ? `${existing}\n\n${fallbackHint}` : fallbackHint,
+        );
       }
       console.log(
-        `[preview] threads-multi-image fallback hasVideo=${hasVideo} ${url}`,
+        `[preview] threads-multi-image fallback hasVideo=${Boolean(hasVideo)} hint=${fallbackHint ? `"${fallbackHint}"` : "none"} ${url}`,
       );
-      return {
-        embeds: [buildThreadsMediaEmbed(url, metadata)],
-        components: [buildThreadsLinkRow(url)],
-      };
+      return { embeds: [fallbackEmbed] };
     }
 
     if (metadata.video || metadata.videoCount > 0) {
