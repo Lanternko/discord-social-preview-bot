@@ -2,15 +2,18 @@
 
 ### 可以在 Discord 預覽社群貼文的機器人！#支援 Threads
 
-一個會攔截 Threads / X / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebook / 巴哈姆特 / PTT 連結、並回覆完整預覽的 Discord bot。同時附帶一個害羞內向的 AI 人格可以陪聊（預設叫「**西寶**」，可自行改名與換人格，見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)）。
+一個會攔截 Threads / X / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebook / 巴哈姆特 / PTT 連結、並回覆完整預覽的 Discord bot。
+
+同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)）。
 
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
-<img width="300" height="88" alt="image" src="https://github.com/user-attachments/assets/963324f8-ed11-4af3-b587-45d617573766" />
+<img width="855" height="109" alt="image" src="https://github.com/user-attachments/assets/dacb0a19-0529-4832-ac58-d52c42acf566" />
+
 
 **最近更新**
 
-- 4.19：新增 `/tier` 斜線指令（簡短 / 標準 / 精細），管理員可切換西寶回覆詳細度（per-guild 持久化）
+- 4.19：新增 `/tier` 斜線指令（簡短 / 標準 / 精細），管理員可切換西寶回覆詳細度（節省 token 或詳細回答）
 - 4.18：README 重寫新手安裝流程（五分鐘快速安裝）、標註「西寶」為可改的預設名稱、介紹適合串接的 AI
 - 4.17：`@西寶` 接上 AI，會很害羞地跟你閒聊（需自備 API key，可用全免費方案）
 - 4.15：預覽失敗時會道歉 orz、運勢抽籤
@@ -216,11 +219,11 @@ GEMINI_MODEL=gemini-2.0-flash
 
 **怎麼選**（個人建議）：
 
-- **brief**：最保持西寶「話很少」的害羞人設；A+ 比較題只給 3~4 句可能資訊不夠
+- **brief**：最保持西寶「話很少」的害羞人設；節省 Token，適合用免費 AI 的人（如 Groq、Qwen）
 - **standard**：日常預設最平衡；A+ 6~8 句能給理由、E 做事 ≤8 句可給完整步驟
-- **detailed**：資訊量最大但成本最高（DeepSeek token 費用明顯上升、也容易讓西寶脫離人設）
+- **detailed**：資訊量最大但成本最高（Token 費用明顯上升，但記憶力很好、也更聰明）
 
-想要認真查資料就切 `detailed`，一般閒聊維持 `brief` 或 `standard`。
+想要聽詳細理由使用 `detailed`，一般閒聊使用 `brief` ，付費 API 用 `standard`。
 
 ### 進階環境變數
 
