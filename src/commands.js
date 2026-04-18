@@ -1,5 +1,7 @@
 const { MessageFlags, PermissionsBitField } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
+const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
+const { TIER_UI_LABELS } = require("./tier-config");
 
 const SERVER_COUNT_COMMAND = {
   name: "servers",
@@ -11,8 +13,31 @@ const DEBUG_PERMS_COMMAND = {
   description: "檢查目前頻道裡機器人的權限",
 };
 
+const TIER_COMMAND = {
+  name: "tier",
+  description: "查看或切換西寶的回覆詳細度（僅管理員可切換）",
+  defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
+  options: [
+    {
+      name: "level",
+      description: "要切換的詳細度（不填則顯示目前設定）",
+      type: 3, // STRING
+      required: false,
+      choices: [
+        { name: "簡短", value: "brief" },
+        { name: "標準", value: "standard" },
+        { name: "精細", value: "detailed" },
+      ],
+    },
+  ],
+};
+
 async function ensureApplicationCommands(client) {
-  const expectedCommands = [SERVER_COUNT_COMMAND, DEBUG_PERMS_COMMAND];
+  const expectedCommands = [
+    SERVER_COUNT_COMMAND,
+    DEBUG_PERMS_COMMAND,
+    TIER_COMMAND,
+  ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
     const existing = commands.find((c) => c.name === expectedCommand.name);
@@ -58,6 +83,65 @@ function buildPermissionDebugMessage(interaction) {
   return lines.join("\n");
 }
 
+async function handleTierCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const level = interaction.options.getString("level");
+  const guildId = interaction.guildId;
+
+  if (!level) {
+    const current = getGuildTier(guildId);
+    await interaction.reply({
+      content: `目前西寶的詳細度：**${TIER_UI_LABELS[current]}**\n（可切換：簡短 / 標準 / 精細；需管理員）`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!isValidTier(level)) {
+    await interaction.reply({
+      content: `未知的詳細度：${level}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // Defence in depth: defaultMemberPermissions already gates at Discord
+  // level, but re-check so a mis-configured server can't bypass.
+  const member = interaction.member;
+  const isAdmin = member?.permissions?.has?.(
+    PermissionsBitField.Flags.Administrator,
+  );
+  if (!isAdmin) {
+    await interaction.reply({
+      content: "只有伺服器管理員可以切換詳細度。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    setGuildTier(guildId, level);
+    console.log(`[tier] guild=${guildId} set tier=${level} by user=${interaction.user.id}`);
+    await interaction.reply({
+      content: `西寶的詳細度已切換為 **${TIER_UI_LABELS[level]}**。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    console.warn(`[tier] setGuildTier failed: ${err.message}`);
+    await interaction.reply({
+      content: "切換失敗，請稍後再試。",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 async function handleInteraction(interaction, client) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -74,13 +158,20 @@ async function handleInteraction(interaction, client) {
       content: buildPermissionDebugMessage(interaction),
       flags: MessageFlags.Ephemeral,
     });
+    return;
+  }
+
+  if (interaction.commandName === TIER_COMMAND.name) {
+    await handleTierCommand(interaction);
   }
 }
 
 module.exports = {
   SERVER_COUNT_COMMAND,
   DEBUG_PERMS_COMMAND,
+  TIER_COMMAND,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
+  handleTierCommand,
   handleInteraction,
 };

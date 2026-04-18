@@ -28,7 +28,9 @@ src/
 │   ├── providers.js      # callDeepSeek/callGroq/callCerebras/callGemini + withAbortTimeout
 │   └── chain.js          # buildAIProviderChain + generateAIReply
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
-├── commands.js           # Slash commands (/servers, /debug-perms)
+├── commands.js           # Slash commands (/servers, /debug-perms, /tier)
+├── tier-store.js         # Per-guild /tier persistence (data/tier-settings.json)
+├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
 └── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
 ```
 

@@ -1,6 +1,5 @@
 const {
   AI_TIMEOUT_MS,
-  AI_PERSONA,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -38,15 +37,15 @@ function logRateHeaders(label, response) {
   }
 }
 
-async function callGemini(turns) {
+async function callGemini(turns, persona, maxTokens) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     GEMINI_MODEL,
   )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
   const body = {
-    system_instruction: { parts: [{ text: AI_PERSONA }] },
+    system_instruction: { parts: [{ text: persona }] },
     contents: buildGeminiContents(turns),
-    generationConfig: { temperature: 0.9, topP: 0.95, maxOutputTokens: 180 },
+    generationConfig: { temperature: 0.9, topP: 0.95, maxOutputTokens: maxTokens },
   };
 
   return withAbortTimeout(AI_TIMEOUT_MS, "gemini", async (signal) => {
@@ -78,13 +77,13 @@ async function callGemini(turns) {
   });
 }
 
-async function callGroq(turns, model) {
+async function callGroq(turns, model, persona, maxTokens) {
   const body = {
     model,
-    messages: buildOpenAIMessages(turns),
+    messages: buildOpenAIMessages(turns, persona),
     temperature: 0.9,
     top_p: 0.95,
-    max_tokens: 180,
+    max_tokens: maxTokens,
   };
   const label = `groq:${model}`;
 
@@ -119,13 +118,13 @@ async function callGroq(turns, model) {
 }
 
 const CEREBRAS_QUEUE_RETRY_DELAY_MS = 1500;
-async function callCerebras(turns) {
+async function callCerebras(turns, persona, maxTokens) {
   const body = {
     model: CEREBRAS_MODEL,
-    messages: buildOpenAIMessages(turns),
+    messages: buildOpenAIMessages(turns, persona),
     temperature: 0.9,
     top_p: 0.95,
-    max_tokens: 180,
+    max_tokens: maxTokens,
   };
   const label = `cerebras:${CEREBRAS_MODEL}`;
 
@@ -175,13 +174,13 @@ async function callCerebras(turns) {
   });
 }
 
-async function callDeepSeek(turns) {
+async function callDeepSeek(turns, persona, maxTokens) {
   const body = {
     model: DEEPSEEK_MODEL,
-    messages: buildOpenAIMessages(turns),
+    messages: buildOpenAIMessages(turns, persona),
     temperature: 0.9,
     top_p: 0.95,
-    max_tokens: 180,
+    max_tokens: maxTokens,
   };
   const label = `deepseek:${DEEPSEEK_MODEL}`;
 

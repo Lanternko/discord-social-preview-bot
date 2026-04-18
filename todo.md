@@ -6,9 +6,7 @@ Deferred work with design decisions already aligned. Pick up after blockers clea
 
 ## 西寶人格分級（`/tier` 斜線指令）
 
-**狀態**：暫緩。等 `refactor/split-index-modules` 合回 `main` 後再開分支動工。
-
-**Why deferred**：功能會動到 `src/ai/` 幾乎所有檔案（persona、memory、chain、providers），在 refactor 合併前開工會造成兩個大 branch 互相 rebase 地獄。
+**狀態**：Phase 1 完成（`feat/tier-system`）— infra + `/tier` 指令 + persona overlay 已落地，brief/standard/detailed 實際會影響回覆字數、記憶深度、句數 cap。**Phase 2 未做**：精細 tier 的群組 context 收集（最近 15 則非 bot 訊息）、vision 分支（detailed + 圖片 → Gemini）。
 
 ### 三層 tier
 

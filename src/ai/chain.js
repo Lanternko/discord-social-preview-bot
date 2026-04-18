@@ -1,6 +1,5 @@
 const {
   AI_PROVIDER_FORCE,
-  AI_MAX_REPLY_CHARS,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -11,6 +10,7 @@ const {
   DEEPSEEK_MODEL,
 } = require("../config");
 const { trimDescription } = require("../utils");
+const { getTierConfig } = require("../tier-config");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
@@ -21,7 +21,8 @@ const {
 } = require("./providers");
 
 // Build the provider fallback chain once at startup. Each entry has a label
-// (for logging) and a call fn that returns string|null.
+// (for logging) and a call fn that accepts (turns, persona, maxTokens) and
+// returns string|null.
 //
 // Default priority order (paid/reliable → free → last resort):
 //   1. DeepSeek (paid, fastest reliable, V3 flagship — user-paid so prefer it)
@@ -40,7 +41,11 @@ function buildAIProviderChain() {
   }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
-      chain.push({ label: `groq:${model}`, call: (turns) => callGroq(turns, model) });
+      chain.push({
+        label: `groq:${model}`,
+        call: (turns, persona, maxTokens) =>
+          callGroq(turns, model, persona, maxTokens),
+      });
     }
   }
   if (GEMINI_API_KEY && (!only || only === "gemini")) {
@@ -54,18 +59,19 @@ const AI_PROVIDER_CHAIN = buildAIProviderChain();
 async function generateAIReply(message, userText) {
   if (AI_PROVIDER_CHAIN.length === 0) return null;
 
+  const tierConfig = getTierConfig(message.guildId);
   const userTurn = buildUserTurn(message, userText);
   const history = getChannelAIHistory(message.channelId);
   const turns = [...history, { role: "user", content: userTurn }];
 
   for (const provider of AI_PROVIDER_CHAIN) {
-    const raw = await provider.call(turns);
+    const raw = await provider.call(turns, tierConfig.persona, tierConfig.maxTokens);
     if (raw) {
-      const trimmed = trimDescription(raw, AI_MAX_REPLY_CHARS);
-      recordAITurn(message.channelId, "user", userTurn);
-      recordAITurn(message.channelId, "assistant", trimmed);
+      const trimmed = trimDescription(raw, tierConfig.maxReplyChars);
+      recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
+      recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
       console.log(
-        `[ai] used ${provider.label} len=${raw.length} history_before=${history.length}`,
+        `[ai] used ${provider.label} tier=${tierConfig.tier} len=${raw.length} history_before=${history.length}`,
       );
       return trimmed;
     }
