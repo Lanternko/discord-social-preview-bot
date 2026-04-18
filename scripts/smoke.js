@@ -367,13 +367,11 @@ it("isValidTier rejects unknown", () => {
 });
 
 console.log("tier-config");
-it("buildPersonaFromTemplate substitutes placeholders", () => {
-  const out = buildPersonaFromTemplate(
-    "a {SENTENCE_MIN}~{SENTENCE_MAX} b {SENTENCE_MAX} c",
-    2,
-    8,
-  );
-  assert.equal(out, "a 2~8 b 8 c");
+it("buildPersonaFromTemplate substitutes all placeholders", () => {
+  const template =
+    "headline {SENTENCE_MIN}~{SENTENCE_MAX} A {A_MIN}~{A_MAX} A+ {A_PLUS_MIN}~{A_PLUS_MAX} B {B_MIN}~{B_MAX} E {E_MAX}";
+  const out = buildPersonaFromTemplate(template, TIERS.detailed);
+  assert.equal(out, "headline 3~15 A 5~8 A+ 10~15 B 3~5 E 15");
 });
 it("getTierConfig defaults to brief when guildId missing", () => {
   const cfg = getTierConfig(undefined);
@@ -381,20 +379,50 @@ it("getTierConfig defaults to brief when guildId missing", () => {
   assert.equal(cfg.memoryMaxTurns, TIERS.brief.memoryMaxTurns);
   assert.equal(cfg.label, TIER_UI_LABELS.brief);
   assert.ok(typeof cfg.persona === "string" && cfg.persona.length > 0);
-  assert.ok(!cfg.persona.includes("{SENTENCE_MIN}"));
-  assert.ok(!cfg.persona.includes("{SENTENCE_MAX}"));
+  for (const placeholder of [
+    "{SENTENCE_MIN}",
+    "{SENTENCE_MAX}",
+    "{A_MIN}",
+    "{A_MAX}",
+    "{A_PLUS_MIN}",
+    "{A_PLUS_MAX}",
+    "{B_MIN}",
+    "{B_MAX}",
+    "{E_MAX}",
+  ]) {
+    assert.ok(
+      !cfg.persona.includes(placeholder),
+      `persona still contains ${placeholder}`,
+    );
+  }
 });
 it("TIERS entries carry required fields", () => {
   for (const key of ["brief", "standard", "detailed"]) {
     const t = TIERS[key];
     assert.ok(t, `missing tier ${key}`);
-    assert.equal(typeof t.memoryMaxTurns, "number");
-    assert.equal(typeof t.maxReplyChars, "number");
-    assert.equal(typeof t.maxTokens, "number");
-    assert.equal(typeof t.sentenceMin, "number");
-    assert.equal(typeof t.sentenceMax, "number");
+    for (const field of [
+      "memoryMaxTurns",
+      "maxReplyChars",
+      "maxTokens",
+      "sentenceMin",
+      "sentenceMax",
+      "aMin",
+      "aMax",
+      "aPlusMin",
+      "aPlusMax",
+      "bMin",
+      "bMax",
+      "eMax",
+    ]) {
+      assert.equal(typeof t[field], "number", `${key}.${field} not a number`);
+    }
     assert.equal(typeof t.vision, "boolean");
   }
+});
+it("detailed tier expands A+ beyond brief", () => {
+  assert.ok(TIERS.detailed.aPlusMax > TIERS.brief.aPlusMax);
+  assert.ok(TIERS.detailed.aMax > TIERS.brief.aMax);
+  assert.ok(TIERS.detailed.eMax > TIERS.brief.eMax);
 });
 
 console.log("");
