@@ -5,9 +5,9 @@
 | Condition | Output |
 |---|---|
 | No image (`isTextOnly`) or `twitterCard === "summary"` | Custom embed (text only) |
+| Multiple images (`imageCount > 1`) | Multi-image carousel embed (checked *before* video so mixed image+video posts still show all images) |
 | Has video / `videoCount > 0` | Fixer link (`FIXER_THREADS`) |
 | `summary_large_image` + single image | Custom embed with image |
-| Multiple images (`imageCount > 1`) | Custom embed with image + "Open on Threads" button |
 | Fallback / probe error | Fixer link (`FIXER_THREADS`) |
 
 **Order is load-bearing.** See code in [src/index.js](../../src/index.js) around the Threads routing block — the `if` ladder order determines which branch a mixed (image+video) post falls into.
