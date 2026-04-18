@@ -19,6 +19,7 @@
 | `THREADS_PROBE_TIMEOUT_MS` | `10000` | Per-URL subprocess timeout |
 | `THREADS_METADATA_CACHE_TTL_MS` | `600000` | 10 min Threads metadata cache |
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
+| `MULTI_IMAGE_PREVIEW_COUNT` | `3` | Threads 多圖 carousel 顯示前 N 張。超出或含 video 時，最後一個 embed 的 description 追加 `... 還有 N 張 + 影片` 提示。clamp 上限 10（Discord 硬上限） |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
 

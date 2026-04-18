@@ -59,7 +59,7 @@ All log prefixes are scoped: `[preview]`, `[threads-meta]`, `[ai]`, `[probe]`, `
 
 ## Key behavioural summary
 
-- **Threads**: text-only → custom embed. Video → fixer link. Single image → custom embed. Multiple images → custom embed + "Open on Threads" button. Probe error → fixer. Full decision table in [routing.md](.claude/rules/routing.md).
+- **Threads**: text-only → custom embed. Video → fixer link. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷或含 video 時最後一個 embed description 追加 `... 還有 N 張 + 影片` 提示。Probe error → fixer. Full decision table in [routing.md](.claude/rules/routing.md).
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else**: fixer host (X/Twitter / Reddit / Pixiv / Bluesky / Bilibili / Facebook) with FixEmbed as a generic fallback if unfurl is empty.
 - **@西寶 AI reply chain**: DeepSeek (primary, paid) → Cerebras (Qwen free) → Groq (llama 70B → 8B) → Gemini (last resort). First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last ~8 turns. Details in [ai-providers.md](.claude/rules/ai-providers.md).

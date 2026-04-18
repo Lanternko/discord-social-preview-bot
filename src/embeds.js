@@ -1,9 +1,4 @@
-const {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-} = require("discord.js");
+const { EmbedBuilder } = require("discord.js");
 
 const { THREADS_EMBED_COLOR } = require("./config");
 const { trimDescription } = require("./utils");
@@ -31,16 +26,7 @@ function buildThreadsMediaEmbed(url, metadata) {
   return embed;
 }
 
-function buildThreadsLinkRow(url, label = "查看全部圖片") {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setLabel(label)
-      .setStyle(ButtonStyle.Link)
-      .setURL(url),
-  );
-}
-
-function buildThreadsCarouselEmbeds(url, firstMetadata, allImages) {
+function buildThreadsCarouselEmbeds(url, firstMetadata, allImages, tailHint) {
   const firstEmbed = buildThreadsMediaEmbed(url, {
     ...firstMetadata,
     image: allImages[0],
@@ -53,7 +39,13 @@ function buildThreadsCarouselEmbeds(url, firstMetadata, allImages) {
         .setImage(imgUrl)
         .setColor(THREADS_EMBED_COLOR),
     );
-  return [firstEmbed, ...restEmbeds];
+  const embeds = [firstEmbed, ...restEmbeds];
+  if (tailHint) {
+    const last = embeds[embeds.length - 1];
+    const existing = last.data?.description;
+    last.setDescription(existing ? `${existing}\n\n${tailHint}` : tailHint);
+  }
+  return embeds;
 }
 
 function buildBahamutEmbed(url, metadata) {
@@ -103,7 +95,6 @@ function buildBilibiliEmbed(url, metadata) {
 module.exports = {
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
-  buildThreadsLinkRow,
   buildThreadsCarouselEmbeds,
   buildBahamutEmbed,
   buildPttEmbed,

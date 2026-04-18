@@ -131,7 +131,35 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasComponents, false);
   });
 
-  await it("multi-image with imageCount > images.length (fallback) → 1 embed + button", async () => {
+  await it("multi-image >3 images → truncated to MULTI_IMAGE_PREVIEW_COUNT, last embed hints remaining", async () => {
+    _mockThreadsMetadata = {
+      image: "https://x/1.jpg",
+      title: "t",
+      description: "d",
+      twitterCard: "summary_large_image",
+      images: [
+        "https://x/1.jpg",
+        "https://x/2.jpg",
+        "https://x/3.jpg",
+        "https://x/4.jpg",
+        "https://x/5.jpg",
+      ],
+      imageCount: 5,
+      videoCount: 0,
+      video: false,
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    const s = shapeOf(p);
+    assert.equal(s.embedCount, 3, "should truncate to default preview count 3");
+    assert.equal(s.hasComponents, false, "no button — rely on embed URL instead");
+    const lastDesc = p.embeds[p.embeds.length - 1].data?.description;
+    assert.ok(
+      typeof lastDesc === "string" && lastDesc.includes("還有 2 張"),
+      `last embed should hint remaining images, got: ${lastDesc}`,
+    );
+  });
+
+  await it("multi-image with imageCount > images.length (fallback) → 1 embed + description hint", async () => {
     _mockThreadsMetadata = {
       image: "https://x/1.jpg",
       title: "t",
@@ -145,7 +173,12 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
     assert.equal(s.embedCount, 1);
-    assert.equal(s.hasComponents, true);
+    assert.equal(s.hasComponents, false, "no button");
+    const desc = p.embeds[0].data?.description;
+    assert.ok(
+      typeof desc === "string" && desc.includes("還有 4 張"),
+      `fallback embed should hint remaining images, got: ${desc}`,
+    );
   });
 
   // CRITICAL CASE — this is the regression that bit twice in PR #15.
@@ -166,6 +199,12 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasContent, false, "MUST NOT route to video fixer");
     assert.equal(s.hasFallbackContent, false);
     assert.equal(s.hasEmbedFallback, false);
+    assert.equal(s.hasComponents, false, "no button — description hint only");
+    const lastDesc = p.embeds[p.embeds.length - 1].data?.description;
+    assert.ok(
+      typeof lastDesc === "string" && lastDesc.includes("影片"),
+      `last embed should hint video presence, got: ${lastDesc}`,
+    );
   });
 
   await it("video only (no multi-image) → fixer URL + fallback chain", async () => {

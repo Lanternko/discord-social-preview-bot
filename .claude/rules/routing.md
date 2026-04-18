@@ -7,7 +7,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | Condition | Output |
 |---|---|
 | No image (`isTextOnly`) or `twitterCard === "summary"` | Custom embed (text only) |
-| Multiple images (`imageCount > 1`) | Multi-image carousel embed (checked *before* video so mixed image+video posts still show all images) |
+| Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷 或 `hasVideo`，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張 + 影片`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video，混合 image+video 仍走 carousel |
 | Has video / `videoCount > 0` | Fixer link (`FIXER_THREADS`) |
 | `summary_large_image` + single image | Custom embed with image |
 | Fallback / probe error | Fixer link (`FIXER_THREADS`) |

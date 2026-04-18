@@ -56,26 +56,6 @@ Deferred work with design decisions already aligned. Pick up after blockers clea
 
 ---
 
-## 多圖預覽預設只顯示 3 張
-
-**狀態**：想法階段，未開工。
-
-**動機**：Threads / 其他平台多圖貼文現在全部攤平在 embed 裡，訊息很長佔頻道空間。
-
-### 設計方向（待對齊）
-
-- 預設只顯示前 3 張圖 + 「還有 N 張」提示
-- 提供按鈕（`Open on X` 風格）點開看全部，或直接連到原貼文
-- Discord 單則 message 最多 10 張 embed image 的硬限制還是存在，這個是 UX 限制不是技術限制
-
-### 待決定
-
-- 「點開看全部」是：（a）編輯原訊息展開全部 embeds、（b）跳轉到原貼文、（c）發 ephemeral follow-up 給點擊者？
-- 影響範圍：Threads 多圖 branch、其他平台目前是交給 fixer 處理不會受影響——確認一下 Bahamut / PTT probe 有沒有自組多圖 embed 的路徑
-- 3 張這個預設值是否要可調（env var `MULTI_IMAGE_PREVIEW_COUNT`）
-
----
-
 ## Threads `hasVideo` log 印出 URL 而不是 boolean
 
 **狀態**：想法階段，未開工。小 cosmetic bug，1 行修。
