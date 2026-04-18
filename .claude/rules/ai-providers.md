@@ -2,7 +2,9 @@
 
 ## Entry point
 
-`generateAIReply(message, userText)` in [src/index.js](../../src/index.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()`, then iterates over `AI_PROVIDER_CHAIN` (built once at startup by `buildAIProviderChain()`).
+`generateAIReply(message, userText)` in [src/ai/chain.js](../../src/ai/chain.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()` (from [src/ai/persona.js](../../src/ai/persona.js)), then iterates over `AI_PROVIDER_CHAIN` (built once at module load by `buildAIProviderChain()`).
+
+Provider implementations live in [src/ai/providers.js](../../src/ai/providers.js); per-channel memory in [src/ai/memory.js](../../src/ai/memory.js).
 
 **First non-null reply wins.** On null/error, move to the next layer. Chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 

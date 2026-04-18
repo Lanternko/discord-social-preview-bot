@@ -1,5 +1,7 @@
 # Platform Routing (`buildPreviewPayloads`)
 
+Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform builders under [src/platforms/](../../src/platforms/).
+
 ## Threads
 
 | Condition | Output |
@@ -10,7 +12,7 @@
 | `summary_large_image` + single image | Custom embed with image |
 | Fallback / probe error | Fixer link (`FIXER_THREADS`) |
 
-**Order is load-bearing.** See code in [src/index.js](../../src/index.js) around the Threads routing block — the `if` ladder order determines which branch a mixed (image+video) post falls into.
+**Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js) (MIXED case: multi-image AND video → carousel wins).
 
 ## Instagram
 
