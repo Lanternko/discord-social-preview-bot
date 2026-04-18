@@ -37,7 +37,7 @@ async function buildThreadsPayload(url) {
         metadata.images && metadata.images.length > 1
           ? metadata.images.slice(0, 10)
           : null;
-      const hasVideo = metadata.video || metadata.videoCount > 0;
+      const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
 
       if (allImages) {
         const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
