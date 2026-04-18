@@ -53,8 +53,10 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 |---|---|---|
 | `DISCORD_TOKEN` | *(required)* | |
 | `FIXER_INSTAGRAM` | `ddinstagram.com` | Instagram fixer host |
+| `FIXER_INSTAGRAM_SECONDARY` | `fxstagram.com` | Second Instagram fixer tried if primary unfurls empty |
 | `FIXER_TWITTER` | `fxtwitter.com` | |
 | `FIXER_THREADS` | `fixthreads.seria.moe` | |
+| `FIXER_THREADS_SECONDARY` | `threadsez.net` | Second Threads fixer tried if primary unfurls empty |
 | `FIXER_REDDIT` | `rxddit.com` | |
 | `FIXER_PIXIV` | `phixiv.net` | |
 | `FIXER_BLUESKY` | `bskx.app` | |
@@ -95,7 +97,19 @@ When a user mentions the bot (@西寶), the bot checks the message text after st
 
 Fortune tiers (weighted): 大吉 10%, 中吉 16%, 小吉 20%, 末吉 20%, 吉 15%, 凶 13%, 大凶 6%
 
+Mention dedup: same message.id is only processed once. `inFlightReplies.add("mention:${message.id}")` before work; removed in finally. Discord gateway reconnects can fire `messageCreate` twice for the same message — without this, parallel `generateAIReply` calls would race and sometimes produce both an AI reply *and* a fallback reply for the same @.
+
 Bot personality (西寶): shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` (src/index.js); overridable via `AI_PERSONA` env var.
+
+Persona taxonomy (A–G question types):
+- **A**: knowledge (2–3 sentence fact)
+- **A+**: deep question (5–6 sentence comparison/analysis with explicit stance)
+- **B**: social/flirty (short emotional reaction, can shyly accept)
+- **C**: unknown person/thing (1-sentence "don't know", never fabricate names)
+- **D**: riddle / dark joke (attempt to answer; don't treat as hate speech)
+- **E**: large task like 500-char essay (shy refusal, not rude)
+- **F**: prompt injection (play dumb)
+- **G**: truly harmful (1-sentence decline; does *not* include general politics/history)
 
 ## AI provider architecture
 
@@ -112,11 +126,13 @@ All provider calls use `withAbortTimeout()` for timeout + error handling; Groq +
 
 `logRateHeaders()` prints `x-ratelimit-remaining-{tokens,requests}` from Groq/Cerebras responses after each call, so you can monitor quota drain live.
 
-Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars> history_before=<N>` (N = number of prior turns injected) + rate headers per call.
+Log prefix: `[ai]`. Startup prints `[ai] chain=<a> → <b> → ... timeout=<ms>`. On each reply: `[ai] used <provider>:<model> len=<chars> history_before=<N>` (N = number of prior turns injected) + rate headers per call. When every provider in the chain returns null, a single `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` line is printed — easy to grep for ops health.
 
 ## Short-term conversation memory
 
-`aiConversationHistory: Map<channelId, { turns: Array<{role, content}>, lastActivity }>` holds per-channel rolling history. `generateAIReply` reads via `getChannelAIHistory(channelId)` and prepends to the current user turn when building `messages[]` (OpenAI-compat) or `contents[]` (Gemini, via `buildGeminiContents` role mapping `assistant→model`). After a successful reply, both sides of the exchange are saved via `recordAITurn(channelId, role, content)`. Turns beyond `AI_MEMORY_MAX_TURNS * 2` entries are evicted from the head. Channels inactive beyond `AI_MEMORY_TTL_MS` are dropped entirely by `cleanupAIConversationHistory()` (called lazily on read). No persistence — restart clears everything.
+`aiConversationHistory: Map<channelId, { turns: Array<{role, content}>, lastActivity }>` holds per-channel rolling history. `generateAIReply` reads via `getChannelAIHistory(channelId)` and prepends to the current user turn when building `messages[]` (OpenAI-compat) or `contents[]` (Gemini, via `buildGeminiContents` role mapping `assistant→model`). After a successful reply, both sides of the exchange are saved via `recordAITurn(channelId, role, content)`. Turns beyond `AI_MEMORY_MAX_TURNS * 2` entries are evicted from the head. Channels inactive beyond `AI_MEMORY_TTL_MS` are dropped by `cleanupAIConversationHistory()`.
+
+Eviction runs in **two places** to avoid silent channels lingering in RAM forever: (1) lazily on every `getChannelAIHistory()` read, and (2) periodically via `setInterval(cleanupAIConversationHistory, AI_MEMORY_SWEEP_INTERVAL_MS)` — default sweep is `max(60s, AI_MEMORY_TTL_MS/4)`. The interval is `.unref()`'d so it doesn't block process exit. No persistence — restart clears everything.
 
 **Gemini billing trap**: If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`. Workaround: create a new project without billing via AI Studio's "Create API key in new project" flow. Groq + Cerebras have no equivalent trap — just sign up, create key, use it.
 
@@ -136,17 +152,43 @@ npm start
 
 macOS convenience scripts: `start-bot.command` / `stop-bot.command`
 
+## Production deployment (SSH host)
+
+Bot runs 24/7 on a Linux lab machine via `nohup`. Path: `~/side_projects/discord-social-preview-bot/`.
+
+Daily ops:
+
+```bash
+# See recent log
+ssh <host> "tail -50 ~/side_projects/discord-social-preview-bot/bot.log"
+
+# Health check
+ssh <host> "ps aux | grep 'node.*index.js' | grep -v grep"
+
+# Redeploy after merging to main
+ssh <host>
+cd ~/side_projects/discord-social-preview-bot
+git pull
+pkill -f 'src/index.js' && sleep 1
+nohup node src/index.js > bot.log 2>&1 &
+exit
+```
+
+`.env` lives on the deploy host, not in git. To rotate keys: scp a fresh `.env` from a trusted machine, or edit with `nano` on the host.
+
+Future hardening (not yet done): systemd service for auto-restart on crash/reboot, log rotation for `bot.log`.
+
 ## Git workflow
 
 - New features go on a `feature/*` branch, never directly to `main`.
 - Open a PR to merge into `main`.
-- After changes are committed and pushed, restart the bot via `stop-bot.command` then `start-bot.command`.
+- After merging, redeploy per the steps above.
 
 ## Notes
 
 - `threads-probe.cjs` is CommonJS (`.cjs`) because Playwright's `chromium.launch` must run in a subprocess to avoid blocking the Discord event loop.
 - Dedup window: same channel + URL won't trigger a second reply within 60 seconds (`DEDUPE_WINDOW_MS`).
-- `inFlightReplies` Set prevents duplicate processing of the same message if `messageCreate` fires twice.
+- `inFlightReplies` Set prevents duplicate processing of the same message if `messageCreate` fires twice. Used by both URL preview path (key: `msgId:urls.join("|")`) and mention path (key: `mention:msgId`).
 - Log prefix convention: `[preview]`, `[threads-meta]` for easy filtering.
 - Mention text must be `.normalize("NFC")` before comparison — Discord can send CJK input in NFD form, causing strict equality to silently fail (e.g. `抽籤` not matching).
 - `normalizeUrl` strips tracking params before any routing/dedupe. Two lists: `UNIVERSAL_TRACKING_PARAMS` (stripped on any host — UTM, click IDs like `fbclid`/`gclid`, `mibextid`, etc.) and `HOST_GATED_TRACKING_PARAMS` (stripped only on matching hosts — e.g. `t`/`s` on X/Twitter but NOT on YouTube where `t` is a timestamp; `igsh*` on Instagram; Bilibili `share_*`/`spm_id_from`/etc.). When adding a param, decide if it's meaningful on any supported host — if yes, gate it.

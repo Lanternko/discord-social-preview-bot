@@ -1342,8 +1342,14 @@ function isMentioningBot(message) {
 }
 
 function buildUserTurn(message, userText) {
+  // discord.js guarantees author.username exists, but guildMember +
+  // globalName can be undefined in edge cases (DMs, uncached members).
+  // Final fallback is a generic literal to prevent `<sender name="undefined"/>`.
   const username =
-    message.member?.displayName || message.author.globalName || message.author.username;
+    message.member?.displayName ||
+    message.author.globalName ||
+    message.author.username ||
+    "使用者";
   // 使用 XML 風格的 metadata 包裝，避免 LLM 把「name: text」當 dialogue 模板
   // 學會在自己的回應裡也加 name 前綴。
   return userText
@@ -1405,6 +1411,10 @@ async function callGemini(turns) {
       body: JSON.stringify(body),
       signal,
     });
+
+    // Note: Gemini uses URL query-string auth (`?key=...`) and doesn't return
+    // x-ratelimit-* headers like Groq / Cerebras / DeepSeek do, so we skip
+    // logRateHeaders() here — there's nothing useful to log.
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
@@ -1636,6 +1646,12 @@ async function generateAIReply(message, userText) {
       return trimmed;
     }
   }
+  // All providers returned null (HTTP errors, safety blocks, timeouts, etc.).
+  // Individual failures already logged inside each callXxx; this single line
+  // makes "everything failed" easy to grep for in ops.
+  console.warn(
+    `[ai] chain exhausted (${AI_PROVIDER_CHAIN.length} providers tried), falling back to hardcoded reply`,
+  );
   return null;
 }
 
@@ -1758,8 +1774,22 @@ client.on("messageCreate", async (message) => {
   }
 });
 
+// Background cleanup tasks: the per-read lazy cleanup in
+// `cleanupAIConversationHistory` only evicts when a channel is active.
+// A silent channel (no @ for >30min) would linger in RAM forever on a
+// long-running multi-guild bot. Periodic sweep covers that.
+const AI_MEMORY_SWEEP_INTERVAL_MS = Math.max(60_000, Math.floor(AI_MEMORY_TTL_MS / 4));
+const aiMemorySweepTimer = setInterval(() => {
+  cleanupAIConversationHistory();
+}, AI_MEMORY_SWEEP_INTERVAL_MS);
+// Don't block process exit on this timer (it's a janitor, not critical work).
+if (typeof aiMemorySweepTimer.unref === "function") {
+  aiMemorySweepTimer.unref();
+}
+
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
+    clearInterval(aiMemorySweepTimer);
     process.exit(0);
   });
 }
