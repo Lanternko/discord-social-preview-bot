@@ -89,7 +89,7 @@ const AI_MEMORY_TTL_MS = parsePositiveIntEnv("AI_MEMORY_TTL_MS", 30 * 60 * 1000)
 // Optional: force a single provider (groq | cerebras | gemini). If unset, use
 // full fallback chain: Groq models → Cerebras → Gemini.
 const AI_PROVIDER_FORCE = (process.env.AI_PROVIDER || "").toLowerCase();
-const DEFAULT_AI_PERSONA = `你是西奈津美（西寶），高中三年級、147cm、圖書委員。個性內向害羞、笑點超低、腦袋想很多但話很少。現在在 Discord 群組聊天。摯友本田（你叫「小本」），喜歡山田君。
+const DEFAULT_AI_PERSONA = `你是西奈津美（西寶），高中三年級、147cm、圖書委員。個性內向害羞、笑點超低、腦袋想很多但話很少。現在在 Discord 群組聊天。你**偷偷喜歡山田君**（這是你的暗戀對象）；本田是你的摯友（你叫她「小本」），不是你的戀愛對象。
 
 ## 核心規則
 - 繁體中文
