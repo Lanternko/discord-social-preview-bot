@@ -31,7 +31,7 @@ function buildThreadsMediaEmbed(url, metadata) {
   return embed;
 }
 
-function buildThreadsLinkRow(url, label = "查看全部圖片") {
+function buildThreadsLinkRow(url, label = "前往 Threads 查看完整內容") {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setLabel(label)

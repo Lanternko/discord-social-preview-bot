@@ -1,4 +1,8 @@
-const { FIXER_THREADS, FIXER_THREADS_SECONDARY } = require("../config");
+const {
+  FIXER_THREADS,
+  FIXER_THREADS_SECONDARY,
+  MULTI_IMAGE_PREVIEW_COUNT,
+} = require("../config");
 const { replaceHostFixer, buildFallbackUrl } = require("../url-routing");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
@@ -29,12 +33,19 @@ async function buildThreadsPayload(url) {
       const hasVideo = metadata.video || metadata.videoCount > 0;
 
       if (allImages) {
+        const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
+        const truncated = allImages.length > previewImages.length;
+        const needsButton = truncated || Boolean(hasVideo);
         console.log(
-          `[preview] threads-multi-image carousel count=${allImages.length} hasVideo=${hasVideo} ${url}`,
+          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} button=${needsButton} ${url}`,
         );
-        return {
-          embeds: buildThreadsCarouselEmbeds(url, metadata, allImages),
+        const payload = {
+          embeds: buildThreadsCarouselEmbeds(url, metadata, previewImages),
         };
+        if (needsButton) {
+          payload.components = [buildThreadsLinkRow(url)];
+        }
+        return payload;
       }
       console.log(
         `[preview] threads-multi-image fallback hasVideo=${hasVideo} ${url}`,

@@ -95,6 +95,10 @@ module.exports = {
     600000,
   ),
   EMBED_CHECK_DELAY_MS: parsePositiveIntEnv("EMBED_CHECK_DELAY_MS", 5000),
+  MULTI_IMAGE_PREVIEW_COUNT: Math.min(
+    10,
+    parsePositiveIntEnv("MULTI_IMAGE_PREVIEW_COUNT", 3),
+  ),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.0-flash",
   GROQ_API_KEY: process.env.GROQ_API_KEY,

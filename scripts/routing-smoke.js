@@ -131,6 +131,29 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasComponents, false);
   });
 
+  await it("multi-image >3 images → truncated to MULTI_IMAGE_PREVIEW_COUNT + button", async () => {
+    _mockThreadsMetadata = {
+      image: "https://x/1.jpg",
+      title: "t",
+      description: "d",
+      twitterCard: "summary_large_image",
+      images: [
+        "https://x/1.jpg",
+        "https://x/2.jpg",
+        "https://x/3.jpg",
+        "https://x/4.jpg",
+        "https://x/5.jpg",
+      ],
+      imageCount: 5,
+      videoCount: 0,
+      video: false,
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    const s = shapeOf(p);
+    assert.equal(s.embedCount, 3, "should truncate to default preview count 3");
+    assert.equal(s.hasComponents, true, "truncated → must include link button");
+  });
+
   await it("multi-image with imageCount > images.length (fallback) → 1 embed + button", async () => {
     _mockThreadsMetadata = {
       image: "https://x/1.jpg",
