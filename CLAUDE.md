@@ -4,12 +4,39 @@ A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit,
 
 ## Architecture
 
-Two files in `src/`:
+CommonJS modules under `src/`. Entry point is `src/index.js`; everything else is a focused module.
 
-- **`index.js`** — Discord client, message routing, embed builders, dedup/cache, AI provider chain, 西寶 persona.
-- **`threads-probe.cjs`** — Playwright subprocess. Loads a Threads / Bahamut / PTT URL and extracts OG/twitter meta tags + DOM media counts. Called by `index.js` via `execFile`.
+```
+src/
+├── index.js              # Client init, event handlers, dispatcher (~150 lines)
+├── config.js             # All env vars + constants (FIXER_*, AI_*, timeouts, persona)
+├── url-routing.js        # Host sets, normalizeUrl, extractSupportedUrls, isXxxUrl, fixers
+├── utils.js              # trimDescription, pickRandom
+├── probe.js              # Playwright subprocess wrapper + Threads metadata cache
+├── embeds.js             # All EmbedBuilder factories (Threads / Bahamut / PTT / Bilibili)
+├── platforms/
+│   ├── threads.js        # buildThreadsPayload — multi-image, video, single, fallback dispatch
+│   ├── instagram.js      # buildInstagramPayload — story owner detection + ddinstagram fixer
+│   ├── bilibili.js       # buildBilibiliPayload — b23.tv expansion + vxbilibili fixer
+│   ├── bahamut.js        # buildBahamutPayload — playwright probe + custom embed
+│   └── ptt.js            # buildPttPayload — playwright probe + custom embed
+├── preview.js            # buildPreviewPayloads — top-level platform dispatcher
+├── discord-io.js         # send/suppress/empty-embed/dedup state/permissions
+├── ai/
+│   ├── persona.js        # AI_PERSONA + buildUserTurn + OpenAI/Gemini message format helpers
+│   ├── memory.js         # Per-channel conversation history + sweep timer
+│   ├── providers.js      # callDeepSeek/callGroq/callCerebras/callGemini + withAbortTimeout
+│   └── chain.js          # buildAIProviderChain + generateAIReply
+├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
+├── commands.js           # Slash commands (/servers, /debug-perms)
+└── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
+```
 
-All log prefixes are scoped: `[preview]`, `[threads-meta]`, `[ai]`. Grep one to isolate.
+`threads-probe.cjs` runs in a separate process via `execFile` to keep Playwright off the Discord event loop.
+
+`scripts/smoke.js` exercises pure functions (URL routing, persona, fortune helpers) — run with `node scripts/smoke.js` to verify a refactor didn't break behaviour. No I/O, no Discord, no AI calls.
+
+All log prefixes are scoped: `[preview]`, `[threads-meta]`, `[ai]`, `[probe]`, `[permissions]`, `[mention]`, `[commands]`. Grep one to isolate.
 
 ## NEVER
 
