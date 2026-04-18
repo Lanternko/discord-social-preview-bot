@@ -19,10 +19,15 @@ const {
   callCerebras,
   callDeepSeek,
 } = require("./providers");
+const {
+  isProviderAvailable,
+  recordProviderSuccess,
+  recordProviderFailure,
+} = require("./circuit");
 
 // Build the provider fallback chain once at startup. Each entry has a label
 // (for logging) and a call fn that accepts (turns, persona, maxTokens) and
-// returns string|null.
+// returns { ok: true, text } | { ok: false, kind, ... }.
 //
 // Default priority order (paid/reliable → free → last resort):
 //   1. DeepSeek (paid, fastest reliable, V3 flagship — user-paid so prefer it)
@@ -56,6 +61,29 @@ function buildAIProviderChain() {
 
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
 
+async function runProviderChain(chain, turns, persona, maxTokens) {
+  for (const provider of chain) {
+    if (!isProviderAvailable(provider.label)) {
+      console.log(`[ai] skip cooling-down provider=${provider.label}`);
+      continue;
+    }
+
+    const result = await provider.call(turns, persona, maxTokens);
+
+    if (result && result.ok) {
+      recordProviderSuccess(provider.label);
+      return { provider, text: result.text };
+    }
+
+    const failure = result ?? { kind: "unknown" };
+    const cooldownMs = recordProviderFailure(provider.label, failure);
+    console.warn(
+      `[ai] provider failed label=${provider.label} kind=${failure.kind} cooldownMs=${cooldownMs}`,
+    );
+  }
+  return null;
+}
+
 async function generateAIReply(message, userText) {
   if (AI_PROVIDER_CHAIN.length === 0) return null;
 
@@ -64,18 +92,22 @@ async function generateAIReply(message, userText) {
   const history = getChannelAIHistory(message.channelId);
   const turns = [...history, { role: "user", content: userTurn }];
 
-  for (const provider of AI_PROVIDER_CHAIN) {
-    const raw = await provider.call(turns, tierConfig.persona, tierConfig.maxTokens);
-    if (raw) {
-      const trimmed = trimDescription(raw, tierConfig.maxReplyChars);
-      recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
-      recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
-      console.log(
-        `[ai] used ${provider.label} tier=${tierConfig.tier} len=${raw.length} history_before=${history.length}`,
-      );
-      return trimmed;
-    }
+  const result = await runProviderChain(
+    AI_PROVIDER_CHAIN,
+    turns,
+    tierConfig.persona,
+    tierConfig.maxTokens,
+  );
+  if (result) {
+    const trimmed = trimDescription(result.text, tierConfig.maxReplyChars);
+    recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
+    recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
+    console.log(
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length}`,
+    );
+    return trimmed;
   }
+
   console.warn(
     `[ai] chain exhausted (${AI_PROVIDER_CHAIN.length} providers tried), falling back to hardcoded reply`,
   );
@@ -85,5 +117,6 @@ async function generateAIReply(message, userText) {
 module.exports = {
   AI_PROVIDER_CHAIN,
   buildAIProviderChain,
+  runProviderChain,
   generateAIReply,
 };

@@ -10,18 +10,62 @@ const {
 } = require("../config");
 const { buildOpenAIMessages, buildGeminiContents } = require("./persona");
 
+function ok(text) {
+  return { ok: true, text };
+}
+
+function fail(kind, extra = {}) {
+  return { ok: false, kind, ...extra };
+}
+
+function parseRetryAfterMs(response) {
+  const raw = response.headers.get("retry-after");
+  if (!raw) return null;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.floor(seconds * 1000);
+  }
+
+  const at = Date.parse(raw);
+  if (Number.isFinite(at)) {
+    return Math.max(0, at - Date.now());
+  }
+
+  return null;
+}
+
+function classifyHttpFailure(response, errText) {
+  const status = response.status;
+  const detail = (errText ?? "").slice(0, 200);
+  if (status === 401 || status === 403) {
+    return fail("auth", { status, detail });
+  }
+  if (status === 429) {
+    return fail("rate_limit", { status, retryAfterMs: parseRetryAfterMs(response) ?? 60_000, detail });
+  }
+  if (status >= 500 && status <= 599) {
+    return fail("server", { status, detail });
+  }
+  return fail("unknown", { status, detail });
+}
+
 async function withAbortTimeout(timeoutMs, providerLabel, fn) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fn(controller.signal);
   } catch (error) {
-    if (error.name === "AbortError") {
+    if (error?.name === "AbortError") {
       console.warn(`[ai] ${providerLabel} timed out after ${timeoutMs}ms`);
-    } else {
-      console.warn(`[ai] ${providerLabel} failed: ${error.message}`);
+      return fail("timeout");
     }
-    return null;
+    if (error instanceof TypeError) {
+      console.warn(`[ai] ${providerLabel} network failed: ${error.message}`);
+      return fail("network", { detail: error.message });
+    }
+    console.warn(`[ai] ${providerLabel} failed: ${error.message}`);
+    return fail("unknown", { detail: error.message });
   } finally {
     clearTimeout(timer);
   }
@@ -58,8 +102,9 @@ async function callGemini(turns, persona, maxTokens) {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
-      console.warn(`[ai] gemini http ${response.status}: ${errText.slice(0, 200)}`);
-      return null;
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] gemini http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
     }
 
     const payload = await response.json();
@@ -71,9 +116,9 @@ async function callGemini(turns, persona, maxTokens) {
     if (!text) {
       const finishReason = payload?.candidates?.[0]?.finishReason ?? "unknown";
       console.warn(`[ai] gemini empty response, finishReason=${finishReason}`);
-      return null;
+      return fail("empty", { detail: finishReason });
     }
-    return text;
+    return ok(text);
   });
 }
 
@@ -102,8 +147,9 @@ async function callGroq(turns, model, persona, maxTokens) {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
-      console.warn(`[ai] ${label} http ${response.status}: ${errText.slice(0, 200)}`);
-      return null;
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
     }
 
     const payload = await response.json();
@@ -111,9 +157,9 @@ async function callGroq(turns, model, persona, maxTokens) {
     if (!text) {
       const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
       console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
-      return null;
+      return fail("empty", { detail: finishReason });
     }
-    return text;
+    return ok(text);
   });
 }
 
@@ -148,10 +194,10 @@ async function callCerebras(turns, persona, maxTokens) {
         if (!text) {
           const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
           console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
-          return null;
+          return fail("empty", { detail: finishReason });
         }
         if (attempt > 0) console.log(`[ai] ${label} succeeded on retry`);
-        return text;
+        return ok(text);
       }
 
       const errText = await response.text().catch(() => "");
@@ -167,10 +213,16 @@ async function callCerebras(turns, persona, maxTokens) {
         continue;
       }
 
-      console.warn(`[ai] ${label} http ${response.status}: ${errText.slice(0, 200)}`);
-      return null;
+      if (isQueueExceeded) {
+        console.warn(`[ai] ${label} queue_exceeded after retry`);
+        return fail("queue_exceeded", { status: 429 });
+      }
+
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
     }
-    return null;
+    return fail("unknown", { detail: "cerebras exhausted retry loop" });
   });
 }
 
@@ -199,8 +251,9 @@ async function callDeepSeek(turns, persona, maxTokens) {
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");
-      console.warn(`[ai] ${label} http ${response.status}: ${errText.slice(0, 200)}`);
-      return null;
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
     }
 
     const payload = await response.json();
@@ -208,13 +261,17 @@ async function callDeepSeek(turns, persona, maxTokens) {
     if (!text) {
       const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
       console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
-      return null;
+      return fail("empty", { detail: finishReason });
     }
-    return text;
+    return ok(text);
   });
 }
 
 module.exports = {
+  ok,
+  fail,
+  parseRetryAfterMs,
+  classifyHttpFailure,
   withAbortTimeout,
   logRateHeaders,
   callGemini,
