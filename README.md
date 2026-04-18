@@ -2,17 +2,12 @@
 
 ### 可以在 Discord 預覽社群貼文的機器人！#支援 Threads
 
-4.12 更新：Bilibili 影片嵌入、Threads 多圖顯示、修復資安漏洞
+4.12 更新：Bilibili、Threads 多圖&影片、IG reels、FB貼文 可以正確顯示（繞過登入要求）
 
-4.13 更新：FB 可以正確顯示（繞過登入要求）
+4.15 更新：預覽失敗時會道歉 orz、運勢抽籤
 
-4.15 更新：預覽失敗時會道歉 orz
+4.17 更新：@西寶 接上 AI，會很害羞地跟你閒聊（需自備 API_KEY，免費）
 
-4.16 更新：Threads 影片三段 fallback、Instagram 多段 fallback（fxstagram）、Threads 多圖全圖集顯示、運勢抽籤
-
-4.17 更新：@西寶 接上 Gemini 2.0 Flash，閒聊回應變得個人化（需自備 GEMINI_API_KEY，免費）
-
-4.18 更新：多 provider AI chain 自動 fallback（DeepSeek → Cerebras Qwen 235B → Groq 70B → 8B → Gemini）、短期對話記憶（每頻道記 8 組）、persona v6（A~G 類情境分流、A+ 深度題、害羞拒絕、不自稱 AI）、修雙回應 bug
 
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
