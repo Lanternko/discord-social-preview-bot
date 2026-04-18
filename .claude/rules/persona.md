@@ -2,7 +2,7 @@
 
 ## Identity
 
-Shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` (`src/index.js`); overridable via `AI_PERSONA` env var.
+Shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. Consumed by [src/ai/persona.js](../../src/ai/persona.js) which builds provider-specific message formats.
 
 Reference origin & evolution: see user memory `project_xibao_persona.md` (A–G taxonomy, v1~v6 history).
 
