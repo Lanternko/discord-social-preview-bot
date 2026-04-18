@@ -1,4 +1,4 @@
-const { AI_MEMORY_MAX_TURNS, AI_MEMORY_TTL_MS } = require("../config");
+const { AI_MEMORY_TTL_MS } = require("../config");
 
 // Map<channelId, { turns: Array<{role, content}>, lastActivity: timestamp }>
 const aiConversationHistory = new Map();
@@ -18,7 +18,7 @@ function getChannelAIHistory(channelId) {
   return entry ? entry.turns : [];
 }
 
-function recordAITurn(channelId, role, content) {
+function recordAITurn(channelId, role, content, maxTurns) {
   const now = Date.now();
   let entry = aiConversationHistory.get(channelId);
   if (!entry) {
@@ -27,7 +27,7 @@ function recordAITurn(channelId, role, content) {
   }
   entry.turns.push({ role, content });
   entry.lastActivity = now;
-  const maxEntries = AI_MEMORY_MAX_TURNS * 2;
+  const maxEntries = maxTurns * 2;
   if (entry.turns.length > maxEntries) {
     entry.turns = entry.turns.slice(-maxEntries);
   }

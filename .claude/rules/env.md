@@ -37,7 +37,7 @@
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
 | `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `cerebras`, `groq`, `gemini`. Empty = full chain |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
-| `AI_MAX_REPLY_CHARS` | `300` | Upper bound on AI reply (safety trim). Reads legacy `GEMINI_MAX_REPLY_CHARS` if unset |
-| `AI_PERSONA` | built-in 西寶 persona | System instruction — override to reshape personality |
-| `AI_MEMORY_MAX_TURNS` | `8` | Per-channel short-term memory: last N exchanges (user+bot pair). In-memory only |
+| `AI_PERSONA` | built-in 西寶 persona | System instruction template — override to reshape personality. Placeholders `{SENTENCE_MIN}` / `{SENTENCE_MAX}` are replaced per tier |
 | `AI_MEMORY_TTL_MS` | `1800000` | Inactivity before channel memory is evicted (30 min) |
+
+**Reply length and memory depth are now per-guild tier settings** (see [persona.md](persona.md) `/tier` section), not env vars. The legacy `AI_MAX_REPLY_CHARS` / `AI_MEMORY_MAX_TURNS` env vars are no longer read.

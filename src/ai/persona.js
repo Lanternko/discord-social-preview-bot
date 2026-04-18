@@ -1,5 +1,3 @@
-const { AI_PERSONA } = require("../config");
-
 function buildUserTurn(message, userText) {
   const username =
     message.member?.displayName ||
@@ -11,8 +9,8 @@ function buildUserTurn(message, userText) {
     : `<sender name="${username}"/>\n（這個人 @ 了你但沒打字，可能想打招呼。）`;
 }
 
-function buildOpenAIMessages(turns) {
-  return [{ role: "system", content: AI_PERSONA }, ...turns];
+function buildOpenAIMessages(turns, persona) {
+  return [{ role: "system", content: persona }, ...turns];
 }
 
 function buildGeminiContents(turns) {
@@ -23,7 +21,6 @@ function buildGeminiContents(turns) {
 }
 
 module.exports = {
-  AI_PERSONA,
   buildUserTurn,
   buildOpenAIMessages,
   buildGeminiContents,

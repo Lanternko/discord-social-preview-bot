@@ -39,8 +39,8 @@ Log prefix: `[ai]`.
 `aiConversationHistory: Map<channelId, { turns: Array<{role, content}>, lastActivity }>` holds per-channel rolling history.
 
 - `generateAIReply` reads via `getChannelAIHistory(channelId)` and prepends to the current user turn when building `messages[]` (OpenAI-compat) or `contents[]` (Gemini, via `buildGeminiContents` role mapping `assistant→model`).
-- After a successful reply, both sides of the exchange are saved via `recordAITurn(channelId, role, content)`.
-- Turns beyond `AI_MEMORY_MAX_TURNS * 2` entries are evicted from the head.
+- After a successful reply, both sides of the exchange are saved via `recordAITurn(channelId, role, content, maxTurns)` — `maxTurns` comes from the guild's tier config.
+- Turns beyond `tierConfig.memoryMaxTurns * 2` entries are evicted from the head.
 - Channels inactive beyond `AI_MEMORY_TTL_MS` are dropped by `cleanupAIConversationHistory()`.
 
 ### Eviction runs in two places

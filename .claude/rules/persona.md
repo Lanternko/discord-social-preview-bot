@@ -2,7 +2,7 @@
 
 ## Identity
 
-Shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. Consumed by [src/ai/persona.js](../../src/ai/persona.js) which builds provider-specific message formats.
+Shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. The template carries `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders that get substituted per guild tier (see `/tier` below). Message formats built in [src/ai/persona.js](../../src/ai/persona.js).
 
 Reference origin & evolution: see user memory `project_xibao_persona.md` (A–G taxonomy, v1~v6 history).
 
@@ -27,6 +27,21 @@ Same message.id is processed only once. `inFlightReplies.add("mention:${message.
 大吉 10% / 中吉 16% / 小吉 20% / 末吉 20% / 吉 15% / 凶 13% / 大凶 6%
 
 Each tier has a hardcoded tier-specific comment.
+
+## `/tier` (verbosity per guild)
+
+Admin-only slash command that switches the 西寶 verbosity for the whole guild. Tier keys are English; Discord UI labels are Chinese.
+
+| Key | UI label | sentences cap | max chars | memoryMaxTurns | group context | vision |
+|---|---|---|---|---|---|---|
+| `brief` (default) | 簡短 | 1~4 | 300 | 8 | ✗ | ✗ |
+| `standard` | 標準 | 2~8 | 700 | 20 | ✗ | ✗ |
+| `detailed` | 精細 | 3~15 | 1200 | 40 | recent 15 non-bot msgs *(planned)* | ✓ *(planned)* |
+
+- Storage: `data/tier-settings.json` (gitignored), `{ guildId: "brief"|"standard"|"detailed" }`.
+- Resolution: [src/tier-config.js](../../src/tier-config.js) `getTierConfig(guildId)` — returns numbers + a persona with placeholders substituted.
+- Consumed by [src/ai/chain.js](../../src/ai/chain.js) (passes `persona` + `maxTokens` to providers; trims output to `maxReplyChars`; passes `memoryMaxTurns` to `recordAITurn`).
+- Group context collection (detailed) and vision branch are future work — see [todo.md](../../todo.md).
 
 ## Persona taxonomy (A–G question types)
 

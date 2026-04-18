@@ -30,6 +30,14 @@ const { trimDescription, pickRandom } = require("../src/utils");
 const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
   require("../src/ai/persona");
 
+const { isValidTier } = require("../src/tier-store");
+const {
+  TIERS,
+  TIER_UI_LABELS,
+  buildPersonaFromTemplate,
+  getTierConfig,
+} = require("../src/tier-config");
+
 let pass = 0;
 let fail = 0;
 function it(name, fn) {
@@ -324,13 +332,14 @@ it("falls back to 使用者 when all names missing", () => {
 });
 
 console.log("buildOpenAIMessages");
-it("prepends system message", () => {
-  const msgs = buildOpenAIMessages([
-    { role: "user", content: "hi" },
-  ]);
+it("prepends system message with supplied persona", () => {
+  const msgs = buildOpenAIMessages(
+    [{ role: "user", content: "hi" }],
+    "you are 西寶",
+  );
   assert.equal(msgs.length, 2);
   assert.equal(msgs[0].role, "system");
-  assert.ok(msgs[0].content.includes("西寶"));
+  assert.equal(msgs[0].content, "you are 西寶");
   assert.deepEqual(msgs[1], { role: "user", content: "hi" });
 });
 
@@ -344,6 +353,48 @@ it("maps assistant -> model and wraps as parts", () => {
     { role: "user", parts: [{ text: "hi" }] },
     { role: "model", parts: [{ text: "嗯…" }] },
   ]);
+});
+
+console.log("tier-store");
+it("isValidTier accepts brief/standard/detailed", () => {
+  assert.ok(isValidTier("brief"));
+  assert.ok(isValidTier("standard"));
+  assert.ok(isValidTier("detailed"));
+});
+it("isValidTier rejects unknown", () => {
+  assert.ok(!isValidTier("xyz"));
+  assert.ok(!isValidTier(undefined));
+});
+
+console.log("tier-config");
+it("buildPersonaFromTemplate substitutes placeholders", () => {
+  const out = buildPersonaFromTemplate(
+    "a {SENTENCE_MIN}~{SENTENCE_MAX} b {SENTENCE_MAX} c",
+    2,
+    8,
+  );
+  assert.equal(out, "a 2~8 b 8 c");
+});
+it("getTierConfig defaults to brief when guildId missing", () => {
+  const cfg = getTierConfig(undefined);
+  assert.equal(cfg.tier, "brief");
+  assert.equal(cfg.memoryMaxTurns, TIERS.brief.memoryMaxTurns);
+  assert.equal(cfg.label, TIER_UI_LABELS.brief);
+  assert.ok(typeof cfg.persona === "string" && cfg.persona.length > 0);
+  assert.ok(!cfg.persona.includes("{SENTENCE_MIN}"));
+  assert.ok(!cfg.persona.includes("{SENTENCE_MAX}"));
+});
+it("TIERS entries carry required fields", () => {
+  for (const key of ["brief", "standard", "detailed"]) {
+    const t = TIERS[key];
+    assert.ok(t, `missing tier ${key}`);
+    assert.equal(typeof t.memoryMaxTurns, "number");
+    assert.equal(typeof t.maxReplyChars, "number");
+    assert.equal(typeof t.maxTokens, "number");
+    assert.equal(typeof t.sentenceMin, "number");
+    assert.equal(typeof t.sentenceMax, "number");
+    assert.equal(typeof t.vision, "boolean");
+  }
 });
 
 console.log("");

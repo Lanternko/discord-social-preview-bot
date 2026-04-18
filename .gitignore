@@ -8,4 +8,5 @@ start-bot.command
 stop-bot.command
 bot.log
 *.log
+data/tier-settings.json
 
