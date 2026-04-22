@@ -15,8 +15,8 @@ const DEBUG_PERMS_COMMAND = {
 
 const TIER_COMMAND = {
   name: "tier",
-  description: "查看或切換西寶的回覆詳細度（僅管理員可切換）",
-  defaultMemberPermissions: PermissionsBitField.Flags.Administrator,
+  description: "查看或切換西寶的回覆詳細度（需管理伺服器權限）",
+  defaultMemberPermissions: PermissionsBitField.Flags.ManageGuild,
   options: [
     {
       name: "level",
@@ -98,7 +98,7 @@ async function handleTierCommand(interaction) {
   if (!level) {
     const current = getGuildTier(guildId);
     await interaction.reply({
-      content: `目前西寶的詳細度：**${TIER_UI_LABELS[current]}**\n（可切換：簡短 / 標準 / 精細；需管理員）`,
+      content: `目前西寶的詳細度：**${TIER_UI_LABELS[current]}**\n（可切換：簡短 / 標準 / 精細；需管理伺服器權限）`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -115,12 +115,12 @@ async function handleTierCommand(interaction) {
   // Defence in depth: defaultMemberPermissions already gates at Discord
   // level, but re-check so a mis-configured server can't bypass.
   const member = interaction.member;
-  const isAdmin = member?.permissions?.has?.(
-    PermissionsBitField.Flags.Administrator,
+  const canManageGuild = member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
   );
-  if (!isAdmin) {
+  if (!canManageGuild) {
     await interaction.reply({
-      content: "只有伺服器管理員可以切換詳細度。",
+      content: "需要「管理伺服器」權限才能切換詳細度。",
       flags: MessageFlags.Ephemeral,
     });
     return;

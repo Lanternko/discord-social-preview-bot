@@ -30,7 +30,7 @@ Each tier has a hardcoded tier-specific comment.
 
 ## `/tier` (verbosity per guild)
 
-Admin-only slash command that switches the 西寶 verbosity for the whole guild. Tier keys are English; Discord UI labels are Chinese.
+Slash command gated by `ManageGuild` permission — switches the 西寶 verbosity for the whole guild. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 tier」。Tier keys are English; Discord UI labels are Chinese.
 
 | Key | UI label | sentences cap | max chars | memoryMaxTurns | group context | vision |
 |---|---|---|---|---|---|---|
