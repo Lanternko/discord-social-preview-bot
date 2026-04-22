@@ -13,8 +13,8 @@ const FORTUNE_RESULTS = [
 
 const FORTUNE_COMMENTS = {
   大吉: ["今天會是很好的一天喔！", "哇…真的嗎…好厲害！", "運氣超好的…羨慕///"],
-  中吉: ["還不錯啦…差不多啦。", "算是好的吧…應該啦…", "嗯…不差不差。"],
-  小吉: ["還好啦…小小的幸運～", "有一點點好運喔。", "差強人意…吧？"],
+  中吉: ["嗯…是好運喔！", "今天應該會順順的～", "有點小期待…的一天呢。"],
+  小吉: ["還好啦…小小的幸運～", "有一點點好運喔。", "有點小確幸喔…"],
   末吉: ["唔…勉強算吉吧…", "就…就還行吧？", "平平淡淡的一天。"],
   吉: ["普通普通…", "就是正常啦～", "嗯，還行喔！"],
   凶: ["今天要小心一點喔…", "有點不好耶…好擔心…", "…要注意安全喔。"],
@@ -49,7 +49,7 @@ async function handleMention(message, client) {
     .trim();
   const textLower = text.toLowerCase();
 
-  if (textLower === "抽籤") {
+  if (textLower.includes("抽籤") || textLower.includes("運勢")) {
     const result = drawFortune();
     const comment = pickRandom(FORTUNE_COMMENTS[result]);
     await message.reply({
