@@ -12,11 +12,13 @@ When a user mentions the bot (`@西寶`), the bot checks the message text after 
 
 | Text | Response |
 |---|---|
-| `抽籤` | Weighted fortune draw (hardcoded, never routed to AI) |
+| contains `抽籤` or `運勢` | Weighted fortune draw (hardcoded, never routed to AI) |
 | `道歉` | `"對不起對不起…我知道我不好…///"` (hardcoded) |
 | *(blank or anything else)* | `generateAIReply` → if any AI provider succeeds, returns LLM response; otherwise falls back to random-greeting / `"你…你在叫我嗎？///"` |
 
-**Mention text MUST be `.normalize("NFC")` before comparison.** Discord can send CJK input in NFD form, causing strict equality to silently fail (e.g. `抽籤` not matching).
+**Why `includes` not strict equality for 抽籤/運勢**: users phrase the request many ways (`抽籤 麻煩你囉`, `幫我抽運勢`). Strict equality dropped those to the AI layer where the model would ad-lib its own fortune draw with made-up tier names/probabilities. `includes` ensures every "抽籤/運勢" request goes through the weighted hardcoded path. Side effect: idle mentions of the words also trigger — acceptable given 西寶's whole shtick.
+
+**Mention text MUST be `.normalize("NFC")` before comparison.** Discord can send CJK input in NFD form, causing substring match to silently fail (e.g. `抽籤` not matching).
 
 ## Mention dedup
 
@@ -24,7 +26,7 @@ Same message.id is processed only once. `inFlightReplies.add("mention:${message.
 
 ## Fortune weights
 
-大吉 10% / 中吉 16% / 小吉 20% / 末吉 20% / 吉 15% / 凶 13% / 大凶 6%
+大大吉 1% / 大吉 9% / 中吉 16% / 小吉 20% / 末吉 20% / 吉 15% / 凶 13% / 大凶 6%（總和 100）
 
 Each tier has a hardcoded tier-specific comment.
 

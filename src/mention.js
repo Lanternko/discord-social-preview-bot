@@ -2,7 +2,8 @@ const { pickRandom } = require("./utils");
 const { generateAIReply } = require("./ai/chain");
 
 const FORTUNE_RESULTS = [
-  { label: "大吉", weight: 10 },
+  { label: "大大吉", weight: 1 },
+  { label: "大吉", weight: 9 },
   { label: "中吉", weight: 16 },
   { label: "小吉", weight: 20 },
   { label: "末吉", weight: 20 },
@@ -12,6 +13,11 @@ const FORTUNE_RESULTS = [
 ];
 
 const FORTUNE_COMMENTS = {
+  大大吉: [
+    "欸欸欸…！這、這是超級幸運日……！////",
+    "大、大大吉…？我第一次看到…！好厲害喔…！",
+    "今、今天一定會發生超棒的事……！！！",
+  ],
   大吉: ["今天會是很好的一天喔！", "哇…真的嗎…好厲害！", "運氣超好的…羨慕///"],
   中吉: ["嗯…是好運喔！", "今天應該會順順的～", "有點小期待…的一天呢。"],
   小吉: ["還好啦…小小的幸運～", "有一點點好運喔。", "有點小確幸喔…"],
