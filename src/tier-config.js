@@ -44,8 +44,8 @@ const TIERS = {
     bMin: 2,
     bMax: 3,
     eMax: 8,
-    groupContext: "none",
-    groupContextCount: 0,
+    groupContext: "recent_non_bot_messages",
+    groupContextCount: 10,
     vision: false,
   },
   detailed: {
