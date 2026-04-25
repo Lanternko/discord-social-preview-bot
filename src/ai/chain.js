@@ -18,6 +18,10 @@ const {
   buildGroupContextBlock,
 } = require("./group-context");
 const {
+  getFamiliarityRoster,
+  buildFamiliarityBlock,
+} = require("../familiarity");
+const {
   callGemini,
   callGroq,
   callCerebras,
@@ -113,6 +117,15 @@ async function generateAIReply(message, userText) {
     persona += buildGroupContextBlock(ctx);
   }
 
+  // Familiarity roster lists who in this server has spoken how much. Tied to
+  // identity (not topic), so it goes in for ALL tiers including brief — the
+  // ~300 token cost buys 西寶 the ability to greet 摯友 vs 剛認識 differently
+  // without us hand-curating any list.
+  const roster = getFamiliarityRoster(message.guildId);
+  if (roster.length > 0) {
+    persona += buildFamiliarityBlock(roster);
+  }
+
   const result = await runProviderChain(
     AI_PROVIDER_CHAIN,
     turns,
@@ -124,7 +137,7 @@ async function generateAIReply(message, userText) {
     recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
     recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length}`,
     );
     return trimmed;
   }

@@ -35,6 +35,14 @@ const {
   buildGroupContextBlock,
 } = require("../src/ai/group-context");
 
+const {
+  tierLabel: familiarityTierLabel,
+  recordMessage: recordFamiliarityMessage,
+  getFamiliarityRoster,
+  buildFamiliarityBlock,
+  resetCacheForTests: resetFamiliarityForTests,
+} = require("../src/familiarity");
+
 const { isValidTier } = require("../src/tier-store");
 const {
   TIERS,
@@ -455,6 +463,102 @@ it("wraps lines under header", () => {
   assert.match(out, /^\n\n## 最近群組對話/);
   assert.ok(out.includes("[a]: hi"));
   assert.ok(out.includes("[b]: yo"));
+});
+
+console.log("familiarity.tierLabel");
+it("maps thresholds to tier names", () => {
+  assert.equal(familiarityTierLabel(500), "摯友");
+  assert.equal(familiarityTierLabel(99999), "摯友");
+  assert.equal(familiarityTierLabel(100), "老朋友");
+  assert.equal(familiarityTierLabel(499), "老朋友");
+  assert.equal(familiarityTierLabel(20), "熟人");
+  assert.equal(familiarityTierLabel(99), "熟人");
+  assert.equal(familiarityTierLabel(5), "認識");
+  assert.equal(familiarityTierLabel(19), "認識");
+  assert.equal(familiarityTierLabel(1), "剛認識");
+  assert.equal(familiarityTierLabel(4), "剛認識");
+  assert.equal(familiarityTierLabel(0), null);
+});
+
+console.log("familiarity.recordMessage / getFamiliarityRoster");
+// Use unique guildIds (timestamped) so tests never collide with real local
+// data/familiarity.json data the developer may have accumulated.
+it("records and returns roster sorted by count desc with tier labels", () => {
+  resetFamiliarityForTests();
+  const g = "smoke-record-" + Date.now();
+  for (let i = 0; i < 3; i++) recordFamiliarityMessage(g, "u1", "Alice");
+  for (let i = 0; i < 7; i++) recordFamiliarityMessage(g, "u2", "Bob");
+  for (let i = 0; i < 25; i++) recordFamiliarityMessage(g, "u3", "Carol");
+
+  const roster = getFamiliarityRoster(g);
+  assert.equal(roster.length, 3);
+  assert.equal(roster[0].name, "Carol");
+  assert.equal(roster[0].count, 25);
+  assert.equal(roster[0].tier, "熟人");
+  assert.equal(roster[1].name, "Bob");
+  assert.equal(roster[1].tier, "認識");
+  assert.equal(roster[2].name, "Alice");
+  assert.equal(roster[2].tier, "剛認識");
+});
+it("returns [] for missing or unknown guildId", () => {
+  assert.deepEqual(getFamiliarityRoster(undefined), []);
+  assert.deepEqual(getFamiliarityRoster(null), []);
+  assert.deepEqual(getFamiliarityRoster(""), []);
+  assert.deepEqual(
+    getFamiliarityRoster("never-seen-" + Date.now()),
+    [],
+  );
+});
+it("recordMessage with missing guildId/userId is a no-op (no throw)", () => {
+  resetFamiliarityForTests();
+  recordFamiliarityMessage(null, "u1", "x");
+  recordFamiliarityMessage("g", null, "x");
+  recordFamiliarityMessage(undefined, undefined, "x");
+});
+it("updates displayName on subsequent records", () => {
+  resetFamiliarityForTests();
+  const g = "smoke-rename-" + Date.now();
+  recordFamiliarityMessage(g, "u1", "OldName");
+  recordFamiliarityMessage(g, "u1", "NewName");
+  const roster = getFamiliarityRoster(g);
+  assert.equal(roster[0].name, "NewName");
+  assert.equal(roster[0].count, 2);
+});
+it("caps roster at the top 20 talkers", () => {
+  resetFamiliarityForTests();
+  const g = "smoke-cap-" + Date.now();
+  for (let i = 0; i < 30; i++) {
+    recordFamiliarityMessage(g, `u${i}`, `User${i}`);
+  }
+  const roster = getFamiliarityRoster(g);
+  assert.ok(
+    roster.length <= 20,
+    `roster length ${roster.length} exceeds ROSTER_LIMIT 20`,
+  );
+});
+
+console.log("familiarity.buildFamiliarityBlock");
+it("returns empty string for empty/null", () => {
+  assert.equal(buildFamiliarityBlock([]), "");
+  assert.equal(buildFamiliarityBlock(null), "");
+  assert.equal(buildFamiliarityBlock(undefined), "");
+});
+it("groups by tier in canonical order with header", () => {
+  const out = buildFamiliarityBlock([
+    { name: "C", count: 25, tier: "熟人" },
+    { name: "A", count: 600, tier: "摯友" },
+    { name: "B", count: 25, tier: "熟人" },
+  ]);
+  assert.match(out, /^\n\n## 群友熟悉度/);
+  const aIdx = out.indexOf("摯友");
+  const cIdx = out.indexOf("熟人");
+  assert.ok(
+    aIdx >= 0 && cIdx >= 0 && aIdx < cIdx,
+    `摯友 should appear before 熟人; got ${out}`,
+  );
+  assert.ok(out.includes("A"));
+  assert.ok(out.includes("B"));
+  assert.ok(out.includes("C"));
 });
 
 console.log("tier-store");

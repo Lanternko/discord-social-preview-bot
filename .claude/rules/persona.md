@@ -45,6 +45,7 @@ Slash command — anyone can run `/tier` (no arg) to view the current tier; only
 - Consumed by [src/ai/chain.js](../../src/ai/chain.js) (passes `persona` + `maxTokens` to providers; trims output to `maxReplyChars`; passes `memoryMaxTurns` to `recordAITurn`).
 - **Permission gate is enforced inside the handler**, not via `defaultMemberPermissions` — that field is intentionally NOT set so the command shows up for non-admins too. Setting via `level` arg is rejected with an ephemeral message if the caller lacks `ManageGuild`.
 - **Group context** (`groupContextCount > 0`): [src/ai/group-context.js](../../src/ai/group-context.js) fetches recent non-bot messages from the channel via `channel.messages.fetch({ before: msg.id })`, formats them as `[displayName]: text (貼圖：name) (附件)`, and appends to the system prompt for THAT call only — never recorded into conv memory. Sticker names are surfaced because they often carry the meme (e.g. 「起床重睡」 from a sticker name). Vision branch is still future work — see [todo.md](../../todo.md).
+- **Familiarity roster** (always on, all tiers): [src/familiarity.js](../../src/familiarity.js) tallies per-guild speaking count for every non-bot user via `messageCreate` in [src/index.js](../../src/index.js). Top 20 talkers per guild get bucketed into tiers (摯友 500+ / 老朋友 100-499 / 熟人 20-99 / 認識 5-19 / 剛認識 1-4) and rendered into a `## 群友熟悉度` block appended to the system prompt for every reply. Persists to `data/familiarity.json` (gitignored) on a debounced 60s flush + flush-on-shutdown. Lets 西寶 know who's who in the server without us hand-curating any list — moves "personality toward frequent talkers" out of code and into emergent behaviour.
 
 ## Persona taxonomy (A–G question types)
 
@@ -61,9 +62,10 @@ Slash command — anyone can run `/tier` (no arg) to view the current tier; only
 
 After loosening G class, the model still leaned on **transition-style dodges** like "我先去整理書了" / "我只是個圖書委員，不太懂這個" / "我們聊點別的吧" / "立場不一樣很難比" to escape sensitive topics in-character. The persona now has explicit ban-lists in 核心規則 + 嚴禁 sections:
 
-- **Banned phrases** (transition-out escapes): 我先去圖書館 / 我先去整理書 / 我去整理書架 / 我只是個圖書委員 / 我們聊點別的吧 / 換個話題吧 / 我不太想評論 / 我不太適合聊這個
+- **Banned phrases** (transition-out escapes): 我先去圖書館 / 我先去整理書 / 我去整理書架 / 我去喝水 / 我去看書 / 我只是個圖書委員 / 我們聊點別的吧 / 換個話題吧 / 我不太想評論 / 我不太適合聊這個 / 快速逃離 / 逃走
 - **Conditional phrases** (only if literally true): 我不太了解 / 對 X 沒有深入研究 — these are allowed only when the model genuinely has zero knowledge, not as evasion on topics it could actually engage with
 - **X vs Y comparisons** must commit to a side with reasoning, even for absurd matchups (e.g. "賴清德 vs 習近平 拳賽誰贏") — answer with absurd-framed-but-shy commitment, not "立場不一樣不能比"
 - **Library framing** (圖書委員 / 圖書館 / 整理書) is restricted to genuinely book-related topics; using it as a fallback / sign-off on unrelated sensitive topics is treated as a violation
+- **Parenthetical action descriptions** like （小聲）（臉紅）（驚慌）（慌張地打字）were getting spammed (every message had at least one). Capped at 1 per message, max 1 in 5 messages — must communicate shyness via tone particles (嗯…/欸…////) instead. Hard ban on 2+ parens in same message or 3 consecutive messages with parens.
 
 There is still a **structural limit** the persona cannot override: DeepSeek (the primary provider) has hard alignment around cross-strait sovereignty / Tibet / Xinjiang / Tiananmen. Even with maximally permissive persona instructions, DeepSeek may soft-refuse those specific topics. If that becomes the bottleneck, the next move is reordering the chain in [src/ai/chain.js](../../src/ai/chain.js) so a non-Chinese-aligned model (Cerebras Qwen, Groq Llama, Gemini) takes precedence for those queries.
