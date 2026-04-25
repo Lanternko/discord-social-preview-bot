@@ -8,6 +8,8 @@ Provider implementations live in [src/ai/providers.js](../../src/ai/providers.js
 
 **First non-null reply wins.** On null/error, move to the next layer. Chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 
+The chain is wrapped by a circuit breaker so a known-broken provider gets skipped (not re-called with an 8 s timeout) for the duration of its cooldown. See [Circuit breaker](#circuit-breaker) below.
+
 ## Default chain (when all keys set)
 
 Ordered paid-first → free-quality → fallback:
@@ -23,7 +25,38 @@ Ordered paid-first → free-quality → fallback:
 - All providers use `withAbortTimeout()` for timeout + error handling.
 - Groq + Cerebras share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
-- Any per-layer failure (network, timeout, HTTP error, safety block, empty candidate) returns `null` and triggers the next layer — **bot never goes silent**.
+- Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../../src/ai/providers.js).
+- Any per-layer failure triggers the next layer — **bot never goes silent**.
+
+## Circuit breaker
+
+[src/ai/circuit.js](../../src/ai/circuit.js) keeps a per-provider-label cooldown so the chain doesn't waste `AI_TIMEOUT_MS` (8 s) re-trying a known-broken provider on every mention.
+
+**State** is `Map<label, { cooldownUntil, lastFailureKind, lastFailureAt, failCount }>`, in-memory, cleared on restart. Same lifetime model as `aiConversationHistory`.
+
+**Cooldown by failure kind** (`getCooldownMs`):
+
+| `kind` | Cooldown | Why |
+|---|---|---|
+| `auth` | 10 min | 401/403 — key likely revoked or wrong; don't hammer |
+| `rate_limit` | `Retry-After` header (parsed by `parseRetryAfterMs`) → fallback 60 s | Honour what the API tells us |
+| `timeout` / `network` / `server` | 60 s | Transient; one minute is enough for blip recovery |
+| `queue_exceeded` | 30 s | Cerebras-specific; queue clears fast |
+| `empty` | 0 s (no cooldown) | Content issue (safety block / empty candidate), not a provider issue — let next call try again |
+| anything else | 30 s | Defensive default |
+
+**Where it's wired** — [src/ai/chain.js](../../src/ai/chain.js) `runProviderChain`:
+
+1. Before each provider call: `isProviderAvailable(label)`. If cooling, log `[ai] skip cooling-down provider=<label>` and continue to next.
+2. After call: `recordProviderSuccess(label)` (clears state) on `{ ok: true }`; `recordProviderFailure(label, failure)` on `{ ok: false }`.
+
+**Observability**:
+
+- `[ai] skip cooling-down provider=<label>` — provider was skipped this call.
+- `[ai] provider failed label=<...> kind=<...> cooldownMs=<N>` — cooldown was just set.
+- `getCircuitSnapshot()` returns the current state for a future `/ai-status` slash command (not built yet).
+
+**`empty` is intentional non-cooldown.** Safety blocks and empty model output are about *what was asked*, not about *the provider being unhealthy*. Cooling on `empty` would punish the next innocent caller and mask provider availability. Asserted by `scripts/smoke-ai-circuit.js` — see [scripts.md](scripts.md).
 
 ## Observability
 

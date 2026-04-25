@@ -6,7 +6,11 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "if [ -x /opt/homebrew/opt/node@22/bin/node ]; then /opt/homebrew/opt/node@22/bin/node src/index.js; else node src/index.js; fi"
+    "start": "if [ -x /opt/homebrew/opt/node@22/bin/node ]; then /opt/homebrew/opt/node@22/bin/node src/index.js; else node src/index.js; fi",
+    "test": "npm run test:pure && npm run test:routing && npm run test:circuit",
+    "test:pure": "node scripts/smoke.js",
+    "test:routing": "node scripts/routing-smoke.js",
+    "test:circuit": "node scripts/smoke-ai-circuit.js"
   },
   "engines": {
     "node": ">=20"
