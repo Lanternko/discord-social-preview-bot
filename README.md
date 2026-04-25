@@ -362,11 +362,13 @@ bot 已經自動帶 `over18=1` cookie，如果還是失敗代表文章已被刪�
 
 ## 專案結構
 
-- [src/index.js](./src/index.js) — Discord client、訊息路由、embed 組裝、AI chain、西寶人格
-- [src/threads-probe.cjs](./src/threads-probe.cjs) — Playwright 子行程，抽 Threads / 巴哈 / PTT 的 OG meta
-- [.env.example](./.env.example) — 環境變數範本
+- [src/index.js](./src/index.js) — Discord client 啟動 + `messageCreate` 派發；其餘邏輯都拆到專責模組
+- [src/](./src/) — `url-routing` / `preview` / `platforms/*` / `discord-io` / `mention` / `commands` / `tier-*`，AI 子系統獨立在 `src/ai/`
+- [src/threads-probe.cjs](./src/threads-probe.cjs) — Playwright 子行程，抽 Threads / 巴哈 / PTT 的 OG meta（必須維持 CommonJS）
+- [scripts/](./scripts/) — `smoke.js`（純函式）/ `routing-smoke.js`（payload builder + mock probe）/ `smoke-ai-circuit.js`（AI chain + circuit breaker），用 `npm test` 跑全部
 - [scripts/start.sh](./scripts/start.sh) / [scripts/stop.sh](./scripts/stop.sh) — Linux 啟動腳本
-- [.claude/rules/](./.claude/rules/) — 架構、routing、AI provider、部署細節文件
+- [.env.example](./.env.example) — 環境變數範本
+- [.claude/rules/](./.claude/rules/) — 模組分組與完整 tree 在 [architecture.md](./.claude/rules/architecture.md)，其他細節：[routing.md](./.claude/rules/routing.md) / [ai-providers.md](./.claude/rules/ai-providers.md) / [persona.md](./.claude/rules/persona.md) / [env.md](./.claude/rules/env.md) / [scripts.md](./.claude/rules/scripts.md) / [deploy.md](./.claude/rules/deploy.md)
 
 ## License
 
