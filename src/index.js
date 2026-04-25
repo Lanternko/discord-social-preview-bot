@@ -21,6 +21,11 @@ const { isMentioningBot, handleMention } = require("./mention");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
+const {
+  recordMessage: recordFamiliarityMessage,
+  flush: flushFamiliarity,
+  stopFlushTimer: stopFamiliarityFlushTimer,
+} = require("./familiarity");
 
 if (!DISCORD_TOKEN) {
   throw new Error("Missing DISCORD_TOKEN. Add it to your .env file.");
@@ -67,6 +72,17 @@ client.on("interactionCreate", async (interaction) => {
 });
 
 client.on("messageCreate", async (message) => {
+  // Tally per-guild speaking count for any human message, regardless of
+  // ignore markers — nopreview/fxignore suppress the preview feature, not
+  // the user's existence in the channel.
+  if (!message.author?.bot && message.guildId) {
+    const displayName =
+      message.member?.displayName ||
+      message.author?.globalName ||
+      message.author?.username;
+    recordFamiliarityMessage(message.guildId, message.author.id, displayName);
+  }
+
   if (shouldIgnoreMessage(message)) return;
 
   if (isMentioningBot(message, client)) {
@@ -132,6 +148,8 @@ startMemorySweepTimer();
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     stopMemorySweepTimer();
+    flushFamiliarity();
+    stopFamiliarityFlushTimer();
     process.exit(0);
   });
 }
