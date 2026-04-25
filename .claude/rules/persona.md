@@ -32,18 +32,19 @@ Each tier has a hardcoded tier-specific comment.
 
 ## `/tier` (verbosity per guild)
 
-Slash command gated by `ManageGuild` permission — switches the 西寶 verbosity for the whole guild. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 tier」。Tier keys are English; Discord UI labels are Chinese.
+Slash command — anyone can run `/tier` (no arg) to view the current tier; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 tier」。檢視則對所有人開放，方便群友確認目前設定。Tier keys are English; Discord UI labels are Chinese.
 
 | Key | UI label | sentences cap | max chars | memoryMaxTurns | group context | vision |
 |---|---|---|---|---|---|---|
 | `brief` (default) | 簡短 | 1~4 | 300 | 8 | ✗ | ✗ |
-| `standard` | 標準 | 2~8 | 700 | 20 | ✗ | ✗ |
-| `detailed` | 精細 | 3~15 | 1200 | 40 | recent 15 non-bot msgs *(planned)* | ✓ *(planned)* |
+| `standard` | 標準 | 2~8 | 700 | 20 | recent 10 non-bot msgs | ✗ |
+| `detailed` | 精細 | 3~15 | 1200 | 40 | recent 15 non-bot msgs | ✗ *(planned)* |
 
 - Storage: `data/tier-settings.json` (gitignored), `{ guildId: "brief"|"standard"|"detailed" }`.
 - Resolution: [src/tier-config.js](../../src/tier-config.js) `getTierConfig(guildId)` — returns numbers + a persona with placeholders substituted.
 - Consumed by [src/ai/chain.js](../../src/ai/chain.js) (passes `persona` + `maxTokens` to providers; trims output to `maxReplyChars`; passes `memoryMaxTurns` to `recordAITurn`).
-- Group context collection (detailed) and vision branch are future work — see [todo.md](../../todo.md).
+- **Permission gate is enforced inside the handler**, not via `defaultMemberPermissions` — that field is intentionally NOT set so the command shows up for non-admins too. Setting via `level` arg is rejected with an ephemeral message if the caller lacks `ManageGuild`.
+- **Group context** (`groupContextCount > 0`): [src/ai/group-context.js](../../src/ai/group-context.js) fetches recent non-bot messages from the channel via `channel.messages.fetch({ before: msg.id })`, formats them as `[displayName]: text (貼圖：name) (附件)`, and appends to the system prompt for THAT call only — never recorded into conv memory. Sticker names are surfaced because they often carry the meme (e.g. 「起床重睡」 from a sticker name). Vision branch is still future work — see [todo.md](../../todo.md).
 
 ## Persona taxonomy (A–G question types)
 

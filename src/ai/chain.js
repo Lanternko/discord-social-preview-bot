@@ -14,6 +14,10 @@ const { getTierConfig } = require("../tier-config");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
+  fetchGroupContext,
+  buildGroupContextBlock,
+} = require("./group-context");
+const {
   callGemini,
   callGroq,
   callCerebras,
@@ -92,10 +96,27 @@ async function generateAIReply(message, userText) {
   const history = getChannelAIHistory(message.channelId);
   const turns = [...history, { role: "user", content: userTurn }];
 
+  // Group context is appended to the system prompt for THIS call only — it
+  // never lands in conv memory, so each @ gets a fresh window of what the
+  // group is actually talking about. Without it 西寶 cannot interpret stickers
+  // or cross-talk that happened between people other than her.
+  let persona = tierConfig.persona;
+  let groupContextSize = 0;
+  if (tierConfig.groupContextCount > 0 && message.channel) {
+    const ctx = await fetchGroupContext(
+      message.channel,
+      tierConfig.groupContextCount,
+      message.id,
+      message.client?.user?.id,
+    );
+    groupContextSize = ctx.length;
+    persona += buildGroupContextBlock(ctx);
+  }
+
   const result = await runProviderChain(
     AI_PROVIDER_CHAIN,
     turns,
-    tierConfig.persona,
+    persona,
     tierConfig.maxTokens,
   );
   if (result) {
@@ -103,7 +124,7 @@ async function generateAIReply(message, userText) {
     recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
     recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize}`,
     );
     return trimmed;
   }

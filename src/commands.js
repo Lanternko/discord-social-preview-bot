@@ -13,10 +13,12 @@ const DEBUG_PERMS_COMMAND = {
   description: "檢查目前頻道裡機器人的權限",
 };
 
+// View (no arg) is open to anyone — the actual setter still gates on
+// ManageGuild inside handleTierCommand. We intentionally do NOT set
+// defaultMemberPermissions so non-admins can still query the current value.
 const TIER_COMMAND = {
   name: "tier",
-  description: "查看或切換西寶的回覆詳細度（需管理伺服器權限）",
-  defaultMemberPermissions: PermissionsBitField.Flags.ManageGuild,
+  description: "查看西寶的回覆詳細度（切換需管理伺服器權限）",
   options: [
     {
       name: "level",
@@ -31,6 +33,29 @@ const TIER_COMMAND = {
     },
   ],
 };
+
+// Returns true when the registered command matches the expected spec on the
+// fields we care about. Currently checks description + defaultMemberPermissions
+// — extend here if we ever start diffing options.
+function commandSpecMatches(existing, expected) {
+  if (existing.description !== expected.description) return false;
+
+  const expectedDmpRaw = expected.defaultMemberPermissions;
+  const hasExpectedDmp =
+    expectedDmpRaw !== undefined && expectedDmpRaw !== null;
+  const hasExistingDmp =
+    existing.defaultMemberPermissions !== null &&
+    existing.defaultMemberPermissions !== undefined;
+  if (hasExpectedDmp !== hasExistingDmp) return false;
+  if (
+    hasExpectedDmp &&
+    !existing.defaultMemberPermissions.equals(BigInt(expectedDmpRaw))
+  ) {
+    return false;
+  }
+
+  return true;
+}
 
 async function ensureApplicationCommands(client) {
   const expectedCommands = [
@@ -48,7 +73,7 @@ async function ensureApplicationCommands(client) {
       continue;
     }
 
-    if (existing.description !== expectedCommand.description) {
+    if (!commandSpecMatches(existing, expectedCommand)) {
       await existing.edit(expectedCommand);
       console.log(`[commands] updated /${expectedCommand.name}`);
     }

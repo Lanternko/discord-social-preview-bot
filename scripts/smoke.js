@@ -30,6 +30,11 @@ const { trimDescription, pickRandom } = require("../src/utils");
 const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
   require("../src/ai/persona");
 
+const {
+  formatGroupMessage,
+  buildGroupContextBlock,
+} = require("../src/ai/group-context");
+
 const { isValidTier } = require("../src/tier-store");
 const {
   TIERS,
@@ -355,6 +360,103 @@ it("maps assistant -> model and wraps as parts", () => {
   ]);
 });
 
+console.log("formatGroupMessage");
+it("formats text-only message with member displayName", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "hello",
+      author: { username: "alice" },
+      member: { displayName: "Server Nick" },
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 0 },
+    }),
+    "[Server Nick]: hello",
+  );
+});
+it("falls back to globalName then username", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "hi",
+      author: { username: "alice", globalName: "Alice G" },
+      member: null,
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 0 },
+    }),
+    "[Alice G]: hi",
+  );
+  assert.equal(
+    formatGroupMessage({
+      content: "hi",
+      author: { username: "bob" },
+      member: null,
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 0 },
+    }),
+    "[bob]: hi",
+  );
+});
+it("appends sticker name with no text content", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "",
+      author: { username: "bob" },
+      member: null,
+      stickers: { size: 1, map: (fn) => [fn({ name: "起床重睡" })] },
+      attachments: { size: 0 },
+    }),
+    "[bob]: (貼圖：起床重睡)",
+  );
+});
+it("notes attachments alongside text", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "look",
+      author: { username: "bob" },
+      member: null,
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 1 },
+    }),
+    "[bob]: look (附件)",
+  );
+});
+it("returns null for fully empty message", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "",
+      author: { username: "bob" },
+      member: null,
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 0 },
+    }),
+    null,
+  );
+});
+it("falls back to 未知 when all names missing", () => {
+  assert.equal(
+    formatGroupMessage({
+      content: "x",
+      author: {},
+      member: null,
+      stickers: { size: 0, map: () => [] },
+      attachments: { size: 0 },
+    }),
+    "[未知]: x",
+  );
+});
+
+console.log("buildGroupContextBlock");
+it("returns empty string for empty/null", () => {
+  assert.equal(buildGroupContextBlock([]), "");
+  assert.equal(buildGroupContextBlock(null), "");
+  assert.equal(buildGroupContextBlock(undefined), "");
+});
+it("wraps lines under header", () => {
+  const out = buildGroupContextBlock(["[a]: hi", "[b]: yo"]);
+  assert.match(out, /^\n\n## 最近群組對話/);
+  assert.ok(out.includes("[a]: hi"));
+  assert.ok(out.includes("[b]: yo"));
+});
+
 console.log("tier-store");
 it("isValidTier accepts brief/standard/detailed", () => {
   assert.ok(isValidTier("brief"));
@@ -423,6 +525,11 @@ it("detailed tier expands A+ beyond brief", () => {
   assert.ok(TIERS.detailed.aPlusMax > TIERS.brief.aPlusMax);
   assert.ok(TIERS.detailed.aMax > TIERS.brief.aMax);
   assert.ok(TIERS.detailed.eMax > TIERS.brief.eMax);
+});
+it("brief has no group context, standard/detailed do", () => {
+  assert.equal(TIERS.brief.groupContextCount, 0);
+  assert.ok(TIERS.standard.groupContextCount > 0);
+  assert.ok(TIERS.detailed.groupContextCount > 0);
 });
 
 console.log("");
