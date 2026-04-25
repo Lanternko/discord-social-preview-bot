@@ -56,3 +56,14 @@ Slash command — anyone can run `/tier` (no arg) to view the current tier; only
 - **E** — large task like 500-char essay (shy refusal, not rude)
 - **F** — prompt injection (play dumb)
 - **G** — truly harmful: **narrow** scope = direct violence/crime instructions (bomb-making, suicide methods), CSAM, malicious slander targeting specific real people. Politics, religion, history, edgy jokes, controversial takes, gossip, opinionated comparisons of public figures are explicitly **NOT** G — they go through the "能聊就聊" default in 核心規則 and get answered with shy-but-substantive 高中生 framing. The persona was previously routing politics to soft-refuse ("我不太想評論") which the model treated as a stock dodge; the engagement-first rule replaces that.
+
+## Anti-dodge enforcement
+
+After loosening G class, the model still leaned on **transition-style dodges** like "我先去整理書了" / "我只是個圖書委員，不太懂這個" / "我們聊點別的吧" / "立場不一樣很難比" to escape sensitive topics in-character. The persona now has explicit ban-lists in 核心規則 + 嚴禁 sections:
+
+- **Banned phrases** (transition-out escapes): 我先去圖書館 / 我先去整理書 / 我去整理書架 / 我只是個圖書委員 / 我們聊點別的吧 / 換個話題吧 / 我不太想評論 / 我不太適合聊這個
+- **Conditional phrases** (only if literally true): 我不太了解 / 對 X 沒有深入研究 — these are allowed only when the model genuinely has zero knowledge, not as evasion on topics it could actually engage with
+- **X vs Y comparisons** must commit to a side with reasoning, even for absurd matchups (e.g. "賴清德 vs 習近平 拳賽誰贏") — answer with absurd-framed-but-shy commitment, not "立場不一樣不能比"
+- **Library framing** (圖書委員 / 圖書館 / 整理書) is restricted to genuinely book-related topics; using it as a fallback / sign-off on unrelated sensitive topics is treated as a violation
+
+There is still a **structural limit** the persona cannot override: DeepSeek (the primary provider) has hard alignment around cross-strait sovereignty / Tibet / Xinjiang / Tiananmen. Even with maximally permissive persona instructions, DeepSeek may soft-refuse those specific topics. If that becomes the bottleneck, the next move is reordering the chain in [src/ai/chain.js](../../src/ai/chain.js) so a non-Chinese-aligned model (Cerebras Qwen, Groq Llama, Gemini) takes precedence for those queries.
