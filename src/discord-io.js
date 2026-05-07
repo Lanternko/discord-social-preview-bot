@@ -62,6 +62,10 @@ function describeMessageLocation(message) {
 
 function getMissingChannelPermissions(message) {
   if (!message.inGuild()) return [];
+  // inGuild() can be true while .guild is null when the bot isn't in
+  // the guild's cache (e.g. kicked/restored mid-session). Guard so the
+  // caller doesn't blow up reading .members on null.
+  if (!message.guild) return ["GuildUnavailable"];
   const me = message.guild.members.me;
   if (!me) return ["BotMemberUnavailable"];
   const permissions = message.channel.permissionsFor(me);
