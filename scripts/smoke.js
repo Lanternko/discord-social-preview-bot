@@ -186,6 +186,18 @@ it("reddit -> rxddit", () => {
     "https://rxddit.com/r/x/1",
   );
 });
+it("redd.it short -> rxddit (regression: was falling into FixEmbed wrapper)", () => {
+  assert.equal(
+    buildFallbackUrl("https://redd.it/abc123"),
+    "https://rxddit.com/abc123",
+  );
+});
+it("old.reddit.com -> rxddit", () => {
+  assert.equal(
+    buildFallbackUrl("https://old.reddit.com/r/x/1"),
+    "https://rxddit.com/r/x/1",
+  );
+});
 it("bluesky -> bskx", () => {
   assert.equal(
     buildFallbackUrl("https://bsky.app/profile/x"),
@@ -634,6 +646,89 @@ it("brief has no group context, standard/detailed do", () => {
   assert.equal(TIERS.brief.groupContextCount, 0);
   assert.ok(TIERS.standard.groupContextCount > 0);
   assert.ok(TIERS.detailed.groupContextCount > 0);
+});
+
+console.log("og-fallback parser");
+const {
+  parseOgFromHtml,
+  buildGenericFallbackEmbed,
+  hasUsefulMetadata,
+  decodeHtmlEntities,
+} = require("../src/og-fallback");
+
+it("parseOgFromHtml extracts og:title / og:description / og:image", () => {
+  const html = `<!doctype html><html><head>
+    <meta property="og:title" content="Hello world" />
+    <meta property="og:description" content="A description with &amp; entity" />
+    <meta property="og:image" content="https://example.com/img.jpg" />
+  </head><body></body></html>`;
+  const meta = parseOgFromHtml(html);
+  assert.equal(meta.title, "Hello world");
+  assert.equal(meta.description, "A description with & entity");
+  assert.equal(meta.image, "https://example.com/img.jpg");
+});
+
+it("parseOgFromHtml falls back to twitter:* tags and <title>", () => {
+  const html = `<head>
+    <title>Page Title</title>
+    <meta name="twitter:description" content="from twitter card" />
+    <meta name="twitter:image:src" content="https://x/twit.jpg" />
+  </head>`;
+  const meta = parseOgFromHtml(html);
+  assert.equal(meta.title, "Page Title");
+  assert.equal(meta.description, "from twitter card");
+  assert.equal(meta.image, "https://x/twit.jpg");
+});
+
+it("parseOgFromHtml handles reverse attribute order", () => {
+  const html = `<head><meta content="reverse title" property="og:title"></head>`;
+  const meta = parseOgFromHtml(html);
+  assert.equal(meta.title, "reverse title");
+});
+
+it("parseOgFromHtml returns nulls for missing meta", () => {
+  const meta = parseOgFromHtml("<html><body>no head meta</body></html>");
+  assert.equal(meta.title, null);
+  assert.equal(meta.description, null);
+  assert.equal(meta.image, null);
+});
+
+it("decodeHtmlEntities handles common cases", () => {
+  assert.equal(decodeHtmlEntities("a &amp; b"), "a & b");
+  assert.equal(decodeHtmlEntities("&#39;quoted&#39;"), "'quoted'");
+  assert.equal(decodeHtmlEntities("&#x4E2D;&#x6587;"), "中文");
+});
+
+it("hasUsefulMetadata true if any of title/desc/image present", () => {
+  assert.equal(hasUsefulMetadata({ title: "x" }), true);
+  assert.equal(hasUsefulMetadata({ description: "x" }), true);
+  assert.equal(hasUsefulMetadata({ image: "x" }), true);
+  assert.equal(
+    hasUsefulMetadata({ title: null, description: null, image: null }),
+    false,
+  );
+  assert.equal(hasUsefulMetadata(null), false);
+});
+
+it("buildGenericFallbackEmbed honours overrides", () => {
+  const embed = buildGenericFallbackEmbed(
+    {
+      title: "T",
+      description: "D",
+      image: "https://x/i.jpg",
+      author: "A",
+    },
+    "https://orig.example/post",
+    { color: 0x123456, footerText: "Test", descriptionLimit: 64 },
+  );
+  const data = embed.data;
+  assert.equal(data.title, "T");
+  assert.equal(data.description, "D");
+  assert.equal(data.image.url, "https://x/i.jpg");
+  assert.equal(data.author.name, "A");
+  assert.equal(data.color, 0x123456);
+  assert.equal(data.footer.text, "Test");
+  assert.equal(data.url, "https://orig.example/post");
 });
 
 console.log("");

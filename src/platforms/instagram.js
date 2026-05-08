@@ -48,13 +48,17 @@ async function buildInstagramPayload(url) {
   }
 
   const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
+  const secondaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM_SECONDARY);
   console.log(`[preview] instagram-fixer ${url}`);
   return {
     content: primaryUrl,
-    fallbackContent: replaceHostFixer(url, FIXER_INSTAGRAM_SECONDARY),
+    fallbackContent: secondaryUrl,
     embedFallback: {
       content: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}`,
     },
+    recoverUrls: [primaryUrl, secondaryUrl],
+    recoverEmbedOptions: { color: 0xe1306c, footerText: "Instagram · 預覽降級" },
+    sourceUrl: url,
   };
 }
 

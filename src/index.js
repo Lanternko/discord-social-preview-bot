@@ -126,10 +126,30 @@ client.on("messageCreate", async (message) => {
     const payloads = await buildPreviewPayloads(urls);
     const sent = await sendPreviews(message, payloads);
     if (!sent) return;
-    await suppressOriginalEmbeds(message);
-    checkAndHandleEmptyEmbeds(message, sent).catch((error) => {
-      console.warn("[preview] embed check failed:", error.message);
-    });
+
+    const hasUrlOnly = sent.some((s) => s.isUrlOnly);
+    if (!hasUrlOnly) {
+      // All payloads are pre-rendered embeds — guaranteed to render, safe to
+      // suppress the user's native embed immediately.
+      await suppressOriginalEmbeds(message);
+    } else {
+      // Defer suppression until empty-embed check resolves. If our preview
+      // ends up deleted (every fallback + OG-recover failed), we keep the
+      // user's native Discord embed visible so they don't lose all preview.
+      checkAndHandleEmptyEmbeds(message, sent)
+        .then(async (result) => {
+          if (result?.allSucceeded) {
+            await suppressOriginalEmbeds(message);
+          } else {
+            console.log(
+              `[preview] kept original — preview failed ${describeMessageLocation(message)}`,
+            );
+          }
+        })
+        .catch((error) => {
+          console.warn("[preview] embed check failed:", error.message);
+        });
+    }
   } catch (error) {
     for (const url of urls) {
       recentReplies.delete(buildReplyCacheKey(message, url));

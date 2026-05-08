@@ -2,8 +2,9 @@ const {
   FIXER_THREADS,
   FIXER_THREADS_SECONDARY,
   MULTI_IMAGE_PREVIEW_COUNT,
+  THREADS_EMBED_COLOR,
 } = require("../config");
-const { replaceHostFixer, buildFallbackUrl } = require("../url-routing");
+const { replaceHostFixer } = require("../url-routing");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
 const {
@@ -20,11 +21,28 @@ function buildTailHint(hiddenImages, hasVideo) {
   return `... ${parts.join(" + ")}`;
 }
 
+function buildThreadsRecoverUrls(url) {
+  return [
+    replaceHostFixer(url, FIXER_THREADS),
+    replaceHostFixer(url, FIXER_THREADS_SECONDARY),
+  ];
+}
+
+const THREADS_RECOVER_OPTIONS = {
+  color: THREADS_EMBED_COLOR,
+  footerText: "Threads · 預覽降級",
+};
+
 async function buildThreadsPayload(url) {
   try {
     const metadata = await fetchThreadsMetadata(url);
 
-    const isTextOnly = !metadata.image;
+    const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
+    // text-only requires NO image AND NO video — otherwise a video-only post
+    // (no og:image) silently routes to a text embed and never reaches the
+    // video fixer chain. Mixed image+video still routes to multi-image branch
+    // below.
+    const isTextOnly = !metadata.image && !hasVideo;
 
     if (isTextOnly || metadata.twitterCard === "summary") {
       const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
@@ -37,7 +55,6 @@ async function buildThreadsPayload(url) {
         metadata.images && metadata.images.length > 1
           ? metadata.images.slice(0, 10)
           : null;
-      const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
 
       if (allImages) {
         const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
@@ -90,6 +107,9 @@ async function buildThreadsPayload(url) {
         content: replaceHostFixer(url, FIXER_THREADS),
         fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
         embedFallback: { embeds: [videoFallbackEmbed] },
+        recoverUrls: buildThreadsRecoverUrls(url),
+        recoverEmbedOptions: THREADS_RECOVER_OPTIONS,
+        sourceUrl: url,
       };
     }
 
@@ -108,8 +128,17 @@ async function buildThreadsPayload(url) {
     console.warn(`Could not fetch Threads metadata for ${url}:`, error.message);
   }
 
+  // Probe failure path — still hand back primary + secondary fixer + an OG
+  // recovery list so checkAndHandleEmptyEmbeds can render at least a title /
+  // description embed if both fixers unfurl empty.
   console.log(`[preview] threads fixer fallback ${url}`);
-  return { content: buildFallbackUrl(url) };
+  return {
+    content: replaceHostFixer(url, FIXER_THREADS),
+    fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
+    recoverUrls: buildThreadsRecoverUrls(url),
+    recoverEmbedOptions: THREADS_RECOVER_OPTIONS,
+    sourceUrl: url,
+  };
 }
 
 module.exports = { buildThreadsPayload };

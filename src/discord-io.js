@@ -5,6 +5,7 @@ const {
   EMBED_CHECK_DELAY_MS,
   DEDUPE_WINDOW_MS,
 } = require("./config");
+const { tryRecoverEmbedFromUrls } = require("./og-fallback");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -152,6 +153,11 @@ async function sendPreviews(message, payloads) {
       isUrlOnly,
       fallbackContent: payload.fallbackContent ?? null,
       embedFallback: payload.embedFallback ?? null,
+      recoverUrls: Array.isArray(payload.recoverUrls)
+        ? payload.recoverUrls
+        : null,
+      recoverEmbedOptions: payload.recoverEmbedOptions ?? null,
+      sourceUrl: payload.sourceUrl ?? null,
     });
   }
 
@@ -169,17 +175,61 @@ async function apologyReply(originalMessage) {
   }
 }
 
+async function tryOgRecover(target, recoverUrls, sourceUrl, embedOptions) {
+  if (!Array.isArray(recoverUrls) || recoverUrls.length === 0) return false;
+  let recovered;
+  try {
+    recovered = await tryRecoverEmbedFromUrls(recoverUrls, {
+      sourceUrl: sourceUrl || recoverUrls[0],
+      embedOptions: embedOptions || undefined,
+    });
+  } catch (error) {
+    console.warn("[preview] og-recover threw:", error.message);
+    return false;
+  }
+  if (!recovered) return false;
+  try {
+    await target.edit({
+      content: "",
+      embeds: [recovered.embed],
+      allowedMentions: { repliedUser: false },
+    });
+    console.log(
+      `[preview] og-recover used target=${target.id} source=${recovered.source}`,
+    );
+    return true;
+  } catch (error) {
+    console.warn("[preview] og-recover edit failed:", error.message);
+    return false;
+  }
+}
+
 async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
   const urlMessages = sent.filter((s) => s.isUrlOnly);
-  if (urlMessages.length === 0) return;
+  // If we sent only pre-rendered embed payloads, there's nothing to verify.
+  if (urlMessages.length === 0) return { allSucceeded: true };
+
+  let allSucceeded = true;
 
   await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
 
-  for (const { sentMessage, fallbackContent, embedFallback } of urlMessages) {
+  for (const item of urlMessages) {
+    const {
+      sentMessage,
+      fallbackContent,
+      embedFallback,
+      recoverUrls,
+      recoverEmbedOptions,
+      sourceUrl,
+    } = item;
+
     let fetched;
     try {
       fetched = await sentMessage.fetch();
-    } catch {
+    } catch (error) {
+      console.warn(
+        `[preview] empty-embed fetch failed id=${sentMessage.id} reason=${error.message}`,
+      );
       continue;
     }
 
@@ -187,71 +237,44 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
 
     console.log(`[preview] empty-embed detected ${fetched.id}`);
 
+    let current = fetched;
+
     if (fallbackContent) {
-      console.log(`[preview] trying fallback embed ${fetched.id}`);
+      console.log(`[preview] trying fallback url ${current.id}`);
       try {
-        await fetched.edit({
+        await current.edit({
           content: fallbackContent,
           allowedMentions: { repliedUser: false },
         });
       } catch (error) {
         console.warn("[preview] could not edit to fallback:", error.message);
-        await apologyReply(originalMessage);
-        continue;
       }
 
       await new Promise((resolve) => setTimeout(resolve, EMBED_CHECK_DELAY_MS));
 
-      let refetched;
       try {
-        refetched = await fetched.fetch();
-      } catch {
-        await apologyReply(originalMessage);
-        continue;
-      }
-
-      if (refetched.embeds.length > 0) {
-        console.log(`[preview] fallback embed succeeded ${refetched.id}`);
-        continue;
-      }
-
-      console.log(`[preview] fallback also empty ${refetched.id}`);
-      if (embedFallback) {
-        try {
-          await refetched.edit({
-            content: "",
-            ...embedFallback,
-            allowedMentions: { repliedUser: false },
-          });
-          console.log(`[preview] embed fallback used ${refetched.id}`);
-          continue;
-        } catch (error) {
-          console.warn(
-            "[preview] could not edit to embed fallback:",
-            error.message,
-          );
-        }
-      }
-      try {
-        await refetched.delete();
+        current = await current.fetch();
       } catch (error) {
         console.warn(
-          "[preview] could not delete failed fallback message:",
-          error.message,
+          `[preview] refetch after fallback failed id=${current.id} reason=${error.message}`,
         );
       }
-      await apologyReply(originalMessage);
-      continue;
+
+      if (current?.embeds?.length > 0) {
+        console.log(`[preview] fallback url succeeded ${current.id}`);
+        continue;
+      }
+      console.log(`[preview] fallback url also empty ${current.id}`);
     }
 
     if (embedFallback) {
       try {
-        await fetched.edit({
+        await current.edit({
           content: "",
           ...embedFallback,
           allowedMentions: { repliedUser: false },
         });
-        console.log(`[preview] embed fallback used ${fetched.id}`);
+        console.log(`[preview] embed fallback used ${current.id}`);
         continue;
       } catch (error) {
         console.warn(
@@ -260,8 +283,15 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
     }
+
+    if (
+      await tryOgRecover(current, recoverUrls, sourceUrl, recoverEmbedOptions)
+    ) {
+      continue;
+    }
+
     try {
-      await fetched.delete();
+      await current.delete();
     } catch (error) {
       console.warn(
         "[preview] could not delete empty embed message:",
@@ -269,7 +299,10 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       );
     }
     await apologyReply(originalMessage);
+    allSucceeded = false;
   }
+
+  return { allSucceeded };
 }
 
 module.exports = {
