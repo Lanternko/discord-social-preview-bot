@@ -686,6 +686,23 @@ it("parseOgFromHtml handles reverse attribute order", () => {
   assert.equal(meta.title, "reverse title");
 });
 
+it("parseOgFromHtml handles apostrophe inside double-quoted content", () => {
+  // Regression: [^"']*? stopped at the apostrophe, truncating "Author's post" → "Author"
+  const html = `<head>
+    <meta property="og:title" content="Author's post" />
+    <meta property="og:description" content="can't stop won't stop" />
+  </head>`;
+  const meta = parseOgFromHtml(html);
+  assert.equal(meta.title, "Author's post");
+  assert.equal(meta.description, "can't stop won't stop");
+});
+
+it("parseOgFromHtml handles double-quote inside single-quoted content", () => {
+  const html = `<head><meta property='og:title' content='say "hi" to me'></head>`;
+  const meta = parseOgFromHtml(html);
+  assert.equal(meta.title, 'say "hi" to me');
+});
+
 it("parseOgFromHtml returns nulls for missing meta", () => {
   const meta = parseOgFromHtml("<html><body>no head meta</body></html>");
   assert.equal(meta.title, null);

@@ -46,23 +46,43 @@ function extractMetaContent(html, regex) {
 // Look for `<meta property="og:title" content="..." />` (or with attributes
 // reversed). We scan the head only; some pages embed `<meta>` tags inside
 // `<noscript>` later in the body which we don't want.
+//
+// Two regex variants per direction handle the two possible quote styles for the
+// content attribute. The original [^"']*? stopped at whichever quote came first,
+// so content="Author's post" was truncated to "Author". Now [^"]* and [^']* each
+// stop only at the matching closing quote, fixing apostrophes / embedded quotes.
 function buildMetaRegex(attrName, attrValue) {
   const valueEsc = attrValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // content first, then attr — covers `<meta content="x" property="og:title">`
-  const reverse = new RegExp(
-    `<meta\\b[^>]*content=["']([^"']*?)["'][^>]*${attrName}=["']${valueEsc}["']`,
+  // Forward: attr first, then content
+  const forwardDQ = new RegExp(
+    `<meta\\b[^>]*${attrName}=["']${valueEsc}["'][^>]*content="([^"]*)"`,
     "i",
   );
-  const forward = new RegExp(
-    `<meta\\b[^>]*${attrName}=["']${valueEsc}["'][^>]*content=["']([^"']*?)["']`,
+  const forwardSQ = new RegExp(
+    `<meta\\b[^>]*${attrName}=["']${valueEsc}["'][^>]*content='([^']*)'`,
     "i",
   );
-  return { forward, reverse };
+  // Reverse: content first, then attr — covers `<meta content="x" property="og:title">`
+  const reverseDQ = new RegExp(
+    `<meta\\b[^>]*content="([^"]*)"[^>]*${attrName}=["']${valueEsc}["']`,
+    "i",
+  );
+  const reverseSQ = new RegExp(
+    `<meta\\b[^>]*content='([^']*)'[^>]*${attrName}=["']${valueEsc}["']`,
+    "i",
+  );
+  return { forwardDQ, forwardSQ, reverseDQ, reverseSQ };
 }
 
 function findMeta(html, attrName, attrValue) {
-  const { forward, reverse } = buildMetaRegex(attrName, attrValue);
-  return extractMetaContent(html, forward) || extractMetaContent(html, reverse);
+  const { forwardDQ, forwardSQ, reverseDQ, reverseSQ } =
+    buildMetaRegex(attrName, attrValue);
+  return (
+    extractMetaContent(html, forwardDQ) ||
+    extractMetaContent(html, forwardSQ) ||
+    extractMetaContent(html, reverseDQ) ||
+    extractMetaContent(html, reverseSQ)
+  );
 }
 
 function parseOgFromHtml(html) {
