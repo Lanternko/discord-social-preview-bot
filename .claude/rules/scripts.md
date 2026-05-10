@@ -31,6 +31,10 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 | `isValidTier` | [tier-store.js](../../src/tier-store.js) |
 | `buildPersonaFromTemplate` placeholder substitution | [tier-config.js](../../src/tier-config.js) |
 | `getTierConfig` defaults to `brief` for missing guildId | [tier-config.js](../../src/tier-config.js) |
+| `parseOgFromHtml` extracts og:* / twitter:* / `<title>` (incl. reverse attr order, HTML entities) | [og-fallback.js](../../src/og-fallback.js) |
+| `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../../src/og-fallback.js) |
+| `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../../src/og-fallback.js) |
+| `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../../src/url-routing.js) |
 
 **When to run**: every refactor touching URL handling, persona/template wiring, tier lookup, or group-context formatting. Cheap enough to run on every save.
 
@@ -42,10 +46,12 @@ Mocks [probe.js](../../src/probe.js) `fetchThreadsMetadata` / `fetchPageProbeMet
 
 Branches covered:
 
-- **Threads** — text-only / `twitterCard=summary` with image / multi-image (3 / 5+ / fallback when `imageCount > images.length`) / **MIXED** (multi-image AND video → carousel wins, NOT video fixer — the regression hard-assert) / video-only / single image / generic fallback / probe error.
-- **Bahamut** — normal / restricted / probe error.
+- **Threads** — text-only / `twitterCard=summary` with image / multi-image (3 / 5+ / fallback when `imageCount > images.length`) / **MIXED** (multi-image AND video → carousel wins, NOT video fixer — the regression hard-assert) / video-only / **VIDEO-NO-IMAGE** (video with `image=null` MUST still route to fixer chain — regression hard-assert) / single image / generic fallback / probe error (now exposes secondary fixer + `recoverUrls`).
+- **Bahamut** — normal / restricted with public title/desc → embed with login notice / restricted with no usable metadata → fixer fallback / probe error.
 - **PTT** — normal / probe error.
-- **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback`) / story with display-name probe failure / story with display-name probe success.
+- **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
+- **Bilibili** — API success → custom embed (no URL) / API failure → vxbilibili URL with `recoverUrls`.
+- **Preview dispatcher** ([preview.js](../../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
 
 **When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder.
 

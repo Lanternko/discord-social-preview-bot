@@ -4,6 +4,7 @@ const {
   normalizeUrl,
   replaceHostFixer,
 } = require("../url-routing");
+const { buildBilibiliEmbed } = require("../embeds");
 
 async function fetchBilibiliMetadata(url) {
   const bvid = extractBilibiliBvid(url);
@@ -76,9 +77,39 @@ async function buildBilibiliFallbackUrl(url) {
 }
 
 async function buildBilibiliPayload(url) {
-  const fallbackUrl = await buildBilibiliFallbackUrl(url);
-  console.log(`[preview] bilibili-fixer ${url} -> ${fallbackUrl}`);
-  return { content: fallbackUrl };
+  const fixerUrl = await buildBilibiliFallbackUrl(url);
+  // The API path uses BVID directly, so b23.tv short links must be expanded
+  // before we can hit it. `buildBilibiliFallbackUrl` already follows the
+  // redirect; reuse its expanded URL here.
+  const targetUrl =
+    new URL(url).hostname === "b23.tv"
+      ? fixerUrl.replace(
+          new RegExp(`^https?://${FIXER_BILIBILI}`),
+          "https://www.bilibili.com",
+        )
+      : url;
+
+  try {
+    const metadata = await fetchBilibiliMetadata(targetUrl);
+    if (metadata.title) {
+      console.log(
+        `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)}`,
+      );
+      return {
+        embeds: [buildBilibiliEmbed(url, metadata)],
+      };
+    }
+  } catch (error) {
+    console.warn(`[preview] bilibili API failed for ${url}: ${error.message}`);
+  }
+
+  console.log(`[preview] bilibili-fixer ${url} -> ${fixerUrl}`);
+  return {
+    content: fixerUrl,
+    recoverUrls: [fixerUrl],
+    recoverEmbedOptions: { color: 0x00a1d6, footerText: "Bilibili · 預覽降級" },
+    sourceUrl: url,
+  };
 }
 
 module.exports = {

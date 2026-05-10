@@ -44,23 +44,26 @@ const YOUTUBE_HOSTS = new Set([
   "youtu.be",
 ]);
 
+const REDDIT_HOSTS = new Set([
+  "reddit.com",
+  "www.reddit.com",
+  "old.reddit.com",
+  "redd.it",
+]);
+const PIXIV_HOSTS = new Set(["pixiv.net", "www.pixiv.net"]);
+const BLUESKY_HOSTS = new Set(["bsky.app", "www.bsky.app"]);
+
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
   ...INSTAGRAM_HOSTS,
   ...TWITTER_HOSTS,
-  "reddit.com",
-  "www.reddit.com",
-  "redd.it",
-  "pixiv.net",
-  "www.pixiv.net",
-  "bsky.app",
-  "www.bsky.app",
+  ...REDDIT_HOSTS,
+  ...PIXIV_HOSTS,
+  ...BLUESKY_HOSTS,
   ...FACEBOOK_HOSTS,
   ...BAHAMUT_HOSTS,
   ...PTT_HOSTS,
-  "bilibili.com",
-  "www.bilibili.com",
-  "b23.tv",
+  ...BILIBILI_HOSTS,
 ]);
 
 const URL_REGEX = /https?:\/\/[^\s<>()]+/gi;
@@ -173,13 +176,13 @@ function buildFallbackUrl(originalUrl) {
   if (INSTAGRAM_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_INSTAGRAM);
   }
-  if (["reddit.com", "www.reddit.com"].includes(hostname)) {
+  if (REDDIT_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_REDDIT);
   }
-  if (["pixiv.net", "www.pixiv.net"].includes(hostname)) {
+  if (PIXIV_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_PIXIV);
   }
-  if (["bsky.app", "www.bsky.app"].includes(hostname)) {
+  if (BLUESKY_HOSTS.has(hostname)) {
     return replaceHostFixer(originalUrl, FIXER_BLUESKY);
   }
   if (BILIBILI_HOSTS.has(hostname)) {
@@ -225,6 +228,21 @@ function isBahamutUrl(url) {
 function isPttUrl(url) {
   return PTT_HOSTS.has(new URL(url).hostname);
 }
+function isTwitterUrl(url) {
+  return TWITTER_HOSTS.has(new URL(url).hostname);
+}
+function isRedditUrl(url) {
+  return REDDIT_HOSTS.has(new URL(url).hostname);
+}
+function isPixivUrl(url) {
+  return PIXIV_HOSTS.has(new URL(url).hostname);
+}
+function isBlueskyUrl(url) {
+  return BLUESKY_HOSTS.has(new URL(url).hostname);
+}
+function isFacebookUrl(url) {
+  return FACEBOOK_HOSTS.has(new URL(url).hostname);
+}
 function extractBilibiliBvid(url) {
   const parsed = new URL(url);
   const match = parsed.pathname.match(/\/video\/(BV[a-zA-Z0-9]+)/);
@@ -240,6 +258,9 @@ module.exports = {
   FACEBOOK_HOSTS,
   TWITTER_HOSTS,
   YOUTUBE_HOSTS,
+  REDDIT_HOSTS,
+  PIXIV_HOSTS,
+  BLUESKY_HOSTS,
   SUPPORTED_HOSTS,
   URL_REGEX,
   IGNORE_MARKERS,
@@ -257,5 +278,10 @@ module.exports = {
   isBilibiliUrl,
   isBahamutUrl,
   isPttUrl,
+  isTwitterUrl,
+  isRedditUrl,
+  isPixivUrl,
+  isBlueskyUrl,
+  isFacebookUrl,
   extractBilibiliBvid,
 };

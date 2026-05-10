@@ -43,6 +43,8 @@ const { buildThreadsPayload } = require("../src/platforms/threads");
 const { buildInstagramPayload } = require("../src/platforms/instagram");
 const { buildBahamutPayload } = require("../src/platforms/bahamut");
 const { buildPttPayload } = require("../src/platforms/ptt");
+const { buildBilibiliPayload } = require("../src/platforms/bilibili");
+const { buildPreviewPayloads } = require("../src/preview");
 
 // === TEST RUNNER ===
 let pass = 0;
@@ -224,6 +226,34 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.ok(s.contentText.includes("fixthreads"), "primary fixer present");
     assert.equal(s.hasFallbackContent, true);
     assert.equal(s.hasEmbedFallback, true);
+    assert.ok(
+      Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
+      "video branch should expose recoverUrls",
+    );
+  });
+
+  // Regression: a video-only post with NO og:image used to fall into the
+  // text-only branch (because isTextOnly = !metadata.image) and never hit the
+  // video-fixer chain — silently dropping the video.
+  await it("video only with NO og:image → still routes to fixer chain", async () => {
+    _mockThreadsMetadata = {
+      image: null,
+      title: "t",
+      description: "d",
+      twitterCard: "player",
+      images: [],
+      imageCount: 0,
+      videoCount: 1,
+      video: true,
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    const s = shapeOf(p);
+    assert.equal(s.contentStartsWithHttp, true);
+    assert.ok(
+      s.contentText.includes("fixthreads"),
+      "MUST route to video fixer, not text-only embed",
+    );
+    assert.equal(s.hasFallbackContent, true);
   });
 
   await it("single image (summary_large_image, imageCount=1) → 1 media embed", async () => {
@@ -261,7 +291,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasContent, false);
   });
 
-  await it("probe error → fixer URL fallback", async () => {
+  await it("probe error → primary + secondary fixer + OG recovery list", async () => {
     _mockProbeError = new Error("probe boom");
     try {
       const p = await buildThreadsPayload(THREADS_URL);
@@ -269,6 +299,15 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       assert.equal(s.contentStartsWithHttp, true);
       assert.ok(s.contentText.includes("fixthreads"));
       assert.equal(s.embedCount, 0);
+      assert.equal(
+        s.hasFallbackContent,
+        true,
+        "probe failure should still expose secondary fixer",
+      );
+      assert.ok(
+        Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
+        "probe failure should expose recoverUrls for OG fallback",
+      );
     } finally {
       _mockProbeError = null;
     }
@@ -291,10 +330,26 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasContent, false);
   });
 
-  await it("bahamut restricted → fallback fixer URL", async () => {
+  await it("bahamut restricted with public title/desc → embed with login notice", async () => {
     _mockPageMetadata = {
       title: "x",
       description: "y",
+      restricted: true,
+    };
+    const p = await buildBahamutPayload("https://forum.gamer.com.tw/x/1");
+    const s = shapeOf(p);
+    assert.equal(s.embedCount, 1, "should still show partial public summary");
+    const desc = p.embeds[0].data?.description;
+    assert.ok(
+      typeof desc === "string" && desc.includes("登入巴哈姆特"),
+      `should append login notice, got: ${desc}`,
+    );
+  });
+
+  await it("bahamut restricted with no usable metadata → fixer URL fallback", async () => {
+    _mockPageMetadata = {
+      title: null,
+      description: null,
       restricted: true,
     };
     const p = await buildBahamutPayload("https://forum.gamer.com.tw/x/1");
@@ -380,6 +435,134 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
     assert.ok(p.content.includes("Some Display"));
     assert.ok(p.content.includes("@some_user"));
+  });
+
+  // === BILIBILI API WIRING ===
+  console.log("buildBilibiliPayload");
+
+  await it("bilibili API success → custom embed (no fixer URL)", async () => {
+    _mockFetch = async (apiUrl) => {
+      if (typeof apiUrl === "string" && apiUrl.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: 0,
+            data: {
+              title: "B站影片",
+              desc: "簡介",
+              pic: "http://i.example.com/cover.jpg",
+              owner: { name: "UP主" },
+            },
+          }),
+        };
+      }
+      throw new Error("unexpected fetch");
+    };
+    try {
+      const p = await buildBilibiliPayload(
+        "https://www.bilibili.com/video/BV1xx",
+      );
+      const s = shapeOf(p);
+      assert.equal(s.embedCount, 1, "API success should produce custom embed");
+      assert.equal(s.hasContent, false, "no URL needed when API succeeds");
+      const data = p.embeds[0].data;
+      assert.equal(data.title, "B站影片");
+      assert.equal(data.author.name, "UP主");
+      assert.ok(
+        data.image.url.startsWith("https://"),
+        "http image URL upgraded to https",
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("bilibili API failure → fixer URL + recoverUrls", async () => {
+    _mockFetch = async () => {
+      throw new Error("network down");
+    };
+    try {
+      const p = await buildBilibiliPayload(
+        "https://www.bilibili.com/video/BV1xx",
+      );
+      const s = shapeOf(p);
+      assert.equal(s.embedCount, 0);
+      assert.equal(s.contentStartsWithHttp, true);
+      assert.ok(s.contentText.includes("vxbilibili"));
+      assert.ok(
+        Array.isArray(p.recoverUrls) && p.recoverUrls.length >= 1,
+        "API failure should still expose recoverUrls",
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  // === PREVIEW DISPATCHER (preview.js) ===
+  console.log("buildPreviewPayloads dispatcher");
+
+  await it("twitter URL → fixer with recoverUrls", async () => {
+    const [p] = await buildPreviewPayloads(["https://x.com/u/status/1"]);
+    assert.ok(p.content.includes("fxtwitter"));
+    assert.ok(Array.isArray(p.recoverUrls) && p.recoverUrls.length >= 1);
+    assert.equal(p.sourceUrl, "https://x.com/u/status/1");
+    assert.ok(p.recoverEmbedOptions?.footerText?.includes("X"));
+  });
+
+  await it("redd.it short URL → rxddit (regression)", async () => {
+    const [p] = await buildPreviewPayloads(["https://redd.it/abc"]);
+    assert.ok(
+      p.content.includes("rxddit"),
+      `redd.it should now route to rxddit, got: ${p.content}`,
+    );
+    assert.ok(Array.isArray(p.recoverUrls));
+  });
+
+  await it("pixiv URL → phixiv with recoverUrls", async () => {
+    const [p] = await buildPreviewPayloads([
+      "https://www.pixiv.net/artworks/1234",
+    ]);
+    assert.ok(p.content.includes("phixiv"));
+    assert.ok(Array.isArray(p.recoverUrls));
+  });
+
+  await it("bluesky URL → bskx with recoverUrls", async () => {
+    const [p] = await buildPreviewPayloads([
+      "https://bsky.app/profile/x/post/1",
+    ]);
+    assert.ok(p.content.includes("bskx"));
+    assert.ok(Array.isArray(p.recoverUrls));
+  });
+
+  await it("facebook URL → facebed with recoverUrls", async () => {
+    const [p] = await buildPreviewPayloads([
+      "https://www.facebook.com/post/1",
+    ]);
+    assert.ok(p.content.includes("facebed"));
+    assert.ok(Array.isArray(p.recoverUrls));
+  });
+
+  await it("multiple URLs run in parallel and preserve order", async () => {
+    _mockThreadsMetadata = {
+      image: null,
+      title: "ttitle",
+      description: "tdesc",
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      video: false,
+    };
+    const out = await buildPreviewPayloads([
+      "https://x.com/u/status/1",
+      "https://www.threads.net/@a/post/1",
+      "https://bsky.app/profile/x/post/1",
+    ]);
+    assert.equal(out.length, 3);
+    assert.ok(out[0].content?.includes("fxtwitter"));
+    assert.equal(Array.isArray(out[1].embeds), true, "threads should be embed");
+    assert.ok(out[2].content?.includes("bskx"));
   });
 
   console.log("");
