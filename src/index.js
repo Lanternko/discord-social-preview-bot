@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, MessageFlags } = require("discord.js");
 
 const { DISCORD_TOKEN, AI_TIMEOUT_MS } = require("./config");
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
@@ -68,7 +68,31 @@ client.on("guildDelete", (guild) => {
 });
 
 client.on("interactionCreate", async (interaction) => {
-  await handleInteraction(interaction, client);
+  // Any throw here propagates to the Client 'error' event and crashes
+  // the whole process (no auto-restart). Swallow + log so a bug in one
+  // handler can't take 西寶 offline.
+  try {
+    await handleInteraction(interaction, client);
+  } catch (err) {
+    console.error(
+      `[commands] interaction handler error name=${interaction.commandName} guildId=${interaction.guildId ?? "none"}: ${err?.stack || err}`,
+    );
+    try {
+      const replyPayload = {
+        content: "指令執行失敗了…抱歉 🙏",
+        flags: MessageFlags.Ephemeral,
+      };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(replyPayload);
+      } else if (interaction.isRepliable()) {
+        await interaction.reply(replyPayload);
+      }
+    } catch (replyErr) {
+      console.warn(
+        `[commands] failed to send error reply: ${replyErr?.message || replyErr}`,
+      );
+    }
+  }
 });
 
 client.on("messageCreate", async (message) => {

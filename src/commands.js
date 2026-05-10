@@ -81,7 +81,7 @@ async function ensureApplicationCommands(client) {
 }
 
 function buildPermissionDebugMessage(interaction) {
-  if (!interaction.inGuild()) {
+  if (!interaction.inGuild() || !interaction.guild) {
     return "這個指令只能在伺服器頻道內使用。";
   }
 

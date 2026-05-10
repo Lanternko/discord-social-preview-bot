@@ -51,6 +51,9 @@ const {
   getTierConfig,
 } = require("../src/tier-config");
 
+const { buildPermissionDebugMessage } = require("../src/commands");
+const { getMissingChannelPermissions } = require("../src/discord-io");
+
 let pass = 0;
 let fail = 0;
 function it(name, fn) {
@@ -746,6 +749,33 @@ it("buildGenericFallbackEmbed honours overrides", () => {
   assert.equal(data.color, 0x123456);
   assert.equal(data.footer.text, "Test");
   assert.equal(data.url, "https://orig.example/post");
+});
+
+console.log("");
+console.log("debug-perms null-guild guard");
+it("buildPermissionDebugMessage returns DM message when not in guild", () => {
+  const msg = buildPermissionDebugMessage({ inGuild: () => false });
+  assert.match(msg, /只能在伺服器/);
+});
+it("buildPermissionDebugMessage handles inGuild()=true with guild=null without throwing", () => {
+  // Reproduces the prod crash: Discord delivered an interaction whose
+  // guildId was set (so inGuild() returns true) but the bot's cache had
+  // no entry for that guild, so .guild was null. Reading .guild.members
+  // used to throw and bring the whole process down.
+  const msg = buildPermissionDebugMessage({
+    inGuild: () => true,
+    guild: null,
+    guildId: "999",
+    channelId: "888",
+  });
+  assert.match(msg, /只能在伺服器/);
+});
+it("getMissingChannelPermissions returns sentinel when guild is null", () => {
+  const result = getMissingChannelPermissions({
+    inGuild: () => true,
+    guild: null,
+  });
+  assert.deepEqual(result, ["GuildUnavailable"]);
 });
 
 console.log("");
