@@ -7,6 +7,7 @@ npm-debug.log*
 start-bot.command
 stop-bot.command
 bot.log
+bot.log.*
 *.log
 data/
 
