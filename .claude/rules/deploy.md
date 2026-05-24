@@ -14,7 +14,7 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`.
 
 ## Production deployment (SSH host)
 
-Bot runs 24/7 on a Linux lab machine via `nohup`. Path: `~/side_projects/discord-social-preview-bot/`.
+Bot runs 24/7 on a Linux lab machine — either via `nohup` (scripted redeploys) or inside a long-lived `tmux` session (preferred for hands-on ops). Path: `~/side_projects/discord-social-preview-bot/`.
 
 ### Daily ops
 
@@ -65,6 +65,24 @@ No `[commands]` line appears when all registered commands already match — this
 grep -i 'error\|unhandled\|ECONN\|ENOTFOUND' bot.log
 grep 'chain exhausted' bot.log   # AI chain drained for every mention
 ```
+
+### Manual redeploy via tmux (preferred for hands-on ops)
+
+Same effect as nohup, but lets you re-attach to watch the log live. Session name: `dcbot`.
+
+```bash
+ssh <host>
+tmux attach -t dcbot || tmux new -s dcbot
+cd ~/side_projects/discord-social-preview-bot
+git pull
+# 若 pane 裡已在跑 node：Ctrl+C 停掉，再執行
+node src/index.js
+# Detach：Ctrl+b 再按 d — bot 繼續跑
+```
+
+To stop entirely: attach, `Ctrl+C`, then `exit` to kill the pane.
+
+Verify the same `Logged in as ...` / `目前已加入 ... 個伺服器` / `[ai] chain=...` lines as the nohup flow above — they print to the tmux pane instead of `bot.log`.
 
 ### Shadow-deploy a branch (test before merge)
 
