@@ -204,8 +204,18 @@ async function generateAIReply(message, userText) {
       }
       if (guildId && groupContextLines && groupContextLines.length > 0) {
         const guildName = message.guild?.name;
-        appendPendingContext(guildId, guildName, groupContextLines);
+        const ctxStrings = groupContextLines.map((e) => e.line);
+        appendPendingContext(guildId, guildName, ctxStrings);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
+
+        for (const entry of groupContextLines) {
+          if (entry.userId && entry.userId !== userId) {
+            appendPendingInteraction(
+              guildId, entry.userId, entry.displayName,
+              entry.line, "",
+            );
+          }
+        }
       }
     }
 

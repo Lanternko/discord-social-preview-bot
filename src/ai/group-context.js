@@ -28,7 +28,15 @@ async function fetchGroupContext(channel, count, beforeMessageId, botUserId) {
     if (botUserId && m.author?.id === botUserId) continue;
     const line = formatGroupMessage(m);
     if (!line) continue;
-    formatted.push(line);
+    formatted.push({
+      line,
+      userId: m.author?.id ?? null,
+      displayName:
+        m.member?.displayName ||
+        m.author?.globalName ||
+        m.author?.username ||
+        null,
+    });
     if (formatted.length >= count) break;
   }
   formatted.reverse();
@@ -56,12 +64,21 @@ function formatGroupMessage(m) {
     parts.push("(附件)");
   }
 
+  if (m.reactions?.cache?.size > 0) {
+    const rxns = m.reactions.cache
+      .filter((r) => r.count > 0)
+      .map((r) => `${r.emoji.name}×${r.count}`)
+      .join(", ");
+    if (rxns) parts.push(`(react：${rxns})`);
+  }
+
   if (parts.length === 0) return null;
   return `[${name}]: ${parts.join(" ")}`;
 }
 
-function buildGroupContextBlock(lines) {
-  if (!lines || lines.length === 0) return "";
+function buildGroupContextBlock(entries) {
+  if (!entries || entries.length === 0) return "";
+  const lines = entries.map((e) => (typeof e === "string" ? e : e.line));
   return `\n\n## 最近群組對話 (供你了解 context, 不要直接複述)\n${lines.join("\n")}`;
 }
 
