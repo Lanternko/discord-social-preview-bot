@@ -9,6 +9,13 @@ const {
   removeSchedule,
 } = require("./schedule-store");
 const {
+  getUserProfile,
+  deleteUserProfile,
+} = require("./user-profile-store");
+const {
+  getGuildProfile,
+} = require("./guild-profile-store");
+const {
   TASK_TYPES,
   VALID_TASK_TYPES,
   registerJob,
@@ -101,6 +108,41 @@ const SCHEDULE_COMMAND = {
   ],
 };
 
+const MEMORY_COMMAND = {
+  name: "memory",
+  description: "查看或刪除西寶對你的長期記憶",
+  options: [
+    {
+      name: "show",
+      description: "查看西寶對你的記憶",
+      type: 1, // SUB_COMMAND
+    },
+    {
+      name: "forget-me",
+      description: "刪除西寶對你的所有記憶",
+      type: 1, // SUB_COMMAND
+    },
+    {
+      name: "forget-user",
+      description: "刪除西寶對指定使用者的記憶（需管理伺服器權限）",
+      type: 1, // SUB_COMMAND
+      options: [
+        {
+          name: "user",
+          description: "要刪除記憶的使用者",
+          type: 6, // USER
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "guild",
+      description: "查看西寶對這個群的記憶",
+      type: 1, // SUB_COMMAND
+    },
+  ],
+};
+
 // Returns true when the registered command matches the expected spec on the
 // fields we care about. Currently checks description + defaultMemberPermissions
 // — extend here if we ever start diffing options.
@@ -130,6 +172,7 @@ async function ensureApplicationCommands(client) {
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
     SCHEDULE_COMMAND,
+    MEMORY_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -363,6 +406,143 @@ async function handleScheduleCommand(interaction, client) {
   }
 }
 
+async function handleMemoryCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId;
+
+  if (sub === "show") {
+    const profile = getUserProfile(guildId, interaction.user.id);
+    if (!profile) {
+      await interaction.reply({
+        content: "西寶目前對你還沒有任何記憶。多跟她聊聊吧！",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const lines = [`**西寶對你的記憶**`];
+    lines.push(`暱稱：${profile.name || "未知"}`);
+
+    if (profile.profile) {
+      lines.push(`\n📝 **人格摘要**\n${profile.profile}`);
+    }
+
+    const obs = profile.observations || [];
+    if (obs.length > 0) {
+      lines.push(`\n🔍 **待整理的觀察（${obs.length} 條）**`);
+      for (const o of obs.slice(0, 10)) {
+        lines.push(`- ${o.text}（信心 ${o.confidence}）`);
+      }
+      if (obs.length > 10) lines.push(`…還有 ${obs.length - 10} 條`);
+    }
+
+    const pending = profile.pendingInteractions || [];
+    if (pending.length > 0) {
+      lines.push(`\n⏳ 待萃取互動：${pending.length} 筆`);
+    }
+
+    await interaction.reply({
+      content: lines.join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (sub === "forget-me") {
+    const deleted = deleteUserProfile(guildId, interaction.user.id);
+    if (deleted) {
+      console.log(`[memory] user=${interaction.user.id} guild=${guildId} self-deleted`);
+      await interaction.reply({
+        content: "已刪除西寶對你的所有記憶。",
+        flags: MessageFlags.Ephemeral,
+      });
+    } else {
+      await interaction.reply({
+        content: "西寶本來就沒有你的記憶。",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  if (sub === "forget-user") {
+    const canManageGuild = interaction.member?.permissions?.has?.(
+      PermissionsBitField.Flags.ManageGuild,
+    );
+    if (!canManageGuild) {
+      await interaction.reply({
+        content: "需要「管理伺服器」權限才能刪除別人的記憶。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const target = interaction.options.getUser("user");
+    const deleted = deleteUserProfile(guildId, target.id);
+    if (deleted) {
+      console.log(`[memory] user=${target.id} guild=${guildId} deleted by admin=${interaction.user.id}`);
+      await interaction.reply({
+        content: `已刪除西寶對 **${target.username}** 的所有記憶。`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } else {
+      await interaction.reply({
+        content: `西寶沒有 **${target.username}** 的記憶。`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  if (sub === "guild") {
+    const guildProfile = getGuildProfile(guildId);
+    if (!guildProfile) {
+      await interaction.reply({
+        content: "西寶目前對這個群還沒有印象。多聊聊就會有了！",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    const lines = [`**西寶對這個群的印象**`];
+    if (guildProfile.profile) {
+      lines.push(`\n📝 **群組摘要**\n${guildProfile.profile}`);
+    }
+
+    const obs = guildProfile.observations || [];
+    if (obs.length > 0) {
+      lines.push(`\n🔍 **待整理的觀察（${obs.length} 條）**`);
+      for (const o of obs.slice(0, 10)) {
+        lines.push(`- ${o.text}（信心 ${o.confidence}）`);
+      }
+      if (obs.length > 10) lines.push(`…還有 ${obs.length - 10} 條`);
+    }
+
+    const pending = guildProfile.pendingContexts || [];
+    if (pending.length > 0) {
+      lines.push(`\n⏳ 待萃取上下文：${pending.length} 筆`);
+    }
+
+    if (!guildProfile.profile && obs.length === 0 && pending.length === 0) {
+      lines.push("還沒有任何資料，多聊聊就會有了！");
+    }
+
+    await interaction.reply({
+      content: lines.join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+}
+
 async function handleInteraction(interaction, client) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -389,6 +569,11 @@ async function handleInteraction(interaction, client) {
 
   if (interaction.commandName === SCHEDULE_COMMAND.name) {
     await handleScheduleCommand(interaction, client);
+    return;
+  }
+
+  if (interaction.commandName === MEMORY_COMMAND.name) {
+    await handleMemoryCommand(interaction);
   }
 }
 
@@ -397,9 +582,11 @@ module.exports = {
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
   SCHEDULE_COMMAND,
+  MEMORY_COMMAND,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
   handleTierCommand,
   handleScheduleCommand,
+  handleMemoryCommand,
   handleInteraction,
 };
