@@ -1139,6 +1139,12 @@ const {
   buildConsolidationTurns,
   parseConsolidationResult,
   CONSOLIDATE_MIN_COUNT,
+  GUILD_EXTRACT_MIN_COUNT,
+  GUILD_CONSOLIDATE_MIN_COUNT,
+  shouldGuildExtract,
+  buildGuildExtractionTurns,
+  shouldGuildConsolidate,
+  buildGuildConsolidationTurns,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
 
@@ -1282,6 +1288,96 @@ it("parseConsolidationResult returns null for garbage", () => {
   assert.equal(parseConsolidationResult("not json"), null);
   assert.equal(parseConsolidationResult(null), null);
   assert.equal(parseConsolidationResult(""), null);
+});
+// --- guild-profile-store ---
+const guildStore = require("../src/guild-profile-store");
+
+function withGuildStore(fn) {
+  guildStore.resetCacheForTests();
+  fn();
+  guildStore.resetCacheForTests();
+}
+
+console.log("guild-profile-store");
+it("getGuildProfile returns null for missing guild", () => {
+  withGuildStore(() => {
+    assert.equal(guildStore.getGuildProfile("g1"), null);
+    assert.equal(guildStore.getGuildProfile(null), null);
+  });
+});
+it("appendPendingContext stores context snapshot", () => {
+  withGuildStore(() => {
+    guildStore.appendPendingContext("g1", "TestGuild", ["[Alice]: hi", "[Bob]: yo"]);
+    const p = guildStore.getGuildProfile("g1");
+    assert.equal(p.pendingContexts.length, 1);
+    assert.match(p.pendingContexts[0].text, /Alice.*Bob/s);
+  });
+});
+it("appendObservations + setConsolidatedProfile works", () => {
+  withGuildStore(() => {
+    guildStore.appendObservations("g1", "TestGuild", [
+      { text: "常聊動漫", confidence: 0.8 },
+    ]);
+    const before = guildStore.getGuildProfile("g1");
+    assert.equal(before.observations.length, 1);
+    guildStore.setConsolidatedProfile("g1", "愛聊動漫的群");
+    const after = guildStore.getGuildProfile("g1");
+    assert.equal(after.profile, "愛聊動漫的群");
+    assert.equal(after.observations.length, 0);
+  });
+});
+it("buildGuildProfileBlock renders block with summary", () => {
+  const block = guildStore.buildGuildProfileBlock({ profile: "常聊動漫" });
+  assert.match(block, /這個群的長期印象/);
+  assert.match(block, /常聊動漫/);
+});
+it("buildGuildProfileBlock returns empty for no profile", () => {
+  assert.equal(guildStore.buildGuildProfileBlock(null), "");
+  assert.equal(guildStore.buildGuildProfileBlock({}), "");
+  assert.equal(guildStore.buildGuildProfileBlock({ profile: null }), "");
+});
+
+console.log("guild-extraction");
+it("shouldGuildExtract false when no pending", () => {
+  withGuildStore(() => {
+    assert.equal(shouldGuildExtract("g1"), false);
+  });
+});
+it("shouldGuildExtract true when pending >= threshold", () => {
+  withGuildStore(() => {
+    for (let i = 0; i < GUILD_EXTRACT_MIN_COUNT; i++) {
+      guildStore.appendPendingContext("g1", "x", [`[a]: msg${i}`]);
+    }
+    assert.equal(shouldGuildExtract("g1"), true);
+  });
+});
+it("buildGuildExtractionTurns formats snapshots", () => {
+  const turns = buildGuildExtractionTurns([
+    { text: "[Alice]: hi\n[Bob]: yo" },
+    { text: "[Carol]: 草" },
+  ]);
+  assert.equal(turns.length, 1);
+  assert.match(turns[0].content, /片段 1/);
+  assert.match(turns[0].content, /Alice/);
+  assert.match(turns[0].content, /片段 2/);
+});
+it("shouldGuildConsolidate true when obs >= threshold", () => {
+  withGuildStore(() => {
+    const obs = [];
+    for (let i = 0; i < GUILD_CONSOLIDATE_MIN_COUNT; i++) {
+      obs.push({ text: `obs${i}`, confidence: 0.7 });
+    }
+    guildStore.appendObservations("g1", "x", obs);
+    assert.equal(shouldGuildConsolidate("g1"), true);
+  });
+});
+it("buildGuildConsolidationTurns includes profile and obs", () => {
+  const turns = buildGuildConsolidationTurns({
+    profile: "舊摘要",
+    observations: [{ text: "新觀察", confidence: 0.8 }],
+  });
+  assert.match(turns[0].content, /舊摘要/);
+  assert.match(turns[0].content, /新觀察/);
 });
 resetExtractorForTests();
 

@@ -6,6 +6,13 @@ const {
   setConsolidatedProfile,
   PROFILE_MAX_LEN,
 } = require("../user-profile-store");
+const {
+  getGuildProfile,
+  getPendingContexts,
+  clearPendingContexts,
+  appendObservations: appendGuildObservations,
+  setConsolidatedProfile: setGuildConsolidatedProfile,
+} = require("../guild-profile-store");
 
 const EXTRACT_MIN_COUNT = 5;
 const EXTRACT_MIN_COUNT_TIME = 2;
@@ -240,9 +247,187 @@ async function maybeConsolidateProfile(guildId, userId, runChain) {
   }
 }
 
+// --- Guild memory ---
+
+const GUILD_EXTRACT_MIN_COUNT = 5;
+const GUILD_EXTRACT_MIN_COUNT_TIME = 3;
+const GUILD_EXTRACT_TIME_THRESHOLD_MS = 60 * 60 * 1000;
+const GUILD_CONSOLIDATE_MIN_COUNT = 12;
+const GUILD_CONSOLIDATE_MIN_COUNT_TIME = 5;
+const GUILD_CONSOLIDATE_TIME_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+const guildExtractInFlight = new Set();
+const guildConsolidateInFlight = new Set();
+
+const GUILD_EXTRACTION_PERSONA = `你是一個觀察力很強的助手。你的工作是從 Discord 群組的聊天紀錄中提取**群組整體的穩定特徵**。
+
+## 規則
+- 只記錄群組整體的特徵：常聊話題、互動風格、常見梗/用語、群內氣氛
+- **不記錄**：個人私事、敏感推測（政治傾向、健康、性取向、宗教）、單次情緒、吵架
+- **不記錄「某人怎樣」**——這是群組記憶，不是個人記憶
+- 不確定就回空 observations
+- 每條 observation 不超過 30 字
+- confidence 0~1，只有多次出現的特徵才給高 confidence
+
+## 輸出格式
+嚴格回傳 JSON，不要加任何其他文字：
+{"observations":[{"text":"觀察內容","confidence":0.7}]}
+
+最多 3 條。沒有值得記的就回：
+{"observations":[]}`;
+
+const GUILD_CONSOLIDATION_PERSONA = `你是一個擅長整理資料的助手。你的工作是把零散的群組觀察合併成一段簡潔的群組氛圍摘要。
+
+## 規則
+- 合併重複或相似的觀察
+- 只保留穩定、能描述群組氣氛的資訊（常聊話題、互動風格、群內梗）
+- **不寫**：個人私事、敏感推測、單次事件
+- 如果觀察不足，保留舊 profile 原文
+- 摘要用繁體中文，自然口語，不要條列式
+
+## 輸出格式
+嚴格回傳 JSON，不要加任何其他文字：
+{"profile":"整合後的群組氛圍摘要，最多 300 字"}
+
+沒什麼可更新的就回：
+{"profile":""}`;
+
+function shouldGuildExtract(guildId) {
+  const entry = getGuildProfile(guildId);
+  const pending = entry?.pendingContexts ?? [];
+  if (pending.length === 0) return false;
+
+  if (pending.length >= GUILD_EXTRACT_MIN_COUNT) return true;
+
+  if (pending.length >= GUILD_EXTRACT_MIN_COUNT_TIME) {
+    const last = entry.lastExtractedAt ?? 0;
+    if (Date.now() - last >= GUILD_EXTRACT_TIME_THRESHOLD_MS) return true;
+  }
+
+  return false;
+}
+
+function buildGuildExtractionTurns(pendingContexts) {
+  const blocks = pendingContexts.map((p, i) => `--- 片段 ${i + 1} ---\n${p.text}`);
+  return [
+    {
+      role: "user",
+      content: `以下是 Discord 群組最近幾次的聊天紀錄片段，請從中提取群組整體的穩定特徵：\n\n${blocks.join("\n\n")}`,
+    },
+  ];
+}
+
+function shouldGuildConsolidate(guildId) {
+  const entry = getGuildProfile(guildId);
+  const obs = entry?.observations ?? [];
+  if (obs.length === 0) return false;
+
+  if (obs.length >= GUILD_CONSOLIDATE_MIN_COUNT) return true;
+
+  const totalChars = obs.reduce((sum, o) => sum + (o.text?.length ?? 0), 0);
+  if (totalChars >= 1200) return true;
+
+  if (obs.length >= GUILD_CONSOLIDATE_MIN_COUNT_TIME) {
+    const last = entry.profileAt ?? 0;
+    if (Date.now() - last >= GUILD_CONSOLIDATE_TIME_THRESHOLD_MS) return true;
+  }
+
+  return false;
+}
+
+function buildGuildConsolidationTurns(entry) {
+  const parts = [];
+  if (entry.profile) {
+    parts.push(`## 既有群組摘要\n${entry.profile}`);
+  }
+  const obsLines = (entry.observations || [])
+    .map((o) => `- ${o.text}（信心 ${o.confidence}）`)
+    .join("\n");
+  parts.push(`## 新觀察\n${obsLines}`);
+  return [
+    {
+      role: "user",
+      content: `請根據以下資料，整合成一段簡潔的群組氛圍摘要：\n\n${parts.join("\n\n")}`,
+    },
+  ];
+}
+
+async function maybeGuildExtract(guildId, guildName, runChain) {
+  if (!guildId || !runChain) return;
+  if (!shouldGuildExtract(guildId)) return;
+
+  if (guildExtractInFlight.has(guildId)) return;
+  guildExtractInFlight.add(guildId);
+
+  try {
+    const pending = getPendingContexts(guildId);
+    if (pending.length === 0) return;
+
+    const turns = buildGuildExtractionTurns(pending);
+    const result = await runChain(turns, GUILD_EXTRACTION_PERSONA, EXTRACT_MAX_TOKENS);
+
+    if (!result) {
+      console.warn("[guild-extract] chain exhausted, skipping");
+      return;
+    }
+
+    const observations = parseExtractionResult(result.text);
+    console.log(
+      `[guild-extract] guild=${guildId} provider=${result.provider.label} extracted=${observations.length} from=${pending.length} snapshots`,
+    );
+
+    if (observations.length > 0) {
+      appendGuildObservations(guildId, guildName, observations);
+    }
+    clearPendingContexts(guildId);
+
+    maybeGuildConsolidate(guildId, runChain).catch(() => {});
+  } catch (err) {
+    console.warn(`[guild-extract] error: ${err.message}`);
+  } finally {
+    guildExtractInFlight.delete(guildId);
+  }
+}
+
+async function maybeGuildConsolidate(guildId, runChain) {
+  if (!guildId || !runChain) return;
+  if (!shouldGuildConsolidate(guildId)) return;
+
+  if (guildConsolidateInFlight.has(guildId)) return;
+  guildConsolidateInFlight.add(guildId);
+
+  try {
+    const entry = getGuildProfile(guildId);
+    if (!entry || (entry.observations?.length ?? 0) === 0) return;
+
+    const turns = buildGuildConsolidationTurns(entry);
+    const result = await runChain(turns, GUILD_CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
+
+    if (!result) {
+      console.warn("[guild-consolidate] chain exhausted, skipping");
+      return;
+    }
+
+    const profile = parseConsolidationResult(result.text);
+    console.log(
+      `[guild-consolidate] guild=${guildId} provider=${result.provider.label} profile=${profile ? profile.length : 0}chars from=${entry.observations.length} obs`,
+    );
+
+    if (profile) {
+      setGuildConsolidatedProfile(guildId, profile);
+    }
+  } catch (err) {
+    console.warn(`[guild-consolidate] error: ${err.message}`);
+  } finally {
+    guildConsolidateInFlight.delete(guildId);
+  }
+}
+
 function resetForTests() {
   extractInFlight.clear();
   consolidateInFlight.clear();
+  guildExtractInFlight.clear();
+  guildConsolidateInFlight.clear();
 }
 
 module.exports = {
@@ -264,5 +449,15 @@ module.exports = {
   buildConsolidationTurns,
   parseConsolidationResult,
   maybeConsolidateProfile,
+  GUILD_EXTRACT_MIN_COUNT,
+  GUILD_EXTRACT_MIN_COUNT_TIME,
+  GUILD_CONSOLIDATE_MIN_COUNT,
+  GUILD_CONSOLIDATE_MIN_COUNT_TIME,
+  shouldGuildExtract,
+  buildGuildExtractionTurns,
+  shouldGuildConsolidate,
+  buildGuildConsolidationTurns,
+  maybeGuildExtract,
+  maybeGuildConsolidate,
   resetForTests,
 };

@@ -29,7 +29,13 @@ const {
 } = require("../user-profile-store");
 const {
   maybeExtractObservations,
+  maybeGuildExtract,
 } = require("./observation-extractor");
+const {
+  getGuildProfile,
+  buildGuildProfileBlock,
+  appendPendingContext,
+} = require("../guild-profile-store");
 const {
   buildEmojiMap,
   resolveCustomEmojis,
@@ -140,6 +146,10 @@ async function generateAIReply(message, userText) {
     const userProfile = getUserProfile(message.guildId, message.author?.id);
     profileBlock = buildUserProfileBlock(userProfile);
     if (profileBlock) persona += profileBlock;
+
+    const guildProfile = getGuildProfile(message.guildId);
+    const guildBlock = buildGuildProfileBlock(guildProfile);
+    if (guildBlock) persona += guildBlock;
   }
 
   // Group context is injected as a user-role message (NOT concatenated into
@@ -147,6 +157,7 @@ async function generateAIReply(message, userText) {
   // the highest-privilege prompt area. This also improves DeepSeek cache hits
   // because the system prompt suffix is no longer volatile.
   let groupContextSize = 0;
+  let groupContextLines = null;
   if (tierConfig.groupContextCount > 0 && message.channel) {
     const ctx = await fetchGroupContext(
       message.channel,
@@ -155,6 +166,7 @@ async function generateAIReply(message, userText) {
       message.client?.user?.id,
     );
     groupContextSize = ctx.length;
+    groupContextLines = ctx;
     const block = buildGroupContextBlock(ctx);
     if (block) {
       turns = [{ role: "user", content: block }, ...turns];
@@ -185,10 +197,15 @@ async function generateAIReply(message, userText) {
         message.member?.displayName ||
         message.author?.globalName ||
         message.author?.username;
+      const runChain = (t, p, m) => runProviderChain(AI_PROVIDER_CHAIN, t, p, m);
       if (guildId && userId) {
         appendPendingInteraction(guildId, userId, displayName, userText, capped);
-        const runChain = (t, p, m) => runProviderChain(AI_PROVIDER_CHAIN, t, p, m);
         maybeExtractObservations(guildId, userId, displayName, runChain).catch(() => {});
+      }
+      if (guildId && groupContextLines && groupContextLines.length > 0) {
+        const guildName = message.guild?.name;
+        appendPendingContext(guildId, guildName, groupContextLines);
+        maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
       }
     }
 
