@@ -112,7 +112,7 @@ async function generateAIReply(message, userText) {
   const tierConfig = getTierConfig(message.guildId);
   const userTurn = buildUserTurn(message, userText);
   const history = getChannelAIHistory(message.channelId);
-  const turns = [...history, { role: "user", content: userTurn }];
+  let turns = [...history, { role: "user", content: userTurn }];
 
   // System-prompt assembly is ordered most-stable → most-volatile so the
   // prefix stays byte-identical across calls and stays cache-eligible
