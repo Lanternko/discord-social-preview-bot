@@ -7,6 +7,7 @@ const {
   CEREBRAS_MODEL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
+  DEEPSEEK_REASONING_HEADROOM,
 } = require("../config");
 const { buildOpenAIMessages, buildGeminiContents } = require("./persona");
 
@@ -232,7 +233,7 @@ async function callDeepSeek(turns, persona, maxTokens) {
     messages: buildOpenAIMessages(turns, persona),
     temperature: 0.9,
     top_p: 0.95,
-    max_tokens: maxTokens,
+    max_tokens: maxTokens + DEEPSEEK_REASONING_HEADROOM,
   };
   const label = `deepseek:${DEEPSEEK_MODEL}`;
 

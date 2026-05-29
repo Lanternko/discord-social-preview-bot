@@ -95,6 +95,8 @@ function getFamiliarityRoster(guildId) {
     .map((e) => ({ name: e.name, count: e.count, tier: tierLabel(e.count) }));
 }
 
+const { sanitizeName } = require("./utils");
+
 function buildFamiliarityBlock(roster) {
   if (!roster || roster.length === 0) return "";
 
@@ -104,7 +106,7 @@ function buildFamiliarityBlock(roster) {
   for (const r of roster) {
     if (!r.tier) continue;
     if (!byTier.has(r.tier)) byTier.set(r.tier, []);
-    byTier.get(r.tier).push(r.name);
+    byTier.get(r.tier).push(sanitizeName(r.name));
   }
 
   const lines = ["## 群友熟悉度 (這個伺服器累積發言計數)"];

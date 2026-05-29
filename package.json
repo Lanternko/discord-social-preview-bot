@@ -18,6 +18,7 @@
   "dependencies": {
     "discord.js": "^14.19.3",
     "dotenv": "^16.4.5",
+    "node-cron": "^4.2.1",
     "playwright": "^1.59.1"
   }
 }

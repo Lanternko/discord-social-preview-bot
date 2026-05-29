@@ -35,12 +35,14 @@ async function fetchGroupContext(channel, count, beforeMessageId, botUserId) {
   return formatted;
 }
 
+const { sanitizeName } = require("../utils");
+
 function formatGroupMessage(m) {
-  const name =
+  const name = sanitizeName(
     m.member?.displayName ||
     m.author?.globalName ||
-    m.author?.username ||
-    "未知";
+    m.author?.username,
+  );
 
   const parts = [];
   if (m.content) parts.push(m.content);

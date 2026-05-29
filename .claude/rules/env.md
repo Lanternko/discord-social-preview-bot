@@ -28,7 +28,8 @@
 | Variable | Default | Notes |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | — | Optional. Primary provider (paid, reliable) |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | `deepseek-chat` for V3.2, `deepseek-reasoner` for R1 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | `deepseek-chat` for V3.2, `deepseek-reasoner` for R1, `deepseek-v4-pro` for V4 (reasoning model) |
+| `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (`deepseek-v4-pro` / `-reasoner`) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. Set to 0 for non-reasoning models like `deepseek-chat` if you want to save tokens |
 | `CEREBRAS_API_KEY` | — | Optional. Second layer (Qwen free tier) |
 | `CEREBRAS_MODEL` | `qwen-3-235b-a22b-instruct-2507` | OpenAI-compatible at `api.cerebras.ai/v1/chat/completions` |
 | `GROQ_API_KEY` | — | Optional. Third layer (Groq free tier) |

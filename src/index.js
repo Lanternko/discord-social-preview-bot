@@ -21,6 +21,7 @@ const { isMentioningBot, handleMention } = require("./mention");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
+const { startScheduler, stopScheduler } = require("./scheduler");
 const {
   recordMessage: recordFamiliarityMessage,
   flush: flushFamiliarity,
@@ -53,6 +54,8 @@ client.once("clientReady", async () => {
   } catch (error) {
     console.error("Failed to register application commands:", error);
   }
+
+  startScheduler(client);
 });
 
 client.on("guildCreate", (guild) => {
@@ -191,6 +194,7 @@ startMemorySweepTimer();
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
+    stopScheduler();
     stopMemorySweepTimer();
     flushFamiliarity();
     stopFamiliarityFlushTimer();

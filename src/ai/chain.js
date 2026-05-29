@@ -1,5 +1,6 @@
 const {
   AI_PROVIDER_FORCE,
+  AI_LONG_TERM_MEMORY_ENABLED,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -21,6 +22,19 @@ const {
   getFamiliarityRoster,
   buildFamiliarityBlock,
 } = require("../familiarity");
+const {
+  getUserProfile,
+  buildUserProfileBlock,
+  appendPendingInteraction,
+} = require("../user-profile-store");
+const {
+  maybeExtractObservations,
+} = require("./observation-extractor");
+const {
+  buildEmojiMap,
+  resolveCustomEmojis,
+  buildEmojiPromptBlock,
+} = require("./emoji-resolver");
 const {
   callGemini,
   callGroq,
@@ -100,22 +114,17 @@ async function generateAIReply(message, userText) {
   const history = getChannelAIHistory(message.channelId);
   const turns = [...history, { role: "user", content: userTurn }];
 
-  // Group context is appended to the system prompt for THIS call only — it
-  // never lands in conv memory, so each @ gets a fresh window of what the
-  // group is actually talking about. Without it 西寶 cannot interpret stickers
-  // or cross-talk that happened between people other than her.
+  // System-prompt assembly is ordered most-stable → most-volatile so the
+  // prefix stays byte-identical across calls and stays cache-eligible
+  // (DeepSeek context caching keys on the longest shared prefix). Order:
+  //   1. persona template (per-tier, changes only on /tier)
+  //   2. emoji table     (per bot session — memoized, same string every call)
+  //   3. familiarity      (per-guild, drifts slowly as talk counts grow)
+  //   4. group context    (per-call, fully volatile — MUST be last)
   let persona = tierConfig.persona;
-  let groupContextSize = 0;
-  if (tierConfig.groupContextCount > 0 && message.channel) {
-    const ctx = await fetchGroupContext(
-      message.channel,
-      tierConfig.groupContextCount,
-      message.id,
-      message.client?.user?.id,
-    );
-    groupContextSize = ctx.length;
-    persona += buildGroupContextBlock(ctx);
-  }
+
+  const emojiMap = buildEmojiMap(message.client);
+  persona += buildEmojiPromptBlock(emojiMap);
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
   // identity (not topic), so it goes in for ALL tiers including brief — the
@@ -126,6 +135,32 @@ async function generateAIReply(message, userText) {
     persona += buildFamiliarityBlock(roster);
   }
 
+  let profileBlock = "";
+  if (AI_LONG_TERM_MEMORY_ENABLED) {
+    const userProfile = getUserProfile(message.guildId, message.author?.id);
+    profileBlock = buildUserProfileBlock(userProfile);
+    if (profileBlock) persona += profileBlock;
+  }
+
+  // Group context is injected as a user-role message (NOT concatenated into
+  // the system prompt) so that user-controlled Discord messages don't land in
+  // the highest-privilege prompt area. This also improves DeepSeek cache hits
+  // because the system prompt suffix is no longer volatile.
+  let groupContextSize = 0;
+  if (tierConfig.groupContextCount > 0 && message.channel) {
+    const ctx = await fetchGroupContext(
+      message.channel,
+      tierConfig.groupContextCount,
+      message.id,
+      message.client?.user?.id,
+    );
+    groupContextSize = ctx.length;
+    const block = buildGroupContextBlock(ctx);
+    if (block) {
+      turns = [{ role: "user", content: block }, ...turns];
+    }
+  }
+
   const result = await runProviderChain(
     AI_PROVIDER_CHAIN,
     turns,
@@ -133,13 +168,31 @@ async function generateAIReply(message, userText) {
     tierConfig.maxTokens,
   );
   if (result) {
-    const trimmed = trimDescription(result.text, tierConfig.maxReplyChars);
+    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
+    // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the
+    // resolved `<:name:id>` syntax, the model would see its own raw IDs next
+    // turn and imitate them — mangling the id/colons and producing broken emoji.
     recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
-    recordAITurn(message.channelId, "assistant", trimmed, tierConfig.memoryMaxTurns);
+    recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
-    return trimmed;
+
+    if (AI_LONG_TERM_MEMORY_ENABLED) {
+      const guildId = message.guildId;
+      const userId = message.author?.id;
+      const displayName =
+        message.member?.displayName ||
+        message.author?.globalName ||
+        message.author?.username;
+      if (guildId && userId) {
+        appendPendingInteraction(guildId, userId, displayName, userText, capped);
+        const runChain = (t, p, m) => runProviderChain(AI_PROVIDER_CHAIN, t, p, m);
+        maybeExtractObservations(guildId, userId, displayName, runChain).catch(() => {});
+      }
+    }
+
+    return resolveCustomEmojis(capped, emojiMap);
   }
 
   console.warn(

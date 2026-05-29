@@ -1,7 +1,19 @@
-const { MessageFlags, PermissionsBitField } = require("discord.js");
+const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
 const { TIER_UI_LABELS } = require("./tier-config");
+const {
+  getGuildSchedules,
+  getScheduleById,
+  addSchedule,
+  removeSchedule,
+} = require("./schedule-store");
+const {
+  TASK_TYPES,
+  VALID_TASK_TYPES,
+  registerJob,
+  unregisterJob,
+} = require("./scheduler");
 
 const SERVER_COUNT_COMMAND = {
   name: "servers",
@@ -29,6 +41,61 @@ const TIER_COMMAND = {
         { name: "簡短", value: "brief" },
         { name: "標準", value: "standard" },
         { name: "精細", value: "detailed" },
+      ],
+    },
+  ],
+};
+
+const SCHEDULE_COMMAND = {
+  name: "schedule",
+  description: "管理西寶的定時任務（新增 / 列出 / 刪除）",
+  options: [
+    {
+      name: "add",
+      description: "新增定時任務",
+      type: 1, // SUB_COMMAND
+      options: [
+        {
+          name: "channel",
+          description: "要發送的頻道",
+          type: 7, // CHANNEL
+          required: true,
+          channel_types: [ChannelType.GuildText],
+        },
+        {
+          name: "time",
+          description: "每天執行時間（24小時制，如 23:00）",
+          type: 3, // STRING
+          required: true,
+        },
+        {
+          name: "task",
+          description: "任務類型",
+          type: 3, // STRING
+          required: true,
+          choices: VALID_TASK_TYPES.map((key) => ({
+            name: TASK_TYPES[key].label,
+            value: key,
+          })),
+        },
+      ],
+    },
+    {
+      name: "list",
+      description: "列出這個伺服器的所有定時任務",
+      type: 1, // SUB_COMMAND
+    },
+    {
+      name: "remove",
+      description: "刪除定時任務",
+      type: 1, // SUB_COMMAND
+      options: [
+        {
+          name: "id",
+          description: "要刪除的任務 ID（用 /schedule list 查看）",
+          type: 3, // STRING
+          required: true,
+        },
       ],
     },
   ],
@@ -62,6 +129,7 @@ async function ensureApplicationCommands(client) {
     SERVER_COUNT_COMMAND,
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
+    SCHEDULE_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -167,6 +235,134 @@ async function handleTierCommand(interaction) {
   }
 }
 
+// ── Time parsing ──────────────────────────────────────────────────────
+function parseTime(str) {
+  const m = str.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hour = parseInt(m[1], 10);
+  const minute = parseInt(m[2], 10);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
+// ── /schedule handler ─────────────────────────────────────────────────
+async function handleScheduleCommand(interaction, client) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId;
+
+  // ── list ──
+  if (sub === "list") {
+    const schedules = getGuildSchedules(guildId);
+    if (schedules.length === 0) {
+      await interaction.reply({
+        content: "這個伺服器還沒有任何定時任務。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const lines = schedules.map((s) => {
+      const taskLabel = TASK_TYPES[s.taskType]?.label ?? s.taskType;
+      const time = `${String(s.hour).padStart(2, "0")}:${String(s.minute).padStart(2, "0")}`;
+      const status = s.enabled ? "✅" : "⏸️";
+      return `${status} \`${s.id}\` — <#${s.channelId}> 每天 ${time}　${taskLabel}`;
+    });
+    await interaction.reply({
+      content: `**定時任務列表**\n${lines.join("\n")}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // ── add / remove require ManageGuild ──
+  const canManage = interaction.member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
+  );
+  if (!canManage) {
+    await interaction.reply({
+      content: "需要「管理伺服器」權限才能新增或刪除定時任務。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  // ── add ──
+  if (sub === "add") {
+    const channel = interaction.options.getChannel("channel");
+    const timeStr = interaction.options.getString("time");
+    const taskType = interaction.options.getString("task");
+
+    const parsed = parseTime(timeStr);
+    if (!parsed) {
+      await interaction.reply({
+        content: "時間格式錯誤，請用 24 小時制如 `23:00`。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    try {
+      const entry = addSchedule({
+        guildId,
+        channelId: channel.id,
+        hour: parsed.hour,
+        minute: parsed.minute,
+        taskType,
+        timezone: "Asia/Taipei",
+        createdBy: interaction.user.id,
+      });
+      registerJob(entry, client);
+      const taskLabel = TASK_TYPES[taskType]?.label ?? taskType;
+      const time = `${String(parsed.hour).padStart(2, "0")}:${String(parsed.minute).padStart(2, "0")}`;
+      console.log(
+        `[scheduler] added schedule=${entry.id} guild=${guildId} channel=${channel.id} time=${time} task=${taskType} by=${interaction.user.id}`,
+      );
+      await interaction.reply({
+        content: `已新增定時任務！\n📋 ID: \`${entry.id}\`\n📍 頻道: <#${channel.id}>\n🕐 時間: 每天 ${time}\n📝 任務: ${taskLabel}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      await interaction.reply({
+        content: `新增失敗：${err.message}`,
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  // ── remove ──
+  if (sub === "remove") {
+    const id = interaction.options.getString("id");
+    const schedule = getScheduleById(id);
+
+    if (!schedule || schedule.guildId !== guildId) {
+      await interaction.reply({
+        content: `找不到 ID 為 \`${id}\` 的任務（用 \`/schedule list\` 查看）。`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    removeSchedule(id);
+    unregisterJob(id);
+    const taskLabel = TASK_TYPES[schedule.taskType]?.label ?? schedule.taskType;
+    console.log(
+      `[scheduler] removed schedule=${id} guild=${guildId} by=${interaction.user.id}`,
+    );
+    await interaction.reply({
+      content: `已刪除定時任務 \`${id}\`（${taskLabel}）。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 async function handleInteraction(interaction, client) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -188,6 +384,11 @@ async function handleInteraction(interaction, client) {
 
   if (interaction.commandName === TIER_COMMAND.name) {
     await handleTierCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === SCHEDULE_COMMAND.name) {
+    await handleScheduleCommand(interaction, client);
   }
 }
 
@@ -195,8 +396,10 @@ module.exports = {
   SERVER_COUNT_COMMAND,
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
+  SCHEDULE_COMMAND,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
   handleTierCommand,
+  handleScheduleCommand,
   handleInteraction,
 };

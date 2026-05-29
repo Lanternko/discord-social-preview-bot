@@ -1,9 +1,12 @@
+const { sanitizeName } = require("../utils");
+
 function buildUserTurn(message, userText) {
-  const username =
+  const raw =
     message.member?.displayName ||
     message.author?.globalName ||
     message.author?.username ||
     "使用者";
+  const username = sanitizeName(raw);
   return userText
     ? `<sender name="${username}"/>\n${userText}`
     : `<sender name="${username}"/>\n（這個人 @ 了你但沒打字，可能想打招呼。）`;
