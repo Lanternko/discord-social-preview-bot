@@ -12,33 +12,29 @@ npm start
 
 macOS convenience scripts: `start-bot.command` / `stop-bot.command`.
 
-## Production deployment (SSH host)
+## Production deployment
 
-Bot runs 24/7 on a Linux lab machine via `nohup`. Path: `~/side_projects/discord-social-preview-bot/`.
+Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/discord-social-preview-bot/`.
 
 ### Daily ops
 
 ```bash
 # See recent log
-ssh <host> "tail -50 ~/side_projects/discord-social-preview-bot/bot.log"
+tail -50 ~/side_projects/discord-social-preview-bot/bot.log
 
 # Health check
-ssh <host> "ps aux | grep 'node.*index.js' | grep -v grep"
+pgrep -f 'node src/index.js'
 ```
 
 ### Redeploy after merging to main
 
 ```bash
-ssh <host>
 cd ~/side_projects/discord-social-preview-bot
 git pull
 pkill -f 'src/index.js' && sleep 1
 nohup node src/index.js > bot.log 2>&1 &
 sleep 3 && tail -20 bot.log
-exit
 ```
-
-**Always provide these steps after a merge** — the remote host tracks GitHub, not the local working tree.
 
 ### Verify restart success
 
@@ -68,10 +64,7 @@ grep 'chain exhausted' bot.log   # AI chain drained for every mention
 
 ### Shadow-deploy a branch (test before merge)
 
-To dry-run a PR on the production host without merging to `main`:
-
 ```bash
-ssh <host>
 cd ~/side_projects/discord-social-preview-bot
 git fetch origin
 git checkout <branch-name>
@@ -90,7 +83,7 @@ nohup node src/index.js > bot.log 2>&1 &
 
 ## Secrets
 
-`.env` lives on the deploy host, not in git. To rotate keys: scp a fresh `.env` from a trusted machine, or edit with `nano` on the host.
+`.env` lives on this machine, not in git. To rotate keys: edit with `nano` directly, or scp from a trusted machine.
 
 ## Auto-restart watchdog
 
