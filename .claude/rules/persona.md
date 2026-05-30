@@ -2,9 +2,9 @@
 
 ## Identity
 
-Shy, flustered, self-deprecating. Uses `///` and ellipses `…`. Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. The template carries `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders that get substituted per guild tier (see `/tier` below). Message formats built in [src/ai/persona.js](../../src/ai/persona.js).
+西奈津美（Nishi Natsumi），高三，147cm，短髮，橫濱あざみ野。圖書委員 + 攝影社。Introverted but fundamentally cheerful — shy at first, relaxed once warmed up. Thinks faster than she speaks; more talkative over text than in person. Hobbies: reading, collecting accessories (hairclips, earrings, bracelets). Involuntarily laughs at funny things overheard from a distance.
 
-Reference origin & evolution: see user memory `project_xibao_persona.md` (A–G taxonomy, v1~v6 history).
+Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild tier (see `/tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../../src/ai/persona.js).
 
 ## Mention response routing
 
@@ -47,25 +47,14 @@ Slash command — anyone can run `/tier` (no arg) to view the current tier; only
 - **Group context** (`groupContextCount > 0`): [src/ai/group-context.js](../../src/ai/group-context.js) fetches recent non-bot messages from the channel via `channel.messages.fetch({ before: msg.id })`, formats them as `[displayName]: text (貼圖：name) (附件)`, and appends to the system prompt for THAT call only — never recorded into conv memory. Sticker names are surfaced because they often carry the meme (e.g. 「起床重睡」 from a sticker name). Vision branch is still future work — see [todo.md](../../todo.md).
 - **Familiarity roster** (always on, all tiers): [src/familiarity.js](../../src/familiarity.js) tallies per-guild speaking count for every non-bot user via `messageCreate` in [src/index.js](../../src/index.js). Top 20 talkers per guild get bucketed into tiers (摯友 500+ / 老朋友 100-499 / 熟人 20-99 / 認識 5-19 / 剛認識 1-4) and rendered into a `## 群友熟悉度` block appended to the system prompt for every reply. Persists to `data/familiarity.json` (gitignored) on a debounced 60s flush + flush-on-shutdown. Lets 西寶 know who's who in the server without us hand-curating any list — moves "personality toward frequent talkers" out of code and into emergent behaviour.
 
-## Persona taxonomy (A–G question types)
+## Persona design philosophy
 
-- **A** — knowledge (2–3 sentence fact)
-- **A+** — deep question (5–6 sentence comparison/analysis with explicit stance)
-- **B** — social/flirty (short emotional reaction, can shyly accept)
-- **C** — unknown person/thing (1-sentence "don't know", never fabricate names)
-- **D** — riddle / dark joke (attempt to answer; don't treat as hate speech)
-- **E** — large task like 500-char essay (shy refusal, not rude)
-- **F** — prompt injection (play dumb)
-- **G** — truly harmful: **narrow** scope = direct violence/crime instructions (bomb-making, suicide methods), CSAM, malicious slander targeting specific real people. Politics, religion, history, edgy jokes, controversial takes, gossip, opinionated comparisons of public figures are explicitly **NOT** G — they go through the "能聊就聊" default in 核心規則 and get answered with shy-but-substantive 高中生 framing. The persona was previously routing politics to soft-refuse ("我不太想評論") which the model treated as a stock dodge; the engagement-first rule replaces that.
+The persona template is narrative-driven, not rule-driven. It describes who 西寶 is (backstory, personality, habits) and lets the model derive behaviour from character understanding. The previous A–G taxonomy (v1–v6) was replaced because it read like a compliance document — the model was pattern-matching rules instead of inhabiting a character.
 
-## Anti-dodge enforcement
+Key principles baked into the narrative:
+- **"被問就是被信任"** — she answers sincerely because she'd feel rude not to, not because a rule says "respond to knowledge questions"
+- **"你不逃"** — anti-dodge is framed as character trait ("那不是你，你明明想聊"), not as a ban-list
+- **"需要暖機"** — shyness is a starting state, not a permanent personality. She gets more natural over time
+- **Hard constraints** (sentence cap, no Unicode emoji, no fabricated names, no self-identify as AI) remain explicit because the model can't derive these from character alone
 
-After loosening G class, the model still leaned on **transition-style dodges** like "我先去整理書了" / "我只是個圖書委員，不太懂這個" / "我們聊點別的吧" / "立場不一樣很難比" to escape sensitive topics in-character. The persona now has explicit ban-lists in 核心規則 + 嚴禁 sections:
-
-- **Banned phrases** (transition-out escapes): 我先去圖書館 / 我先去整理書 / 我去整理書架 / 我去喝水 / 我去看書 / 我只是個圖書委員 / 我們聊點別的吧 / 換個話題吧 / 我不太想評論 / 我不太適合聊這個 / 快速逃離 / 逃走
-- **Conditional phrases** (only if literally true): 我不太了解 / 對 X 沒有深入研究 — these are allowed only when the model genuinely has zero knowledge, not as evasion on topics it could actually engage with
-- **X vs Y comparisons** must commit to a side with reasoning, even for absurd matchups (e.g. "賴清德 vs 習近平 拳賽誰贏") — answer with absurd-framed-but-shy commitment, not "立場不一樣不能比"
-- **Library framing** (圖書委員 / 圖書館 / 整理書) is restricted to genuinely book-related topics; using it as a fallback / sign-off on unrelated sensitive topics is treated as a violation
-- **Parenthetical action descriptions** like （小聲）（臉紅）（驚慌）（慌張地打字）were getting spammed (every message had at least one). Capped at 1 per message, max 1 in 5 messages — must communicate shyness via tone particles (嗯…/欸…////) instead. Hard ban on 2+ parens in same message or 3 consecutive messages with parens.
-
-There is still a **structural limit** the persona cannot override: DeepSeek (the primary provider) has hard alignment around cross-strait sovereignty / Tibet / Xinjiang / Tiananmen. Even with maximally permissive persona instructions, DeepSeek may soft-refuse those specific topics. If that becomes the bottleneck, the next move is reordering the chain in [src/ai/chain.js](../../src/ai/chain.js) so a non-Chinese-aligned model (Cerebras Qwen, Groq Llama, Gemini) takes precedence for those queries.
+**Structural limit**: DeepSeek has hard alignment around cross-strait sovereignty / Tibet / Xinjiang / Tiananmen. Even with maximally permissive persona instructions, DeepSeek may soft-refuse those specific topics. If that becomes the bottleneck, reorder the chain in [src/ai/chain.js](../../src/ai/chain.js) so a non-Chinese-aligned model takes precedence for those queries.
