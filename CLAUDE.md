@@ -33,7 +33,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 - **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom embed. Failure → vxbilibili fixer + OG recovery.
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.
-- **@西寶 AI reply chain**: DeepSeek (primary, paid) → Groq (llama 70B → 8B) → Gemini (last resort). First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Details in [ai-providers.md](.claude/rules/ai-providers.md).
+- **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](.claude/rules/ai-providers.md).
 - **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](.claude/rules/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).

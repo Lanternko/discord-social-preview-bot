@@ -6,6 +6,10 @@
 
 同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)）。
 
+### 👉 [邀請西寶到你的伺服器](https://discord.com/oauth2/authorize?client_id=1491051091524059316&permissions=275415199808&scope=bot+applications.commands)
+
+不想自己架設？直接邀請就能用！預覽功能完整可用，AI 聊天每天 20 次免費額度（想要更多？用 `/ai-key` 設定你自己的 API 金鑰）。
+
 <img width="609" height="484" alt="image" src="https://github.com/user-attachments/assets/51f4fd21-25cc-4a7d-befb-3c58bd5c9ae8" />
 <img width="514" height="83" alt="image" src="https://github.com/user-attachments/assets/74e30b1e-e0a0-4016-8e4c-5cfc3c838b71" />
 <img width="855" height="109" alt="image" src="https://github.com/user-attachments/assets/dacb0a19-0529-4832-ac58-d52c42acf566" />
@@ -15,8 +19,8 @@
 
 - 5.30：**人格重構** — persona 從 A–G 規則清單重寫為敘事式角色描述，加入攝影社、蒐集飾品、文科女生等設定；anti-dodge 改用角色動機驅動
 - 4.26：**群友熟悉度** — 每個伺服器自動累積每個人的發言次數，分 5 級（剛認識 / 認識 / 熟人 / 老朋友 / 摯友），西寶對熟人較自然、對剛進群的略生疏
-- 4.25：**群組脈絡** — 標準 / 精細 tier 的西寶會看到頻道最近 15 條訊息，能理解貼圖梗、跨人對話；解除暱稱禁令可自然稱呼群友；`/tier`（無參數）對所有人開放可見
-- 4.19：新增 `/tier` 斜線指令（簡短 / 標準 / 精細），具管理伺服器權限者可切換西寶回覆詳細度（節省 token 或詳細回答）
+- 6.01：**AI 分級方案** — `/ai-tier` 取代 `/tier`，入門（flash 免費 20 次/天）/ 標準 / 精細（pro 模型，需自備 API 金鑰）；`/ai-key` 管理 per-guild API 金鑰
+- 4.25：**群組脈絡** — 標準 / 精細方案的西寶會看到頻道最近 15 條訊息，能理解貼圖梗、跨人對話
 - 4.18：README 重寫新手安裝流程（五分鐘快速安裝）、標註「西寶」為可改的預設名稱、介紹適合串接的 AI
 - 4.17：`@西寶` 接上 AI，會很害羞地跟你閒聊（需自備 API key，可用全免費方案）
 - 4.15：預覽失敗時會道歉 orz、運勢抽籤
@@ -189,29 +193,36 @@ GEMINI_MODEL=gemini-2.0-flash
 
 </details>
 
-### 切換回覆詳細度：`/tier`
+### AI 方案：`/ai-tier`
 
-per-guild 設定，重啟後仍保留（存在 `data/tier-settings.json`）：
+per-guild 設定，重啟後仍保留。方案決定了 AI 模型和回覆品質：
 
-| Tier | UI 選項 | 總體句數 | A 知識 | A+ 深度比較 | B 社交撩 | E 做事 | 記憶深度 | 群組脈絡 |
-|---|---|---|---|---|---|---|---|---|
-| `brief`（預設）| 簡短 | 1~4 句 | 2~3 | 3~4 | 1~2 | ≤4 | 8 輪 | ✗ |
-| `standard` | 標準 | 2~8 句 | 3~5 | 6~8 | 2~3 | ≤8 | 20 輪 | 最近 15 條 |
-| `detailed` | 精細 | 3~15 句 | 5~8 | 10~15 | 3~5 | ≤15 | 40 輪 | 最近 15 條 |
+| 方案 | 模型 | 回覆長度 | 記憶深度 | 群組脈絡 | 需要 API 金鑰 |
+|------|------|---------|---------|---------|-------------|
+| **入門**（預設）| DeepSeek Flash | 1~4 句 | 8 輪 | ✗ | 否（每天 20 次） |
+| **標準** | DeepSeek Pro | 2~8 句 | 40 輪 | 最近 15 條 | 是（無限） |
+| **精細** | DeepSeek Pro | 3~15 句 | 60 輪 | 最近 15 條 | 是（無限） |
 
 **使用方式**：
 
-- `/tier` → 顯示當前伺服器的詳細度設定（**所有成員**都能用）
-- `/tier level:標準` → 切換到標準（**僅限**具「管理伺服器」權限者）
-- 通常邀 bot 進來的那個人就有「管理伺服器」權限
+- `/ai-tier` → 顯示當前方案、模型、剩餘額度（**所有成員**都能用）
+- `/ai-tier level:標準` → 切換到標準（**僅限**具「管理伺服器」權限者）
+- 標準 / 精細需要先用 `/ai-key set` 設定 DeepSeek API 金鑰
 
-**怎麼選**（個人建議）：
+**怎麼選**：
 
-- **brief**：最保持西寶「話很少」的害羞人設；節省 Token，適合用免費 AI 的人（如 Groq、Qwen）
-- **standard**：日常預設最平衡；A+ 6~8 句能給理由、E 做事 ≤8 句可給完整步驟
-- **detailed**：資訊量最大但成本最高（Token 費用明顯上升，但記憶力很好、也更聰明）
+- **入門**：免費、快速、適合一般閒聊。每天 20 次免費額度，超過後自動使用備用模型
+- **標準**：推理模型，回覆更聰明、記憶更深，適合日常使用
+- **精細**：最詳細的回答 + 群組上下文，西寶能理解群裡的話題脈絡
 
-想要聽詳細理由使用 `detailed`，一般閒聊使用 `brief` ，付費 API 用 `standard`。
+### 升級到標準 / 精細：`/ai-key`
+
+1. 到 [platform.deepseek.com](https://platform.deepseek.com/) 申請 API 金鑰（充值最少 $2 USD）
+2. 在 Discord 執行 `/ai-key set <你的金鑰>`
+3. 執行 `/ai-tier level:標準` 或 `/ai-tier level:精細`
+
+- `/ai-key status` → 查看目前方案狀態
+- `/ai-key remove` → 移除金鑰，回到免費入門方案
 
 ### 進階環境變數
 
@@ -292,11 +303,11 @@ docker run -d \
 - **原 embed 自動收起**：bot 有 `Manage Messages` 權限時會抑制原連結的預覽
 - **tracking 參數自動去除**：`fbclid` / `gclid` / `mibextid` / `utm_*` / `igsh` 等會在發送前移除，保護分享者不洩漏 tracking 資訊
 - **Bilibili 短連結**：`b23.tv` 會先展開再轉 fixer
-- **西寶短期記憶**：每頻道記住最近幾組對話，容量隨 `/tier` 而變（簡短 8 / 標準 20 / 精細 40）、30 分鐘 TTL
+- **西寶短期記憶**：每頻道記住最近幾組對話，容量隨 `/ai-tier` 而變（入門 8 / 標準 40 / 精細 60）、30 分鐘 TTL
 - **群友熟悉度**：每個伺服器自動累積每個成員的發言次數，分 5 級（剛認識 1+ / 認識 5+ / 熟人 20+ / 老朋友 100+ / 摯友 500+），餵給西寶讓她對熟人較自然、對新人略生疏。資料存在 `data/familiarity.json`（gitignored）。**只計算重啟後的訊息**，不會回填過去聊天記錄
 - **群組脈絡**（standard / detailed tier）：被 @ 時西寶會看到頻道最近 15 條訊息（含貼圖名稱），能理解貼圖梗、跨人對話、誰回應誰
 - **忽略標記**：訊息含 `nopreview` / `previewignore` / `fxignore` 任一字串 → bot 直接跳過
-- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/tier`（查看 / 切換西寶詳細度，見 [上方](#切換回覆詳細度tier)）
+- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）
 
 ---
 
@@ -306,9 +317,9 @@ docker run -d \
 
 最常見是 **Message Content Intent 忘了開**。回 Developer Portal → Bot → 確認 `MESSAGE CONTENT INTENT` 打勾，存檔後重啟 bot。
 
-### `/servers` / `/tier` 指令沒出現
+### Slash 指令沒出現
 
-Discord 全域 slash command 需要幾分鐘 propagate。重啟 bot 後等一下即可。想確認 bot 真的有註冊，看 `bot.log` 裡有沒有 `[commands] registered /tier` 這行（首次註冊）或 `[commands] updated /tier`（描述更新）。
+Discord 全域 slash command 需要幾分鐘 propagate。重啟 bot 後等一下即可。想確認 bot 真的有註冊，看 `bot.log` 裡有沒有 `[commands] registered /ai-tier` 這行。
 
 ### Bot 對同一則訊息回兩次
 
