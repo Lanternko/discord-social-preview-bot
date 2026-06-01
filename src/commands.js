@@ -1,7 +1,11 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
-const { TIER_UI_LABELS, TIER_DESCRIPTIONS, TIER_REQUIRES_KEY } = require("./tier-config");
+const {
+  TIERS,
+  TIER_UI_LABELS,
+  TIER_REQUIRES_KEY,
+} = require("./tier-config");
 const {
   getGuildSchedules,
   getScheduleById,
@@ -267,6 +271,54 @@ function buildPermissionDebugMessage(interaction) {
   return lines.join("\n");
 }
 
+function getTierModelLabel(tierKey) {
+  if (tierKey === "brief") return `\`${DEEPSEEK_MODEL_FREE}\`（flash）`;
+  return `\`${DEEPSEEK_MODEL}\`（pro）`;
+}
+
+function getTierContextLabel(tierConfig) {
+  if (!tierConfig.groupContextCount) return "不讀群組脈絡";
+  return `會讀被 @ 前最近 ${tierConfig.groupContextCount} 則非 bot 訊息`;
+}
+
+function getTierQuotaLine(tierKey, { hasKey, isWhitelisted, usage }) {
+  if (TIER_REQUIRES_KEY[tierKey]) {
+    if (hasKey) return "額度：無限制（使用本伺服器自訂 DeepSeek API 金鑰）";
+    if (isWhitelisted) return "額度：無限制（白名單使用維護者金鑰）";
+    return "額度：需要先用 `/ai-key set` 設定 DeepSeek API 金鑰";
+  }
+
+  if (hasKey) {
+    return "額度：無限制（已有自訂金鑰；入門仍使用 flash 模型）";
+  }
+  if (isWhitelisted) {
+    return "額度：無限制（白名單；入門仍使用 flash 模型）";
+  }
+  return `每日免費額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}（超過後改用 Groq / Gemini 備援）`;
+}
+
+function buildTierDetailLines(tierKey, status) {
+  const tierConfig = TIERS[tierKey];
+  return [
+    `模型：${getTierModelLabel(tierKey)}`,
+    `回覆：${tierConfig.sentenceMin}~${tierConfig.sentenceMax} 句，最多 ${tierConfig.maxReplyChars} 字`,
+    `短期記憶：每頻道最近 ${tierConfig.memoryMaxTurns} 輪，30 分鐘沒聊天會清空`,
+    `群組脈絡：${getTierContextLabel(tierConfig)}`,
+    getTierQuotaLine(tierKey, status),
+  ];
+}
+
+function buildTierOptionLine(tierKey, current, hasKey, isWhitelisted) {
+  const tierConfig = TIERS[tierKey];
+  const marker = tierKey === current ? "（目前）" : "";
+  const lock = TIER_REQUIRES_KEY[tierKey] && !hasKey && !isWhitelisted ? " 🔒" : "";
+  const keyRequirement = TIER_REQUIRES_KEY[tierKey] ? "需金鑰" : `${AI_FREE_DAILY_LIMIT}/天免費`;
+  return [
+    `**${TIER_UI_LABELS[tierKey]}**${marker}${lock} — ${getTierModelLabel(tierKey)}，${tierConfig.sentenceMin}~${tierConfig.sentenceMax} 句`,
+    `　記憶 ${tierConfig.memoryMaxTurns} 輪；${getTierContextLabel(tierConfig)}；${keyRequirement}`,
+  ];
+}
+
 async function handleTierCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -285,22 +337,22 @@ async function handleTierCommand(interaction) {
     const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
     const usage = getUsage(guildId);
 
-    const lines = [`**目前方案：${TIER_UI_LABELS[current]}**`, TIER_DESCRIPTIONS[current], ""];
-    if (TIER_REQUIRES_KEY[current]) {
-      lines.push(`額度：無限制${hasKey ? "（自訂金鑰）" : "（白名單）"}`);
-    } else {
-      lines.push(`每日額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}${hasKey || isWhitelisted ? "（已有金鑰，可升級）" : ""}`);
-    }
+    const status = { hasKey, isWhitelisted, usage };
+    const lines = [
+      `**目前方案：${TIER_UI_LABELS[current]}**`,
+      ...buildTierDetailLines(current, status),
+    ];
     lines.push("");
-    lines.push("**可選方案：**");
-    for (const [key, label] of Object.entries(TIER_UI_LABELS)) {
-      const marker = key === current ? "（目前）" : "";
-      const lock = TIER_REQUIRES_KEY[key] && !hasKey && !isWhitelisted ? " 🔒" : "";
-      lines.push(`　${label} — ${TIER_DESCRIPTIONS[key]}${marker}${lock}`);
+    lines.push("**方案差異：**");
+    for (const key of Object.keys(TIER_UI_LABELS)) {
+      lines.push(...buildTierOptionLine(key, current, hasKey, isWhitelisted));
     }
     if (!hasKey && !isWhitelisted) {
-      lines.push("\n🔒 = 需先用 `/ai-key set` 設定 DeepSeek API 金鑰");
+      lines.push("");
+      lines.push("🔒 = 需先用 `/ai-key set` 設定 DeepSeek API 金鑰");
     }
+    lines.push("");
+    lines.push("所有成員都能查看；切換方案需要「管理伺服器」權限。");
     await interaction.reply({
       content: lines.join("\n"),
       flags: MessageFlags.Ephemeral,
@@ -339,8 +391,18 @@ async function handleTierCommand(interaction) {
   try {
     setGuildTier(guildId, level);
     console.log(`[tier] guild=${guildId} set tier=${level} by user=${interaction.user.id}`);
+    const status = {
+      hasKey: hasGuildApiKey(guildId),
+      isWhitelisted: DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId),
+      usage: getUsage(guildId),
+    };
     await interaction.reply({
-      content: `已切換為 **${TIER_UI_LABELS[level]}** 方案。\n${TIER_DESCRIPTIONS[level]}`,
+      content: [
+        `已切換為 **${TIER_UI_LABELS[level]}** 方案。`,
+        ...buildTierDetailLines(level, status),
+        "",
+        "這個設定已儲存，重啟後仍會保留。",
+      ].join("\n"),
       flags: MessageFlags.Ephemeral,
     });
   } catch (err) {
