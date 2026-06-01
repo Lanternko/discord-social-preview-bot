@@ -66,7 +66,7 @@ Pure data and per-topic depth live under `.claude/rules/` so this file stays lea
 - [`env.md`](.claude/rules/env.md) — full environment variable reference.
 - [`routing.md`](.claude/rules/routing.md) — per-platform routing tables, empty-embed fallback flow, URL normalization, ignore markers, dedup.
 - [`ai-providers.md`](.claude/rules/ai-providers.md) — provider chain, call shapes, circuit breaker, observability, short-term memory, Gemini billing trap.
-- [`persona.md`](.claude/rules/persona.md) — 西寶 persona (narrative-driven), mention routing, fortune weights, `/tier`.
+- [`persona.md`](.claude/rules/persona.md) — 西寶 persona (narrative-driven), mention routing, fortune weights, `/ai-tier` / `/ai-key`.
 - [`scripts.md`](.claude/rules/scripts.md) — three smoke layers and when to run which.
 - [`deploy.md`](.claude/rules/deploy.md) — local run, SSH deploy, redeploy steps, secrets.
 

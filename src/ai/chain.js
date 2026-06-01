@@ -197,7 +197,7 @@ async function generateAIReply(message, userText) {
   // System-prompt assembly is ordered most-stable → most-volatile so the
   // prefix stays byte-identical across calls and stays cache-eligible
   // (DeepSeek context caching keys on the longest shared prefix). Order:
-  //   1. persona template (per-tier, changes only on /tier)
+  //   1. persona template (per AI plan, changes only on /ai-tier)
   //   2. emoji table     (per bot session — memoized, same string every call)
   //   3. familiarity      (per-guild, drifts slowly as talk counts grow)
   //   4. group context    (per-call, fully volatile — MUST be last)

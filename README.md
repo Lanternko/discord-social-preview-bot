@@ -227,9 +227,9 @@ per-guild 設定，重啟後仍保留。方案決定了 AI 模型和回覆品質
 ### 進階環境變數
 
 - `AI_PROVIDER=deepseek` → 強制只用某一層（留空 = 全鏈 fallback）
-- `AI_PERSONA="你是..."` → 覆蓋預設人格（可保留 `{SENTENCE_MIN}` / `{SENTENCE_MAX}` 等佔位符讓 tier 生效）
+- `AI_PERSONA="你是..."` → 覆蓋預設人格（可保留 `{SENTENCE_MIN}` / `{SENTENCE_MAX}` 等佔位符讓 AI 方案生效）
 - 完整變數表見 [.claude/rules/env.md](.claude/rules/env.md)
-- 設計細節見 [.claude/rules/ai-providers.md](.claude/rules/ai-providers.md)、tier 細節見 [.claude/rules/persona.md](.claude/rules/persona.md)
+- 設計細節見 [.claude/rules/ai-providers.md](.claude/rules/ai-providers.md)、AI 方案細節見 [.claude/rules/persona.md](.claude/rules/persona.md)
 
 ---
 
@@ -305,7 +305,7 @@ docker run -d \
 - **Bilibili 短連結**：`b23.tv` 會先展開再轉 fixer
 - **西寶短期記憶**：每頻道記住最近幾組對話，容量隨 `/ai-tier` 而變（入門 8 / 標準 40 / 精細 60）、30 分鐘 TTL
 - **群友熟悉度**：每個伺服器自動累積每個成員的發言次數，分 5 級（剛認識 1+ / 認識 5+ / 熟人 20+ / 老朋友 100+ / 摯友 500+），餵給西寶讓她對熟人較自然、對新人略生疏。資料存在 `data/familiarity.json`（gitignored）。**只計算重啟後的訊息**，不會回填過去聊天記錄
-- **群組脈絡**（standard / detailed tier）：被 @ 時西寶會看到頻道最近 15 條訊息（含貼圖名稱），能理解貼圖梗、跨人對話、誰回應誰
+- **群組脈絡**（標準 / 精細方案）：被 @ 時西寶會看到頻道最近 15 條訊息（含貼圖名稱），能理解貼圖梗、跨人對話、誰回應誰
 - **忽略標記**：訊息含 `nopreview` / `previewignore` / `fxignore` 任一字串 → bot 直接跳過
 - **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）
 

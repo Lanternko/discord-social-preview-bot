@@ -2,7 +2,7 @@
 
 ## Entry point
 
-`generateAIReply(message, userText)` in [src/ai/chain.js](../../src/ai/chain.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()` (from [src/ai/persona.js](../../src/ai/persona.js)), then iterates over `AI_PROVIDER_CHAIN` (built once at module load by `buildAIProviderChain()`).
+`generateAIReply(message, userText)` in [src/ai/chain.js](../../src/ai/chain.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()` (from [src/ai/persona.js](../../src/ai/persona.js)), resolves the guild's `/ai-tier`, builds a per-guild provider chain via `buildGuildChain()`, then iterates over that chain.
 
 Provider implementations live in [src/ai/providers.js](../../src/ai/providers.js); per-channel memory in [src/ai/memory.js](../../src/ai/memory.js).
 
@@ -10,14 +10,17 @@ Provider implementations live in [src/ai/providers.js](../../src/ai/providers.js
 
 The chain is wrapped by a circuit breaker so a known-broken provider gets skipped (not re-called with an 8 s timeout) for the duration of its cooldown. See [Circuit breaker](#circuit-breaker) below.
 
-## Default chain (when all keys set)
+## Per-guild chain
 
-Ordered paid-first → fallback:
+DeepSeek is selected per guild, then the shared fallback chain is appended:
 
-1. `deepseek:deepseek-chat` — paid V3.2, reliable, no queue, flagship Chinese
-2. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free
-3. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free — lower quality
-4. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below)
+1. 入門 (`brief`) — `deepseek:<DEEPSEEK_MODEL_FREE>` using the owner `DEEPSEEK_API_KEY`, limited by `AI_FREE_DAILY_LIMIT` for guilds without `/ai-key` or whitelist.
+2. 標準 / 精細 (`standard` / `detailed`) — `deepseek:<DEEPSEEK_MODEL>` using the guild `/ai-key`, or the owner key for `DEEPSEEK_PREMIUM_GUILD_IDS`.
+3. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
+4. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
+5. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
+
+If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
 
 ## Call shape
 
@@ -62,7 +65,7 @@ Ordered paid-first → fallback:
 Log prefix: `[ai]`.
 
 - Startup: `[ai] chain=<a> → <b> → ... timeout=<ms>`
-- Per reply: `[ai] used <provider>:<model> len=<chars> history_before=<N>` (N = prior turns injected)
+- Per reply: `[ai] used <provider>:<model> tier=<tier> premium=<bool> len=<chars> history_before=<N> group_ctx=<N> roster=<N> profile=<0|1>` (N = prior turns injected)
 - Per call: `x-ratelimit-remaining-{tokens,requests}` from Groq/DeepSeek when provided (`logRateHeaders()`) — live quota drain.
 - Chain exhausted: `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — **the ops signal** to grep for.
 

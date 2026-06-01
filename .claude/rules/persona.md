@@ -4,7 +4,7 @@
 
 西奈津美（Nishi Natsumi），高三，147cm，短髮，橫濱あざみ野。圖書委員 + 攝影社。Introverted but fundamentally cheerful — shy at first, relaxed once warmed up. Thinks faster than she speaks; more talkative over text than in person. Hobbies: reading, collecting accessories (hairclips, earrings, bracelets). Involuntarily laughs at funny things overheard from a distance.
 
-Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild tier (see `/tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../../src/ai/persona.js).
+Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild AI plan (see `/ai-tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../../src/ai/persona.js).
 
 ## Mention response routing
 
@@ -28,24 +28,25 @@ Same message.id is processed only once. `inFlightReplies.add("mention:${message.
 
 大大吉 1% / 大吉 9% / 中吉 16% / 小吉 20% / 末吉 20% / 吉 15% / 凶 13% / 大凶 6%（總和 100）
 
-Each tier has a hardcoded tier-specific comment.
+Each AI plan has a hardcoded plan-specific comment.
 
-## `/tier` (verbosity per guild)
+## `/ai-tier` (AI plan per guild)
 
-Slash command — anyone can run `/tier` (no arg) to view the current tier; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 tier」。檢視則對所有人開放，方便群友確認目前設定。Tier keys are English; Discord UI labels are Chinese.
+Slash command — anyone can run `/ai-tier` (no arg) to view the current plan, model, and remaining free quota; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 AI 方案」。檢視則對所有人開放，方便群友確認目前設定。Internal keys are English; Discord UI labels are Chinese.
 
-| Key | UI label | sentences cap | max chars | memoryMaxTurns | group context | vision |
-|---|---|---|---|---|---|---|
-| `brief` (default) | 簡短 | 1~4 | 300 | 8 | ✗ | ✗ |
-| `standard` | 標準 | 2~8 | 700 | 20 | recent 10 non-bot msgs | ✗ |
-| `detailed` | 精細 | 3~15 | 1200 | 40 | recent 15 non-bot msgs | ✗ *(planned)* |
+| Key | UI label | DeepSeek model | sentences cap | max chars | memoryMaxTurns | group context | key required |
+|---|---|---|---|---|---|---|---|
+| `brief` (default) | 入門 | `DEEPSEEK_MODEL_FREE` (`deepseek-v4-flash`) | 1~4 | 300 | 8 | ✗ | no, 20/day free quota |
+| `standard` | 標準 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 2~8 | 1200 | 40 | recent 15 non-bot msgs | yes, unless whitelisted |
+| `detailed` | 精細 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 3~15 | 2000 | 60 | recent 15 non-bot msgs | yes, unless whitelisted |
 
 - Storage: `data/tier-settings.json` (gitignored), `{ guildId: "brief"|"standard"|"detailed" }`.
+- Guild API keys: `data/guild-api-keys.json` (gitignored), set/remove via `/ai-key`.
 - Resolution: [src/tier-config.js](../../src/tier-config.js) `getTierConfig(guildId)` — returns numbers + a persona with placeholders substituted.
-- Consumed by [src/ai/chain.js](../../src/ai/chain.js) (passes `persona` + `maxTokens` to providers; trims output to `maxReplyChars`; passes `memoryMaxTurns` to `recordAITurn`).
+- Consumed by [src/ai/chain.js](../../src/ai/chain.js) (chooses the DeepSeek model/key/rate limit, passes `persona` + `maxTokens` to providers, trims output to `maxReplyChars`, passes `memoryMaxTurns` to `recordAITurn`).
 - **Permission gate is enforced inside the handler**, not via `defaultMemberPermissions` — that field is intentionally NOT set so the command shows up for non-admins too. Setting via `level` arg is rejected with an ephemeral message if the caller lacks `ManageGuild`.
-- **Group context** (`groupContextCount > 0`): [src/ai/group-context.js](../../src/ai/group-context.js) fetches recent non-bot messages from the channel via `channel.messages.fetch({ before: msg.id })`, formats them as `[displayName]: text (貼圖：name) (附件)`, and appends to the system prompt for THAT call only — never recorded into conv memory. Sticker names are surfaced because they often carry the meme (e.g. 「起床重睡」 from a sticker name). Vision branch is still future work — see [todo.md](../../todo.md).
-- **Familiarity roster** (always on, all tiers): [src/familiarity.js](../../src/familiarity.js) tallies per-guild speaking count for every non-bot user via `messageCreate` in [src/index.js](../../src/index.js). Top 20 talkers per guild get bucketed into tiers (摯友 500+ / 老朋友 100-499 / 熟人 20-99 / 認識 5-19 / 剛認識 1-4) and rendered into a `## 群友熟悉度` block appended to the system prompt for every reply. Persists to `data/familiarity.json` (gitignored) on a debounced 60s flush + flush-on-shutdown. Lets 西寶 know who's who in the server without us hand-curating any list — moves "personality toward frequent talkers" out of code and into emergent behaviour.
+- **Group context** (`groupContextCount > 0`): [src/ai/group-context.js](../../src/ai/group-context.js) fetches recent non-bot messages from the channel via `channel.messages.fetch({ before: msg.id })`, formats them as `[displayName]: text (貼圖：name) (附件)`, and injects them as a user-role context turn for THAT call only — never recorded into conv memory. Sticker names are surfaced because they often carry the meme (e.g. 「起床重睡」 from a sticker name).
+- **Familiarity roster** (always on, all AI plans): [src/familiarity.js](../../src/familiarity.js) tallies per-guild speaking count for every non-bot user via `messageCreate` in [src/index.js](../../src/index.js). Top 20 talkers per guild get bucketed into familiarity buckets (摯友 500+ / 老朋友 100-499 / 熟人 20-99 / 認識 5-19 / 剛認識 1-4) and rendered into a `## 群友熟悉度` block appended to the system prompt for every reply. Persists to `data/familiarity.json` (gitignored) on a debounced 60s flush + flush-on-shutdown. Lets 西寶 know who's who in the server without us hand-curating any list — moves "personality toward frequent talkers" out of code and into emergent behaviour.
 
 ## Persona design philosophy
 

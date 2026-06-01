@@ -14,7 +14,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 - **Preview dispatcher** — [preview.js](../../src/preview.js) `buildPreviewPayloads` runs all per-URL builders in parallel via `Promise.all`. Per-platform branches dispatch to the correct builder; URL-only platforms (X/Reddit/Pixiv/Bluesky/Facebook) all share `buildSimpleFixerPayload` which always populates `recoverUrls`. The `if` ladder inside each platform builder is what's load-bearing — see [routing.md](routing.md).
 - **Discord I/O** — [discord-io.js](../../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions.
 - **Mention** — [mention.js](../../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
-- **Slash commands** — [commands.js](../../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/tier`. [tier-store.js](../../src/tier-store.js) persists `/tier` to `data/tier-settings.json`; [tier-config.js](../../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
+- **Slash commands** — [commands.js](../../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, and `/schedule`. [tier-store.js](../../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
 - **AI subsystem** — [ai/](../../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
 
 ## src/ai/
@@ -23,7 +23,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 - [memory.js](../../src/ai/memory.js) — per-channel conversation history + sweep timer.
 - [providers.js](../../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
 - [circuit.js](../../src/ai/circuit.js) — provider circuit breaker (`isProviderAvailable` / `recordProviderFailure` / cooldown lookup). Stops the chain from re-trying a known-broken provider every call.
-- [group-context.js](../../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` block injected into the system prompt for `standard` / `detailed` tiers.
+- [group-context.js](../../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` user-role context turn for 標準 / 精細 plans.
 - [chain.js](../../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
 
 ## src/ tree (full)
@@ -49,11 +49,11 @@ src/
 │   ├── memory.js         # Per-channel conversation history + sweep timer
 │   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
 │   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
-│   ├── group-context.js  # Recent non-bot messages → system-prompt block (standard/detailed tiers)
+│   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
 │   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
-├── commands.js           # Slash commands (/servers, /debug-perms, /tier)
-├── tier-store.js         # Per-guild /tier persistence (data/tier-settings.json)
+├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
+├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
 ├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
 └── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
 ```

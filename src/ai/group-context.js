@@ -2,8 +2,8 @@
 // about, not just the message that @ed her. Without this she has no idea what
 // "起床重睡" or any sticker means because she only ever sees the @-message.
 //
-// The block is appended to the per-call system prompt (NOT recorded into conv
-// memory), so each call gets a fresh window without bloating history.
+// The block is injected as a per-call user-role context turn (NOT recorded into
+// conv memory), so each call gets a fresh window without bloating history.
 
 async function fetchGroupContext(channel, count, beforeMessageId, botUserId) {
   if (!channel || count <= 0) return [];

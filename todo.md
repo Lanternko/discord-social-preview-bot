@@ -4,23 +4,23 @@ Deferred work with design decisions already aligned. Pick up after blockers clea
 
 ---
 
-## 西寶人格分級（`/tier` 斜線指令）
+## 西寶 AI 分級（`/ai-tier` 斜線指令）
 
-**狀態**：Phase 1+2 完成 — infra + `/tier` 指令 + persona overlay + group context + per-category sentence ranges 已落地。Persona 已從 A–G rule-stack 重構為 narrative-driven（2026-05-30），per-category 句數 placeholder 不再使用但保留向後相容。**未做**：vision 分支（detailed + 圖片 → Gemini）。
+**狀態**：Phase 1+2 完成 — infra + `/ai-tier` 指令 + `/ai-key` per-guild key 管理 + persona overlay + group context + per-category sentence ranges 已落地。Persona 已從 A–G rule-stack 重構為 narrative-driven（2026-05-30），per-category 句數 placeholder 不再使用但保留向後相容。**未做**：vision 分支（精細 + 圖片 → Gemini）。
 
-### 三層 tier（current values in `tier-config.js`）
+### 三層 AI 方案（current values in `tier-config.js`）
 
 | Tier | turns | max chars | group context | Vision |
 |---|---|---|---|---|
-| `簡短`（預設） | 8 | 300 | ✗ | ✗ |
+| `入門`（預設） | 8 | 300 | ✗ | ✗ |
 | `標準` | 40 | 1200 | recent 15 non-bot msgs | ✗ |
 | `精細` | 60 | 2000 | recent 15 non-bot msgs | ✓（planned） |
 
 ### 已對齊的決策
 
-1. **作用範圍**：per-guild + admin only。整個 guild 共用一個 tier，只有具 admin 權限的成員可以用 `/tier` 切換。
-2. **持久化**：`data/tier-settings.json`（形如 `{ guildId: "簡短" | "標準" | "精細" }`）。重啟後要讀回。
-3. **群組對話記憶（精細模式獨有）**：只記住部分，不吃頻道全部訊息。具體策略（候選：最近 bot 發言那條 thread / 最近 N 則非 bot 訊息 / 有被 reply 的訊息）**實作前再與使用者確認**。
+1. **作用範圍**：per-guild + `ManageGuild` only for switching。整個 guild 共用一個 AI 方案；所有成員都能用 `/ai-tier` 查看，只有具管理伺服器權限的成員可以切換。
+2. **持久化**：`data/tier-settings.json`（形如 `{ guildId: "brief" | "standard" | "detailed" }`）。重啟後要讀回。
+3. **群組對話脈絡（標準 / 精細）**：抓最近 15 則非 bot 訊息，作為當次 user-role context 注入，不記進短期 conversation memory。
 
 ### 實作提醒
 

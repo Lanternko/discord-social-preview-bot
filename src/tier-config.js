@@ -1,8 +1,8 @@
 const { AI_PERSONA } = require("./config");
 const { getGuildTier } = require("./tier-store");
 
-// Hardcoded tier metadata. Numbers aligned in todo.md under 西寶人格分級.
-// Internal keys are English (brief/standard/detailed); Discord UI shows 簡短/標準/精細.
+// Hardcoded tier metadata. Numbers aligned in todo.md under 西寶 AI 分級.
+// Internal keys are English (brief/standard/detailed); Discord UI shows 入門/標準/精細.
 //
 // Sentence ranges per category (Phase 2 — Option 1):
 // previous Phase 1 only swapped the headline SENTENCE_MIN/MAX; sub-rules had

@@ -29,6 +29,9 @@
 |---|---|---|
 | `DEEPSEEK_API_KEY` | — | Optional. Primary provider (paid, reliable) |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | `deepseek-chat` for V3.2, `deepseek-reasoner` for R1, `deepseek-v4-pro` for V4 (reasoning model) |
+| `DEEPSEEK_MODEL_FREE` | `deepseek-v4-flash` | Model used by the 入門 `/ai-tier` plan when the owner DeepSeek key is available |
+| `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
+| `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |
 | `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (`deepseek-v4-pro` / `-reasoner`) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. Set to 0 for non-reasoning models like `deepseek-chat` if you want to save tokens |
 | `GROQ_API_KEY` | — | Optional. Third layer (Groq free tier) |
 | `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated within-Groq fallback. Legacy `GROQ_MODEL` read as single-item list |
@@ -36,7 +39,9 @@
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
 | `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `groq`, `gemini`. Empty = full chain |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
-| `AI_PERSONA` | built-in 西寶 persona | System instruction template — override to reshape personality. Placeholders `{SENTENCE_MIN}` / `{SENTENCE_MAX}` are replaced per tier |
+| `AI_PERSONA` | built-in 西寶 persona | System instruction template — override to reshape personality. Placeholders `{SENTENCE_MIN}` / `{SENTENCE_MAX}` are replaced per AI plan |
 | `AI_MEMORY_TTL_MS` | `1800000` | Inactivity before channel memory is evicted (30 min) |
+| `AI_LONG_TERM_MEMORY_ENABLED` | `true` | Enables user/guild long-term observation extraction and profile prompt blocks |
+| `EMOJI_TRUSTED_GUILD_IDS` | — | Comma-separated guild IDs whose custom emoji may be shared when the current guild is also trusted |
 
-**Reply length and memory depth are now per-guild tier settings** (see [persona.md](persona.md) `/tier` section), not env vars. The legacy `AI_MAX_REPLY_CHARS` / `AI_MEMORY_MAX_TURNS` env vars are no longer read.
+**Reply length, memory depth, and DeepSeek model selection are now per-guild AI plan settings** (see [persona.md](persona.md) `/ai-tier` section), not env vars. The legacy `AI_MAX_REPLY_CHARS` / `AI_MEMORY_MAX_TURNS` env vars are no longer read.
