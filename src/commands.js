@@ -229,6 +229,14 @@ async function ensureApplicationCommands(client) {
       console.log(`[commands] updated /${expectedCommand.name}`);
     }
   }
+
+  const expectedNames = new Set(expectedCommands.map((c) => c.name));
+  for (const [, cmd] of commands) {
+    if (!expectedNames.has(cmd.name)) {
+      await cmd.delete();
+      console.log(`[commands] deleted stale /${cmd.name}`);
+    }
+  }
 }
 
 function buildPermissionDebugMessage(interaction) {
