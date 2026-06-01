@@ -129,7 +129,7 @@ module.exports = {
   DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-chat",
   DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-v4-flash",
   DEEPSEEK_PREMIUM_GUILD_IDS: parseCsvEnv("DEEPSEEK_PREMIUM_GUILD_IDS"),
-  AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 50),
+  AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 20),
   // deepseek-v4-pro is a reasoning model: it spends most of its token budget on
   // hidden reasoning_content before emitting any visible answer. The tier's
   // maxTokens (180 for brief) is a *display* budget and starves the reasoning,

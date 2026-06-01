@@ -14,7 +14,7 @@ const {
   DEEPSEEK_REASONING_HEADROOM,
 } = require("../config");
 const { trimDescription } = require("../utils");
-const { getTierConfig } = require("../tier-config");
+const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
@@ -98,49 +98,58 @@ function buildAIProviderChain() {
 // Full default chain — used for startup log and backwards-compat export.
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
 
-// Per-guild chain: selects DeepSeek model/key based on guild tier, then appends
-// the global fallback chain (Groq + Gemini).
-function buildGuildChain(guildId) {
+// Per-guild chain: model is determined by tier (brief=flash, standard/detailed=pro).
+// Guilds with their own API key use that key; whitelisted guilds use the owner's key;
+// free guilds (brief only) use the owner's key with a daily rate limit.
+function buildGuildChain(guildId, tierConfig) {
   const only = AI_PROVIDER_FORCE;
   if (only && only !== "deepseek") {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
 
+  const tierKey = tierConfig?.tier || "brief";
+  const needsPro = TIER_REQUIRES_KEY[tierKey];
   const hasOwnKey = hasGuildApiKey(guildId);
   const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
-  const isPremium = hasOwnKey || isWhitelisted;
 
-  if (hasOwnKey) {
-    const guildKey = getGuildApiKey(guildId);
-    const entry = {
-      label: `deepseek:${DEEPSEEK_MODEL}:guild`,
-      call: (turns, persona, maxTokens) =>
-        callDeepSeek(turns, persona, maxTokens, {
-          apiKey: guildKey,
-          model: DEEPSEEK_MODEL,
-          reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
-        }),
-    };
-    return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+  if (needsPro) {
+    // standard/detailed → pro model, requires key or whitelist
+    if (hasOwnKey) {
+      const guildKey = getGuildApiKey(guildId);
+      const entry = {
+        label: `deepseek:${DEEPSEEK_MODEL}:guild`,
+        call: (turns, persona, maxTokens) =>
+          callDeepSeek(turns, persona, maxTokens, {
+            apiKey: guildKey,
+            model: DEEPSEEK_MODEL,
+            reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+          }),
+      };
+      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+    }
+    if (isWhitelisted && DEEPSEEK_API_KEY) {
+      const entry = {
+        label: `deepseek:${DEEPSEEK_MODEL}`,
+        call: callDeepSeek,
+      };
+      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+    }
+    // No key and not whitelisted — shouldn't happen (command blocks it),
+    // but fall through to flash as safety net
   }
 
+  // brief → flash model
   if (!DEEPSEEK_API_KEY) {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
 
-  if (isWhitelisted) {
-    const entry = {
-      label: `deepseek:${DEEPSEEK_MODEL}`,
-      call: callDeepSeek,
-    };
-    return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
-  }
-
-  // Free guild — check daily rate limit
-  const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
-  if (!rateCheck.allowed) {
-    console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
-    return { chain: FALLBACK_CHAIN, rateLimited: true };
+  // Free guild (brief) — check daily rate limit
+  if (!hasOwnKey && !isWhitelisted) {
+    const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
+    if (!rateCheck.allowed) {
+      console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
+      return { chain: FALLBACK_CHAIN, rateLimited: true };
+    }
   }
 
   const entry = {
@@ -178,10 +187,9 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
 }
 
 async function generateAIReply(message, userText) {
-  const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId);
-  if (guildChain.length === 0) return null;
-
   const tierConfig = getTierConfig(message.guildId);
+  const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
+  if (guildChain.length === 0) return null;
   const userTurn = buildUserTurn(message, userText);
   const history = getChannelAIHistory(message.channelId);
   let turns = [...history, { role: "user", content: userTurn }];

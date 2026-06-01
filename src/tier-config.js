@@ -69,9 +69,21 @@ const TIERS = {
 };
 
 const TIER_UI_LABELS = {
-  brief: "簡短",
+  brief: "入門",
   standard: "標準",
   detailed: "精細",
+};
+
+const TIER_DESCRIPTIONS = {
+  brief: "flash 模型，1~4 句快速回覆",
+  standard: "pro 模型，2~8 句一般聊天",
+  detailed: "pro 模型，3~15 句詳細回答 + 群組上下文",
+};
+
+const TIER_REQUIRES_KEY = {
+  brief: false,
+  standard: true,
+  detailed: true,
 };
 
 // Substitutes every placeholder the persona template understands. Unknown
@@ -109,6 +121,8 @@ function getTierConfig(guildId) {
 module.exports = {
   TIERS,
   TIER_UI_LABELS,
+  TIER_DESCRIPTIONS,
+  TIER_REQUIRES_KEY,
   buildPersonaFromTemplate,
   getTierConfig,
 };

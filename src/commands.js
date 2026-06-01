@@ -1,7 +1,7 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
-const { TIER_UI_LABELS } = require("./tier-config");
+const { TIER_UI_LABELS, TIER_DESCRIPTIONS, TIER_REQUIRES_KEY } = require("./tier-config");
 const {
   getGuildSchedules,
   getScheduleById,
@@ -44,22 +44,19 @@ const DEBUG_PERMS_COMMAND = {
   description: "檢查目前頻道裡機器人的權限",
 };
 
-// View (no arg) is open to anyone — the actual setter still gates on
-// ManageGuild inside handleTierCommand. We intentionally do NOT set
-// defaultMemberPermissions so non-admins can still query the current value.
 const TIER_COMMAND = {
-  name: "tier",
-  description: "查看西寶的回覆詳細度（切換需管理伺服器權限）",
+  name: "ai-tier",
+  description: "查看或切換西寶的 AI 方案（切換需管理伺服器權限）",
   options: [
     {
       name: "level",
-      description: "要切換的詳細度（不填則顯示目前設定）",
+      description: "要切換的方案（不填則顯示目前設定）",
       type: 3, // STRING
       required: false,
       choices: [
-        { name: "簡短", value: "brief" },
-        { name: "標準", value: "standard" },
-        { name: "精細", value: "detailed" },
+        { name: "入門 — flash，1~4 句", value: "brief" },
+        { name: "標準 — pro，2~8 句（需 API 金鑰）", value: "standard" },
+        { name: "精細 — pro，3~15 句（需 API 金鑰）", value: "detailed" },
       ],
     },
   ],
@@ -276,8 +273,28 @@ async function handleTierCommand(interaction) {
 
   if (!level) {
     const current = getGuildTier(guildId);
+    const hasKey = hasGuildApiKey(guildId);
+    const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
+    const usage = getUsage(guildId);
+
+    const lines = [`**目前方案：${TIER_UI_LABELS[current]}**`, TIER_DESCRIPTIONS[current], ""];
+    if (TIER_REQUIRES_KEY[current]) {
+      lines.push(`額度：無限制${hasKey ? "（自訂金鑰）" : "（白名單）"}`);
+    } else {
+      lines.push(`每日額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}${hasKey || isWhitelisted ? "（已有金鑰，可升級）" : ""}`);
+    }
+    lines.push("");
+    lines.push("**可選方案：**");
+    for (const [key, label] of Object.entries(TIER_UI_LABELS)) {
+      const marker = key === current ? "（目前）" : "";
+      const lock = TIER_REQUIRES_KEY[key] && !hasKey && !isWhitelisted ? " 🔒" : "";
+      lines.push(`　${label} — ${TIER_DESCRIPTIONS[key]}${marker}${lock}`);
+    }
+    if (!hasKey && !isWhitelisted) {
+      lines.push("\n🔒 = 需先用 `/ai-key set` 設定 DeepSeek API 金鑰");
+    }
     await interaction.reply({
-      content: `目前西寶的詳細度：**${TIER_UI_LABELS[current]}**\n（可切換：簡短 / 標準 / 精細；需管理伺服器權限）`,
+      content: lines.join("\n"),
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -285,21 +302,27 @@ async function handleTierCommand(interaction) {
 
   if (!isValidTier(level)) {
     await interaction.reply({
-      content: `未知的詳細度：${level}`,
+      content: `未知的方案：${level}`,
       flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  // Defence in depth: defaultMemberPermissions already gates at Discord
-  // level, but re-check so a mis-configured server can't bypass.
   const member = interaction.member;
   const canManageGuild = member?.permissions?.has?.(
     PermissionsBitField.Flags.ManageGuild,
   );
   if (!canManageGuild) {
     await interaction.reply({
-      content: "需要「管理伺服器」權限才能切換詳細度。",
+      content: "需要「管理伺服器」權限才能切換方案。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (TIER_REQUIRES_KEY[level] && !hasGuildApiKey(guildId) && !DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId)) {
+    await interaction.reply({
+      content: `**${TIER_UI_LABELS[level]}**方案需要 DeepSeek API 金鑰。\n請先使用 \`/ai-key set\` 設定金鑰後再切換。`,
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -309,7 +332,7 @@ async function handleTierCommand(interaction) {
     setGuildTier(guildId, level);
     console.log(`[tier] guild=${guildId} set tier=${level} by user=${interaction.user.id}`);
     await interaction.reply({
-      content: `西寶的詳細度已切換為 **${TIER_UI_LABELS[level]}**。`,
+      content: `已切換為 **${TIER_UI_LABELS[level]}** 方案。\n${TIER_DESCRIPTIONS[level]}`,
       flags: MessageFlags.Ephemeral,
     });
   } catch (err) {

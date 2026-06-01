@@ -330,11 +330,15 @@ async function main() {
 
   // ── buildGuildChain ────────────────────────────────────────────────
   console.log("buildGuildChain");
-  it("free guild gets flash model in chain", () => {
+  const briefTier = { tier: "brief" };
+  const standardTier = { tier: "standard" };
+  const detailedTier = { tier: "detailed" };
+
+  it("brief tier gets flash model in chain", () => {
     resetKeyCache();
     resetRateLimiter();
     resetCircuitState();
-    const { chain, rateLimited } = buildGuildChain("free-guild-123");
+    const { chain, rateLimited } = buildGuildChain("free-guild-123", briefTier);
     assert.equal(rateLimited, false);
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry, "should have a DeepSeek entry");
@@ -344,43 +348,30 @@ async function main() {
     resetKeyCache();
     resetRateLimiter();
     resetCircuitState();
-    const savedLimit = process.env.AI_FREE_DAILY_LIMIT;
-    process.env.AI_FREE_DAILY_LIMIT = "1";
-    // Exhaust the limit — need to rebuild config. But AI_FREE_DAILY_LIMIT is
-    // already read at module load. So test via rate-limiter directly.
+    // Test the rate limiter contract directly
     checkAndIncrement("rate-test-guild", 1);
-    const { chain, rateLimited } = buildGuildChain("rate-test-guild");
-    // Since we used checkAndIncrement with limit=1, and buildGuildChain reads
-    // AI_FREE_DAILY_LIMIT from config (already loaded as 50), the guild won't
-    // be rate limited via buildGuildChain. Test the rate limiter contract instead.
     const r = checkAndIncrement("rate-test-guild", 1);
     assert.equal(r.allowed, false);
-    process.env.AI_FREE_DAILY_LIMIT = savedLimit;
   });
-  it("whitelisted guild gets premium model", () => {
+  it("guild with own key on standard tier gets pro model with :guild label", () => {
     resetKeyCache();
     resetRateLimiter();
     resetCircuitState();
-    const savedWhitelist = process.env.DEEPSEEK_PREMIUM_GUILD_IDS;
-    process.env.DEEPSEEK_PREMIUM_GUILD_IDS = "white-guild-1,white-guild-2";
-    // Config is already loaded at module level, so DEEPSEEK_PREMIUM_GUILD_IDS
-    // won't re-read. Test the concept by checking hasGuildApiKey path instead.
-    resetKeyCache();
     setGuildApiKey("keyed-guild", "sk-guildkey");
-    const { chain } = buildGuildChain("keyed-guild");
+    const { chain } = buildGuildChain("keyed-guild", standardTier);
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry, "should have a DeepSeek entry");
     assert.ok(dsEntry.label.includes(":guild"), `expected :guild suffix, got ${dsEntry.label}`);
-    process.env.DEEPSEEK_PREMIUM_GUILD_IDS = savedWhitelist;
+    assert.ok(!dsEntry.label.includes("flash"), `expected pro model, got ${dsEntry.label}`);
   });
-  it("guild with own key gets :guild label", () => {
+  it("guild with own key on brief tier gets flash model", () => {
     resetKeyCache();
     resetCircuitState();
     setGuildApiKey("keyed-guild", "sk-mykey");
-    const { chain } = buildGuildChain("keyed-guild");
+    const { chain } = buildGuildChain("keyed-guild", briefTier);
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry);
-    assert.ok(dsEntry.label.endsWith(":guild"));
+    assert.ok(dsEntry.label.includes("flash"), `expected flash model, got ${dsEntry.label}`);
   });
 
   // cleanup
