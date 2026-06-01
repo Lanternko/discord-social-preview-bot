@@ -162,22 +162,26 @@ async function callGroq(turns, model, persona, maxTokens) {
   });
 }
 
-async function callDeepSeek(turns, persona, maxTokens) {
+async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
+  const model = overrides.model || DEEPSEEK_MODEL;
+  const apiKey = overrides.apiKey || DEEPSEEK_API_KEY;
+  const headroom = overrides.reasoningHeadroom ?? DEEPSEEK_REASONING_HEADROOM;
+
   const body = {
-    model: DEEPSEEK_MODEL,
+    model,
     messages: buildOpenAIMessages(turns, persona),
     temperature: 0.9,
     top_p: 0.95,
-    max_tokens: maxTokens + DEEPSEEK_REASONING_HEADROOM,
+    max_tokens: maxTokens + headroom,
   };
-  const label = `deepseek:${DEEPSEEK_MODEL}`;
+  const label = `deepseek:${model}`;
 
   return withAbortTimeout(AI_TIMEOUT_MS, label, async (signal) => {
     const response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
       signal,

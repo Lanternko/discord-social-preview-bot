@@ -1,6 +1,7 @@
 const {
   AI_PROVIDER_FORCE,
   AI_LONG_TERM_MEMORY_ENABLED,
+  AI_FREE_DAILY_LIMIT,
   EMOJI_TRUSTED_GUILD_IDS,
   GEMINI_API_KEY,
   GEMINI_MODEL,
@@ -8,6 +9,9 @@ const {
   GROQ_MODELS,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
+  DEEPSEEK_MODEL_FREE,
+  DEEPSEEK_PREMIUM_GUILD_IDS,
+  DEEPSEEK_REASONING_HEADROOM,
 } = require("../config");
 const { trimDescription } = require("../utils");
 const { getTierConfig } = require("../tier-config");
@@ -50,6 +54,8 @@ const {
   recordProviderSuccess,
   recordProviderFailure,
 } = require("./circuit");
+const { hasGuildApiKey, getGuildApiKey } = require("./guild-key-store");
+const { checkAndIncrement } = require("./rate-limiter");
 
 const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
 
@@ -58,21 +64,11 @@ function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CON
   return groupContextLines.slice(-count);
 }
 
-// Build the provider fallback chain once at startup. Each entry has a label
-// (for logging) and a call fn that accepts (turns, persona, maxTokens) and
-// returns { ok: true, text } | { ok: false, kind, ... }.
-//
-// Default priority order (paid/reliable → free → last resort):
-//   1. DeepSeek (paid, fastest reliable, V3 flagship — user-paid so prefer it)
-//   2. Groq models in GROQ_MODELS order (70B → 8B fallback)
-//   3. Gemini (last resort, billing trap history)
-function buildAIProviderChain() {
+// Fallback chain (Groq + Gemini) built once at startup — shared by all guilds.
+// DeepSeek entry varies per guild (model/key/rate-limit), so it's built per-call.
+function buildFallbackChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
-
-  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
-    chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
-  }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
       chain.push({
@@ -88,7 +84,75 @@ function buildAIProviderChain() {
   return chain;
 }
 
+const FALLBACK_CHAIN = buildFallbackChain();
+
+function buildAIProviderChain() {
+  const chain = [];
+  const only = AI_PROVIDER_FORCE;
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
+  }
+  return [...chain, ...FALLBACK_CHAIN];
+}
+
+// Full default chain — used for startup log and backwards-compat export.
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
+
+// Per-guild chain: selects DeepSeek model/key based on guild tier, then appends
+// the global fallback chain (Groq + Gemini).
+function buildGuildChain(guildId) {
+  const only = AI_PROVIDER_FORCE;
+  if (only && only !== "deepseek") {
+    return { chain: FALLBACK_CHAIN, rateLimited: false };
+  }
+
+  const hasOwnKey = hasGuildApiKey(guildId);
+  const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
+  const isPremium = hasOwnKey || isWhitelisted;
+
+  if (hasOwnKey) {
+    const guildKey = getGuildApiKey(guildId);
+    const entry = {
+      label: `deepseek:${DEEPSEEK_MODEL}:guild`,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, {
+          apiKey: guildKey,
+          model: DEEPSEEK_MODEL,
+          reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+        }),
+    };
+    return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+  }
+
+  if (!DEEPSEEK_API_KEY) {
+    return { chain: FALLBACK_CHAIN, rateLimited: false };
+  }
+
+  if (isWhitelisted) {
+    const entry = {
+      label: `deepseek:${DEEPSEEK_MODEL}`,
+      call: callDeepSeek,
+    };
+    return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+  }
+
+  // Free guild — check daily rate limit
+  const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
+  if (!rateCheck.allowed) {
+    console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
+    return { chain: FALLBACK_CHAIN, rateLimited: true };
+  }
+
+  const entry = {
+    label: `deepseek:${DEEPSEEK_MODEL_FREE}`,
+    call: (turns, persona, maxTokens) =>
+      callDeepSeek(turns, persona, maxTokens, {
+        model: DEEPSEEK_MODEL_FREE,
+        reasoningHeadroom: 0,
+      }),
+  };
+  return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+}
 
 async function runProviderChain(chain, turns, persona, maxTokens) {
   for (const provider of chain) {
@@ -114,7 +178,8 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
 }
 
 async function generateAIReply(message, userText) {
-  if (AI_PROVIDER_CHAIN.length === 0) return null;
+  const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId);
+  if (guildChain.length === 0) return null;
 
   const tierConfig = getTierConfig(message.guildId);
   const userTurn = buildUserTurn(message, userText);
@@ -179,7 +244,7 @@ async function generateAIReply(message, userText) {
   }
 
   const result = await runProviderChain(
-    AI_PROVIDER_CHAIN,
+    guildChain,
     turns,
     persona,
     tierConfig.maxTokens,
@@ -203,14 +268,15 @@ async function generateAIReply(message, userText) {
       userId: message.client?.user?.id,
       displayName: message.client?.user?.username || "西寶",
     });
+    const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED) {
       const guildId = message.guildId;
       const userId = message.author?.id;
-      const runChain = (t, p, m) => runProviderChain(AI_PROVIDER_CHAIN, t, p, m);
+      const runChain = (t, p, m) => runProviderChain(guildChain, t, p, m);
       if (guildId && userId) {
         appendPendingInteraction(guildId, userId, displayName, userText, capped);
         maybeExtractObservations(guildId, userId, displayName, runChain).catch(() => {});
@@ -237,15 +303,17 @@ async function generateAIReply(message, userText) {
   }
 
   console.warn(
-    `[ai] chain exhausted (${AI_PROVIDER_CHAIN.length} providers tried), falling back to hardcoded reply`,
+    `[ai] chain exhausted (${guildChain.length} providers tried${rateLimited ? ", DeepSeek rate-limited" : ""}), falling back to hardcoded reply`,
   );
   return null;
 }
 
 module.exports = {
   AI_PROVIDER_CHAIN,
+  FALLBACK_CHAIN,
   PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
+  buildGuildChain,
   getPersonalMemoryContextEntries,
   runProviderChain,
   generateAIReply,

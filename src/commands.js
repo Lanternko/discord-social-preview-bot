@@ -21,6 +21,18 @@ const {
   registerJob,
   unregisterJob,
 } = require("./scheduler");
+const {
+  hasGuildApiKey,
+  setGuildApiKey,
+  removeGuildApiKey,
+} = require("./ai/guild-key-store");
+const { getUsage } = require("./ai/rate-limiter");
+const {
+  DEEPSEEK_MODEL,
+  DEEPSEEK_MODEL_FREE,
+  DEEPSEEK_PREMIUM_GUILD_IDS,
+  AI_FREE_DAILY_LIMIT,
+} = require("./config");
 
 const SERVER_COUNT_COMMAND = {
   name: "servers",
@@ -143,6 +155,36 @@ const MEMORY_COMMAND = {
   ],
 };
 
+const AI_KEY_COMMAND = {
+  name: "ai-key",
+  description: "管理這個伺服器的 AI API 金鑰",
+  options: [
+    {
+      name: "status",
+      description: "查看目前的 AI 方案狀態",
+      type: 1, // SUB_COMMAND
+    },
+    {
+      name: "set",
+      description: "設定 DeepSeek API 金鑰（解鎖進階模型 + 無限額度）",
+      type: 1, // SUB_COMMAND
+      options: [
+        {
+          name: "key",
+          description: "你的 DeepSeek API 金鑰",
+          type: 3, // STRING
+          required: true,
+        },
+      ],
+    },
+    {
+      name: "remove",
+      description: "移除已設定的 API 金鑰",
+      type: 1, // SUB_COMMAND
+    },
+  ],
+};
+
 // Returns true when the registered command matches the expected spec on the
 // fields we care about. Currently checks description + defaultMemberPermissions
 // — extend here if we ever start diffing options.
@@ -173,6 +215,7 @@ async function ensureApplicationCommands(client) {
     TIER_COMMAND,
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
+    AI_KEY_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -543,6 +586,99 @@ async function handleMemoryCommand(interaction) {
   }
 }
 
+async function handleAiKeyCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+  const guildId = interaction.guildId;
+
+  if (sub === "status") {
+    const hasKey = hasGuildApiKey(guildId);
+    const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
+    const isPremium = hasKey || isWhitelisted;
+
+    const lines = ["**AI 方案狀態**"];
+    if (hasKey) {
+      lines.push("方案：進階（自訂金鑰）");
+      lines.push(`模型：\`${DEEPSEEK_MODEL}\``);
+      lines.push("額度：無限制");
+    } else if (isWhitelisted) {
+      lines.push("方案：進階（白名單）");
+      lines.push(`模型：\`${DEEPSEEK_MODEL}\``);
+      lines.push("額度：無限制");
+    } else {
+      const usage = getUsage(guildId);
+      lines.push("方案：免費");
+      lines.push(`模型：\`${DEEPSEEK_MODEL_FREE}\`（超過額度後使用備用模型）`);
+      lines.push(`今日用量：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}`);
+    }
+    await interaction.reply({
+      content: lines.join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const canManageGuild = interaction.member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
+  );
+  if (!canManageGuild) {
+    await interaction.reply({
+      content: "需要「管理伺服器」權限才能設定或移除 API 金鑰。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (sub === "set") {
+    const key = interaction.options.getString("key");
+    if (!key || !key.startsWith("sk-")) {
+      await interaction.reply({
+        content: "金鑰格式不正確，DeepSeek API 金鑰應以 `sk-` 開頭。",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    try {
+      setGuildApiKey(guildId, key);
+      console.log(`[ai-key] guild=${guildId} set by user=${interaction.user.id}`);
+      await interaction.reply({
+        content: `已設定 API 金鑰，本伺服器已升級為進階方案。\n模型：\`${DEEPSEEK_MODEL}\`\n額度：無限制`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (err) {
+      console.warn(`[ai-key] setGuildApiKey failed: ${err.message}`);
+      await interaction.reply({
+        content: "設定失敗，請稍後再試。",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+    return;
+  }
+
+  if (sub === "remove") {
+    const removed = removeGuildApiKey(guildId);
+    if (removed) {
+      console.log(`[ai-key] guild=${guildId} removed by user=${interaction.user.id}`);
+      await interaction.reply({
+        content: `已移除 API 金鑰，本伺服器已回到免費方案。\n模型：\`${DEEPSEEK_MODEL_FREE}\`\n每日額度：${AI_FREE_DAILY_LIMIT} 次`,
+        flags: MessageFlags.Ephemeral,
+      });
+    } else {
+      await interaction.reply({
+        content: "本伺服器沒有設定過 API 金鑰。",
+        flags: MessageFlags.Ephemeral,
+      });
+    }
+  }
+}
+
 async function handleInteraction(interaction, client) {
   if (!interaction.isChatInputCommand()) return;
 
@@ -574,6 +710,11 @@ async function handleInteraction(interaction, client) {
 
   if (interaction.commandName === MEMORY_COMMAND.name) {
     await handleMemoryCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === AI_KEY_COMMAND.name) {
+    await handleAiKeyCommand(interaction);
   }
 }
 
@@ -583,10 +724,12 @@ module.exports = {
   TIER_COMMAND,
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
+  AI_KEY_COMMAND,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
   handleTierCommand,
   handleScheduleCommand,
   handleMemoryCommand,
+  handleAiKeyCommand,
   handleInteraction,
 };
