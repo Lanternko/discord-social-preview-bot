@@ -1,12 +1,11 @@
 const {
   AI_PROVIDER_FORCE,
   AI_LONG_TERM_MEMORY_ENABLED,
+  EMOJI_TRUSTED_GUILD_IDS,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
   GROQ_MODELS,
-  CEREBRAS_API_KEY,
-  CEREBRAS_MODEL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
 } = require("../config");
@@ -44,7 +43,6 @@ const {
 const {
   callGemini,
   callGroq,
-  callCerebras,
   callDeepSeek,
 } = require("./providers");
 const {
@@ -53,24 +51,27 @@ const {
   recordProviderFailure,
 } = require("./circuit");
 
+const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
+
+function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CONTEXT_MEMORY_COUNT) {
+  if (!Array.isArray(groupContextLines) || count <= 0) return [];
+  return groupContextLines.slice(-count);
+}
+
 // Build the provider fallback chain once at startup. Each entry has a label
 // (for logging) and a call fn that accepts (turns, persona, maxTokens) and
 // returns { ok: true, text } | { ok: false, kind, ... }.
 //
 // Default priority order (paid/reliable → free → last resort):
 //   1. DeepSeek (paid, fastest reliable, V3 flagship — user-paid so prefer it)
-//   2. Cerebras (Qwen 235B free 1M TPD but queue_exceeded is common)
-//   3. Groq models in GROQ_MODELS order (70B → 8B fallback)
-//   4. Gemini (last resort, billing trap history)
+//   2. Groq models in GROQ_MODELS order (70B → 8B fallback)
+//   3. Gemini (last resort, billing trap history)
 function buildAIProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
 
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
-  }
-  if (CEREBRAS_API_KEY && (!only || only === "cerebras")) {
-    chain.push({ label: `cerebras:${CEREBRAS_MODEL}`, call: callCerebras });
   }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
@@ -129,7 +130,11 @@ async function generateAIReply(message, userText) {
   //   4. group context    (per-call, fully volatile — MUST be last)
   let persona = tierConfig.persona;
 
-  const emojiMap = buildEmojiMap(message.client);
+  const emojiMap = buildEmojiMap(
+    message.client,
+    message.guildId,
+    EMOJI_TRUSTED_GUILD_IDS,
+  );
   persona += buildEmojiPromptBlock(emojiMap);
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
@@ -184,8 +189,20 @@ async function generateAIReply(message, userText) {
     // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the
     // resolved `<:name:id>` syntax, the model would see its own raw IDs next
     // turn and imitate them — mangling the id/colons and producing broken emoji.
-    recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns);
-    recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns);
+    const displayName =
+      message.member?.displayName ||
+      message.author?.globalName ||
+      message.author?.username;
+    recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns, {
+      guildId: message.guildId,
+      userId: message.author?.id,
+      displayName,
+    });
+    recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+      guildId: message.guildId,
+      userId: message.client?.user?.id,
+      displayName: message.client?.user?.username || "西寶",
+    });
     console.log(
       `[ai] used ${result.provider.label} tier=${tierConfig.tier} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
@@ -193,10 +210,6 @@ async function generateAIReply(message, userText) {
     if (AI_LONG_TERM_MEMORY_ENABLED) {
       const guildId = message.guildId;
       const userId = message.author?.id;
-      const displayName =
-        message.member?.displayName ||
-        message.author?.globalName ||
-        message.author?.username;
       const runChain = (t, p, m) => runProviderChain(AI_PROVIDER_CHAIN, t, p, m);
       if (guildId && userId) {
         appendPendingInteraction(guildId, userId, displayName, userText, capped);
@@ -208,8 +221,9 @@ async function generateAIReply(message, userText) {
         appendPendingContext(guildId, guildName, ctxStrings);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
 
-        for (const entry of groupContextLines) {
-          if (entry.userId && entry.userId !== userId) {
+        const personalContextLines = getPersonalMemoryContextEntries(groupContextLines);
+        for (const entry of personalContextLines) {
+          if (entry.userId) {
             appendPendingInteraction(
               guildId, entry.userId, entry.displayName,
               entry.line, "",
@@ -230,7 +244,9 @@ async function generateAIReply(message, userText) {
 
 module.exports = {
   AI_PROVIDER_CHAIN,
+  PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
+  getPersonalMemoryContextEntries,
   runProviderChain,
   generateAIReply,
 };

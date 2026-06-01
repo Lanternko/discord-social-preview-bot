@@ -3,15 +3,15 @@
 # Runs as user kojiek every minute. If the node process is gone, restart it.
 #
 # Install:
-#   chmod +x /home/kojiek/side_projects/discord-social-preview-bot/scripts/bot-watchdog.sh
-#   ( crontab -l 2>/dev/null; echo '* * * * * /home/kojiek/side_projects/discord-social-preview-bot/scripts/bot-watchdog.sh' ) | crontab -
+#   chmod +x /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh
+#   ( crontab -l 2>/dev/null; echo '* * * * * /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh' ) | crontab -
 #
 # The [n]ode bracket trick keeps the pattern from matching the watchdog's
 # own command line via the shell that ran pgrep.
 
 set -u
 
-REPO=/home/kojiek/side_projects/discord-social-preview-bot
+REPO=/home/kojiek/side_projects/apps/discord-social-preview-bot
 WD_LOG=/tmp/bot_watchdog.log
 
 cd "$REPO" || exit 1

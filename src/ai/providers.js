@@ -3,8 +3,6 @@ const {
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
-  CEREBRAS_API_KEY,
-  CEREBRAS_MODEL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_REASONING_HEADROOM,
@@ -164,69 +162,6 @@ async function callGroq(turns, model, persona, maxTokens) {
   });
 }
 
-const CEREBRAS_QUEUE_RETRY_DELAY_MS = 1500;
-async function callCerebras(turns, persona, maxTokens) {
-  const body = {
-    model: CEREBRAS_MODEL,
-    messages: buildOpenAIMessages(turns, persona),
-    temperature: 0.9,
-    top_p: 0.95,
-    max_tokens: maxTokens,
-  };
-  const label = `cerebras:${CEREBRAS_MODEL}`;
-
-  return withAbortTimeout(AI_TIMEOUT_MS, label, async (signal) => {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${CEREBRAS_API_KEY}`,
-        },
-        body: JSON.stringify(body),
-        signal,
-      });
-
-      logRateHeaders(label, response);
-
-      if (response.ok) {
-        const payload = await response.json();
-        const text = payload?.choices?.[0]?.message?.content?.trim();
-        if (!text) {
-          const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
-          console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
-          return fail("empty", { detail: finishReason });
-        }
-        if (attempt > 0) console.log(`[ai] ${label} succeeded on retry`);
-        return ok(text);
-      }
-
-      const errText = await response.text().catch(() => "");
-      const isQueueExceeded =
-        response.status === 429 &&
-        (errText.includes("queue_exceeded") || errText.includes("high traffic"));
-
-      if (isQueueExceeded && attempt === 0) {
-        console.log(
-          `[ai] ${label} queue_exceeded, retrying in ${CEREBRAS_QUEUE_RETRY_DELAY_MS}ms`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, CEREBRAS_QUEUE_RETRY_DELAY_MS));
-        continue;
-      }
-
-      if (isQueueExceeded) {
-        console.warn(`[ai] ${label} queue_exceeded after retry`);
-        return fail("queue_exceeded", { status: 429 });
-      }
-
-      const f = classifyHttpFailure(response, errText);
-      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
-      return f;
-    }
-    return fail("unknown", { detail: "cerebras exhausted retry loop" });
-  });
-}
-
 async function callDeepSeek(turns, persona, maxTokens) {
   const body = {
     model: DEEPSEEK_MODEL,
@@ -277,6 +212,5 @@ module.exports = {
   logRateHeaders,
   callGemini,
   callGroq,
-  callCerebras,
   callDeepSeek,
 };

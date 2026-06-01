@@ -8,6 +8,7 @@ const BAK_PATH = STORE_PATH + ".bak";
 const OBSERVATION_MAX_LEN = 120;
 const PROFILE_MAX_LEN = 500;
 const PENDING_TEXT_MAX_LEN = 500;
+const RECENT_OBSERVATIONS_PROMPT_COUNT = 3;
 const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
 
 let cache = null;
@@ -158,10 +159,30 @@ function setConsolidatedProfile(guildId, userId, profileText) {
 const PROFILE_PROMPT_MAX_LEN = 300;
 
 function buildUserProfileBlock(entry) {
-  if (!entry?.profile) return "";
+  if (!entry?.profile && !entry?.observations?.length) return "";
   const name = entry.name || "未知";
-  const summary = entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN);
-  return `\n\n## 當前使用者長期記憶\n這是你對目前說話者的長期印象，只能當成輕量參考，不要直接複述，也不要假裝百分之百確定。\n- 暱稱：${name}\n- 摘要：${summary}`;
+  const lines = [
+    "\n\n## 當前使用者長期記憶",
+    "這是你對目前說話者的長期印象，只能當成輕量參考，不要直接複述，也不要假裝百分之百確定。",
+    `- 暱稱：${name}`,
+  ];
+
+  if (entry.profile) {
+    lines.push(`- 摘要：${entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
+  }
+
+  const recentObservations = (entry.observations || [])
+    .slice(-RECENT_OBSERVATIONS_PROMPT_COUNT)
+    .map((o) => o.text)
+    .filter(Boolean);
+  if (recentObservations.length > 0) {
+    lines.push("- 最近零散觀察：");
+    for (const obs of recentObservations) {
+      lines.push(`  - ${obs}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function deleteUserProfile(guildId, userId) {
@@ -198,6 +219,7 @@ module.exports = {
   PROFILE_MAX_LEN,
   PROFILE_PROMPT_MAX_LEN,
   PENDING_TEXT_MAX_LEN,
+  RECENT_OBSERVATIONS_PROMPT_COUNT,
   getUserProfile,
   appendPendingInteraction,
   getPendingInteractions,

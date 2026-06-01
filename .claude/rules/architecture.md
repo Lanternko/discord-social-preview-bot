@@ -21,7 +21,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 
 - [persona.js](../../src/ai/persona.js) — `AI_PERSONA` template + `buildUserTurn` + OpenAI/Gemini message format helpers.
 - [memory.js](../../src/ai/memory.js) — per-channel conversation history + sweep timer.
-- [providers.js](../../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callCerebras` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
+- [providers.js](../../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
 - [circuit.js](../../src/ai/circuit.js) — provider circuit breaker (`isProviderAvailable` / `recordProviderFailure` / cooldown lookup). Stops the chain from re-trying a known-broken provider every call.
 - [group-context.js](../../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` block injected into the system prompt for `standard` / `detailed` tiers.
 - [chain.js](../../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
@@ -47,7 +47,7 @@ src/
 ├── ai/
 │   ├── persona.js        # AI_PERSONA + buildUserTurn + message format helpers
 │   ├── memory.js         # Per-channel conversation history + sweep timer
-│   ├── providers.js      # callDeepSeek/callGroq/callCerebras/callGemini + ok/fail/parseRetryAfterMs
+│   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
 │   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
 │   ├── group-context.js  # Recent non-bot messages → system-prompt block (standard/detailed tiers)
 │   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply

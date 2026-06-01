@@ -17,7 +17,11 @@ const {
   getCircuitSnapshot,
   resetCircuitState,
 } = require("../src/ai/circuit");
-const { runProviderChain } = require("../src/ai/chain");
+const {
+  PERSONAL_CONTEXT_MEMORY_COUNT,
+  getPersonalMemoryContextEntries,
+  runProviderChain,
+} = require("../src/ai/chain");
 
 let pass = 0;
 let fails = 0;
@@ -113,6 +117,19 @@ async function main() {
   });
   it("unknown kind falls back to 30s", () => {
     assert.equal(getCooldownMs({ kind: "something-weird" }), 30000);
+  });
+
+  console.log("personal memory context");
+  it("keeps only the latest 3 group-context entries for personal extraction", () => {
+    const entries = [
+      { line: "[a]: 1" },
+      { line: "[b]: 2" },
+      { line: "[c]: 3" },
+      { line: "[d]: 4" },
+    ];
+    assert.equal(PERSONAL_CONTEXT_MEMORY_COUNT, 3);
+    assert.deepEqual(getPersonalMemoryContextEntries(entries), entries.slice(1));
+    assert.deepEqual(getPersonalMemoryContextEntries(null), []);
   });
 
   console.log("circuit state");

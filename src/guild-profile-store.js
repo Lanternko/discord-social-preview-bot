@@ -8,6 +8,7 @@ const OBSERVATION_MAX_LEN = 120;
 const PROFILE_MAX_LEN = 500;
 const PROFILE_PROMPT_MAX_LEN = 300;
 const CONTEXT_SNAPSHOT_MAX_LEN = 2000;
+const RECENT_OBSERVATIONS_PROMPT_COUNT = 3;
 const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
 
 let cache = null;
@@ -145,9 +146,28 @@ function setConsolidatedProfile(guildId, profileText) {
 }
 
 function buildGuildProfileBlock(entry) {
-  if (!entry?.profile) return "";
-  const summary = entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN);
-  return `\n\n## 這個群的長期印象\n這是你對目前 Discord 群的輕量印象，只能用來理解氣氛，不要直接複述。\n- 摘要：${summary}`;
+  if (!entry?.profile && !entry?.observations?.length) return "";
+  const lines = [
+    "\n\n## 這個群的長期印象",
+    "這是你對目前 Discord 群的輕量印象，只能用來理解氣氛，不要直接複述。",
+  ];
+
+  if (entry.profile) {
+    lines.push(`- 摘要：${entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
+  }
+
+  const recentObservations = (entry.observations || [])
+    .slice(-RECENT_OBSERVATIONS_PROMPT_COUNT)
+    .map((o) => o.text)
+    .filter(Boolean);
+  if (recentObservations.length > 0) {
+    lines.push("- 最近零散觀察：");
+    for (const obs of recentObservations) {
+      lines.push(`  - ${obs}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function flush() {
@@ -164,6 +184,7 @@ module.exports = {
   PROFILE_MAX_LEN,
   PROFILE_PROMPT_MAX_LEN,
   CONTEXT_SNAPSHOT_MAX_LEN,
+  RECENT_OBSERVATIONS_PROMPT_COUNT,
   getGuildProfile,
   appendPendingContext,
   getPendingContexts,

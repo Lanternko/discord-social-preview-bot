@@ -12,18 +12,17 @@ The chain is wrapped by a circuit breaker so a known-broken provider gets skippe
 
 ## Default chain (when all keys set)
 
-Ordered paid-first → free-quality → fallback:
+Ordered paid-first → fallback:
 
 1. `deepseek:deepseek-chat` — paid V3.2, reliable, no queue, flagship Chinese
-2. `cerebras:qwen-3-235b-a22b-instruct-2507` — Qwen 235B free 1M TPD, but `queue_exceeded` common
-3. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free
-4. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free — lower quality
-5. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below)
+2. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free
+3. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free — lower quality
+4. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below)
 
 ## Call shape
 
 - All providers use `withAbortTimeout()` for timeout + error handling.
-- Groq + Cerebras share OpenAI-compatible format: `messages[]`, `Bearer` auth.
+- DeepSeek + Groq share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
 - Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../../src/ai/providers.js).
 - Any per-layer failure triggers the next layer — **bot never goes silent**.
@@ -41,7 +40,7 @@ Ordered paid-first → free-quality → fallback:
 | `auth` | 10 min | 401/403 — key likely revoked or wrong; don't hammer |
 | `rate_limit` | `Retry-After` header (parsed by `parseRetryAfterMs`) → fallback 60 s | Honour what the API tells us |
 | `timeout` / `network` / `server` | 60 s | Transient; one minute is enough for blip recovery |
-| `queue_exceeded` | 30 s | Cerebras-specific; queue clears fast |
+| `queue_exceeded` | 30 s | Legacy provider-specific throttle; retained defensively |
 | `empty` | 0 s (no cooldown) | Content issue (safety block / empty candidate), not a provider issue — let next call try again |
 | anything else | 30 s | Defensive default |
 
@@ -64,7 +63,7 @@ Log prefix: `[ai]`.
 
 - Startup: `[ai] chain=<a> → <b> → ... timeout=<ms>`
 - Per reply: `[ai] used <provider>:<model> len=<chars> history_before=<N>` (N = prior turns injected)
-- Per call: `x-ratelimit-remaining-{tokens,requests}` from Groq/Cerebras (`logRateHeaders()`) — live quota drain.
+- Per call: `x-ratelimit-remaining-{tokens,requests}` from Groq/DeepSeek when provided (`logRateHeaders()`) — live quota drain.
 - Chain exhausted: `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — **the ops signal** to grep for.
 
 ## Short-term conversation memory
@@ -91,6 +90,6 @@ If a Google Cloud project has a billing account attached (even $300 free trial),
 
 **Workaround**: create a new project **without billing** via AI Studio's "Create API key in new project" flow.
 
-Groq + Cerebras have no equivalent trap — just sign up, create key, use it. DeepSeek is paid up-front, no trap either.
+Groq has no equivalent trap — just sign up, create key, use it. DeepSeek is paid up-front, no trap either.
 
 **Currently we use DeepSeek as primary**, so this trap only bites if the whole chain exhausts and someone tries to rely on Gemini alone.

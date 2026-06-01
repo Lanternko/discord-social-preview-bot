@@ -36,6 +36,7 @@ const {
   formatGroupMessage,
   buildGroupContextBlock,
 } = require("../src/ai/group-context");
+const aiMemory = require("../src/ai/memory");
 
 const {
   tierLabel: familiarityTierLabel,
@@ -61,6 +62,14 @@ const {
 
 const { buildPermissionDebugMessage } = require("../src/commands");
 const { getMissingChannelPermissions } = require("../src/discord-io");
+const {
+  STORY_MODES,
+  localDateKey,
+  pickStoryMode,
+  messagePreview,
+  selectStoryIngredients,
+  buildBedtimeStoryPrompt,
+} = require("../src/bedtime-story");
 
 let pass = 0;
 let fail = 0;
@@ -73,6 +82,36 @@ function it(name, fn) {
     fail++;
     console.error(`  ✗ ${name}`);
     console.error(`    ${err.message}`);
+  }
+}
+
+function snapshotFile(filePath) {
+  return fs.existsSync(filePath) ? fs.readFileSync(filePath) : null;
+}
+
+function restoreFile(filePath, snapshot) {
+  if (snapshot === null) {
+    try {
+      fs.unlinkSync(filePath);
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+    }
+    return;
+  }
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, snapshot);
+}
+
+function withStoreFile(store, fn) {
+  const storePath = store.STORE_PATH || store.DISTILL_LOG_PATH;
+  const bakPath = `${storePath}.bak`;
+  const storeSnapshot = snapshotFile(storePath);
+  const bakSnapshot = snapshotFile(bakPath);
+  try {
+    fn();
+  } finally {
+    restoreFile(storePath, storeSnapshot);
+    restoreFile(bakPath, bakSnapshot);
   }
 }
 
@@ -531,6 +570,31 @@ it("wraps lines under header", () => {
   assert.ok(out.includes("[b]: yo"));
 });
 
+console.log("ai-memory");
+it("records prompt history in memory and durable distill log on disk", () => {
+  withStoreFile(aiMemory, () => {
+    aiMemory.aiConversationHistory.clear();
+    aiMemory.resetDistillLogCacheForTests();
+    aiMemory.recordAITurn("c1", "user", "hello", 2, {
+      guildId: "g1",
+      userId: "u1",
+      displayName: "Alice",
+    });
+    const history = aiMemory.getChannelAIHistory("c1");
+    assert.equal(history.length, 1);
+    assert.deepEqual(history[0], { role: "user", content: "hello" });
+
+    const log = JSON.parse(fs.readFileSync(aiMemory.DISTILL_LOG_PATH, "utf8"));
+    assert.equal(log.channels.c1.guildId, "g1");
+    assert.equal(log.channels.c1.turns.length, 1);
+    assert.equal(log.channels.c1.turns[0].userId, "u1");
+    assert.equal(log.channels.c1.turns[0].displayName, "Alice");
+    assert.equal(log.channels.c1.turns[0].content, "hello");
+    aiMemory.aiConversationHistory.clear();
+    aiMemory.resetDistillLogCacheForTests();
+  });
+});
+
 console.log("familiarity.tierLabel");
 it("maps thresholds to tier names", () => {
   assert.equal(familiarityTierLabel(500), "摯友");
@@ -701,6 +765,10 @@ it("brief has no group context, standard/detailed do", () => {
   assert.ok(TIERS.standard.groupContextCount > 0);
   assert.ok(TIERS.detailed.groupContextCount > 0);
 });
+it("standard/detailed keep 15 group-context messages", () => {
+  assert.equal(TIERS.standard.groupContextCount, 15);
+  assert.equal(TIERS.detailed.groupContextCount, 15);
+});
 
 console.log("og-fallback parser");
 const {
@@ -837,6 +905,35 @@ it("replaces known :name: with Discord syntax", () => {
     "hello <:Rosmontis_scared:12345> world",
   );
 });
+it("replaces fullwidth-colon :name: variants", () => {
+  const map = new Map([["Waku_kyaru", { id: "1215440196057956442", animated: false }]]);
+  assert.equal(
+    resolveCustomEmojis("好吃...：Waku_kyaru:", map),
+    "好吃...<:Waku_kyaru:1215440196057956442>",
+  );
+  assert.equal(
+    resolveCustomEmojis("好吃...：Waku_kyaru：", map),
+    "好吃...<:Waku_kyaru:1215440196057956442>",
+  );
+});
+it("repairs malformed raw custom emoji source with fullwidth colon", () => {
+  const map = new Map([
+    ["Waku_kyaru", { id: "1215440196057956442", animated: false }],
+    ["0Nishi_tere", { id: "1488370120236732416", animated: false }],
+  ]);
+  assert.equal(
+    resolveCustomEmojis("第十貫...：Waku_kyaru:1215440196057956442>", map),
+    "第十貫...<:Waku_kyaru:1215440196057956442>",
+  );
+  assert.equal(
+    resolveCustomEmojis("<：Waku_kyaru:1215440196057956442>", map),
+    "<:Waku_kyaru:1215440196057956442>",
+  );
+  assert.equal(
+    resolveCustomEmojis("阿...：0Nishi_tere:1488370120236732416> 的豆皮", map),
+    "阿...<:0Nishi_tere:1488370120236732416> 的豆皮",
+  );
+});
 it("uses <a:...> prefix for animated emoji", () => {
   const map = new Map([["mahiro_cry", { id: "99999", animated: true }]]);
   assert.equal(
@@ -850,6 +947,20 @@ it("strips hallucinated unknown :name: (not in map)", () => {
     resolveCustomEmojis("偷東西不行啦 :OAO_bocchi:", map),
     "偷東西不行啦",
   );
+});
+it("strips hallucinated unknown :name: even when emoji map is empty", () => {
+  assert.equal(resolveCustomEmojis("晚安 :pepe_knife:", new Map()), "晚安");
+});
+it("resolves common hallucinated aliases to real emoji names", () => {
+  const map = new Map([["Pepe_KILL", { id: "222", animated: false }]]);
+  assert.equal(
+    resolveCustomEmojis("不要鬧 :pepe_knife:", map),
+    "不要鬧 <:Pepe_KILL:222>",
+  );
+});
+it("resolves emoji names case-insensitively", () => {
+  const map = new Map([["Pepe_OK", { id: "333", animated: false }]]);
+  assert.equal(resolveCustomEmojis(":pepe_ok:", map), "<:Pepe_OK:333>");
 });
 it("keeps pure-digit :30: token (timestamp/ratio, not emoji)", () => {
   const map = new Map([["Good_shark", { id: "111", animated: false }]]);
@@ -878,7 +989,7 @@ it("resolves multiple emoji in one message", () => {
     "<:Good_shark:1> nice <:555_dog:2>",
   );
 });
-it("buildEmojiMap filters blacklisted names", () => {
+it("buildEmojiMap includes all non-junk names (blacklist is empty)", () => {
   const fakeClient = {
     emojis: {
       cache: new Map([
@@ -889,8 +1000,8 @@ it("buildEmojiMap filters blacklisted names", () => {
     },
   };
   const map = buildEmojiMap(fakeClient);
-  assert.equal(map.has("Homo_ferret"), false);
-  assert.equal(map.has("z_garden_eel"), false);
+  assert.equal(map.has("Homo_ferret"), true);
+  assert.equal(map.has("z_garden_eel"), true);
   assert.equal(map.has("Good_shark"), true);
 });
 it("buildEmojiMap filters junk names", () => {
@@ -908,6 +1019,89 @@ it("buildEmojiMap filters junk names", () => {
   assert.equal(map.has("emoji_44"), false);
   assert.equal(map.has("Waku_bocchi"), true);
 });
+it("buildEmojiMap scopes emoji to the current guild when guildId is provided", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([
+                ["a", { name: "Good_local", id: "1", animated: false }],
+              ]),
+            },
+          },
+        ],
+        [
+          "g2",
+          {
+            emojis: {
+              cache: new Map([
+                ["b", { name: "Pepe_KILL", id: "2", animated: false }],
+              ]),
+            },
+          },
+        ],
+      ]),
+    },
+    emojis: {
+      cache: new Map([
+        ["a", { name: "Good_local", id: "1", animated: false }],
+        ["b", { name: "Pepe_KILL", id: "2", animated: false }],
+      ]),
+    },
+  };
+  const map = buildEmojiMap(fakeClient, "g1");
+  assert.equal(map.has("Good_local"), true);
+  assert.equal(map.has("Pepe_KILL"), false);
+});
+it("buildEmojiMap shares emoji only across trusted guilds", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([
+                ["a", { name: "Good_local", id: "1", animated: false }],
+              ]),
+            },
+          },
+        ],
+        [
+          "g2",
+          {
+            emojis: {
+              cache: new Map([
+                ["b", { name: "Waku_friend", id: "2", animated: false }],
+              ]),
+            },
+          },
+        ],
+        [
+          "g3",
+          {
+            emojis: {
+              cache: new Map([
+                ["c", { name: "Pepe_KILL", id: "3", animated: false }],
+              ]),
+            },
+          },
+        ],
+      ]),
+    },
+  };
+  const trustedMap = buildEmojiMap(fakeClient, "g1", ["g1", "g2"]);
+  assert.equal(trustedMap.has("Good_local"), true);
+  assert.equal(trustedMap.has("Waku_friend"), true);
+  assert.equal(trustedMap.has("Pepe_KILL"), false);
+
+  const untrustedMap = buildEmojiMap(fakeClient, "g3", ["g1", "g2"]);
+  assert.equal(untrustedMap.has("Pepe_KILL"), true);
+  assert.equal(untrustedMap.has("Good_local"), false);
+});
 it("buildEmojiPromptBlock returns empty for empty map", () => {
   assert.equal(buildEmojiPromptBlock(new Map()), "");
 });
@@ -915,10 +1109,19 @@ it("buildEmojiPromptBlock includes special hint entries", () => {
   const map = new Map([
     ["mTomori_police", { id: "1", animated: false }],
     ["Good_shark", { id: "2", animated: false }],
+    ["Pepe_KILL", { id: "3", animated: false }],
   ]);
   const block = buildEmojiPromptBlock(map);
   assert.match(block, /mTomori_police/);
+  assert.match(block, /Pepe_KILL/);
   assert.match(block, /嚴厲斥責/);
+});
+it("buildEmojiPromptBlock examples only use available emoji names", () => {
+  const map = new Map([["Pepe_OK", { id: "1", animated: false }]]);
+  const block = buildEmojiPromptBlock(map);
+  assert.match(block, /:Pepe_OK:/);
+  assert.doesNotMatch(block, /:Ha_seal:/);
+  assert.doesNotMatch(block, /:555_dog:/);
 });
 
 // --- user-profile-store ---
@@ -927,9 +1130,11 @@ const profileStore = require("../src/user-profile-store");
 console.log("user-profile-store");
 
 function withProfileStore(fn) {
-  profileStore.resetCacheForTests();
-  fn();
-  profileStore.resetCacheForTests();
+  withStoreFile(profileStore, () => {
+    profileStore.resetCacheForTests();
+    fn();
+    profileStore.resetCacheForTests();
+  });
 }
 
 it("getUserProfile returns null for missing user", () => {
@@ -1060,7 +1265,7 @@ it("listUserProfiles returns [] for unknown guild", () => {
 });
 
 console.log("buildUserProfileBlock");
-it("returns empty string when no profile", () => {
+it("returns empty string when no profile or observations", () => {
   assert.equal(profileStore.buildUserProfileBlock(null), "");
   assert.equal(profileStore.buildUserProfileBlock({}), "");
   assert.equal(profileStore.buildUserProfileBlock({ profile: null }), "");
@@ -1089,6 +1294,22 @@ it("caps profile text in block at PROFILE_PROMPT_MAX_LEN", () => {
 it("uses 未知 when name is missing", () => {
   const block = profileStore.buildUserProfileBlock({ profile: "test" });
   assert.match(block, /暱稱：未知/);
+});
+it("renders the latest 3 loose observations even without a profile", () => {
+  const block = profileStore.buildUserProfileBlock({
+    name: "Alice",
+    observations: [
+      { text: "第一則" },
+      { text: "第二則" },
+      { text: "第三則" },
+      { text: "第四則" },
+    ],
+  });
+  assert.match(block, /最近零散觀察/);
+  assert.doesNotMatch(block, /第一則/);
+  assert.match(block, /第二則/);
+  assert.match(block, /第三則/);
+  assert.match(block, /第四則/);
 });
 
 // --- pending interactions ---
@@ -1293,9 +1514,11 @@ it("parseConsolidationResult returns null for garbage", () => {
 const guildStore = require("../src/guild-profile-store");
 
 function withGuildStore(fn) {
-  guildStore.resetCacheForTests();
-  fn();
-  guildStore.resetCacheForTests();
+  withStoreFile(guildStore, () => {
+    guildStore.resetCacheForTests();
+    fn();
+    guildStore.resetCacheForTests();
+  });
 }
 
 console.log("guild-profile-store");
@@ -1331,7 +1554,22 @@ it("buildGuildProfileBlock renders block with summary", () => {
   assert.match(block, /這個群的長期印象/);
   assert.match(block, /常聊動漫/);
 });
-it("buildGuildProfileBlock returns empty for no profile", () => {
+it("buildGuildProfileBlock renders latest loose observations without a profile", () => {
+  const block = guildStore.buildGuildProfileBlock({
+    observations: [
+      { text: "第一則" },
+      { text: "第二則" },
+      { text: "第三則" },
+      { text: "第四則" },
+    ],
+  });
+  assert.match(block, /最近零散觀察/);
+  assert.doesNotMatch(block, /第一則/);
+  assert.match(block, /第二則/);
+  assert.match(block, /第三則/);
+  assert.match(block, /第四則/);
+});
+it("buildGuildProfileBlock returns empty for no profile or observations", () => {
   assert.equal(guildStore.buildGuildProfileBlock(null), "");
   assert.equal(guildStore.buildGuildProfileBlock({}), "");
   assert.equal(guildStore.buildGuildProfileBlock({ profile: null }), "");
@@ -1380,6 +1618,81 @@ it("buildGuildConsolidationTurns includes profile and obs", () => {
   assert.match(turns[0].content, /新觀察/);
 });
 resetExtractorForTests();
+
+console.log("bedtime-story");
+it("localDateKey formats date in requested timezone", () => {
+  const d = new Date("2026-05-29T14:00:00.000Z");
+  assert.equal(localDateKey(d, "Asia/Taipei"), "2026-05-29");
+});
+it("pickStoryMode avoids recently used modes when possible", () => {
+  const now = new Date("2026-05-29T14:00:00.000Z");
+  const initial = pickStoryMode({ id: "s1", timezone: "Asia/Taipei" }, now);
+  const second = pickStoryMode(
+    {
+      id: "s1",
+      timezone: "Asia/Taipei",
+      recentStorySeeds: [initial.mode.key],
+    },
+    now,
+  );
+  assert.notEqual(second.mode.key, initial.mode.key);
+  assert.ok(STORY_MODES.some((m) => m.key === second.mode.key));
+});
+it("messagePreview trims URLs and long content", () => {
+  const preview = messagePreview({
+    content: `今晚看這個 https://example.com/${"a".repeat(120)}`,
+    author: { id: "u1", username: "Alice" },
+  });
+  assert.match(preview, /\[連結\]/);
+  assert.ok(preview.length <= 90);
+});
+it("selectStoryIngredients prefers reacted then recent messages", () => {
+  const mkMsg = (id, content, reactions, ts) => ({
+    content,
+    createdTimestamp: ts,
+    author: { id, username: id },
+    member: { displayName: id },
+    channel: { name: "general" },
+    reactions: {
+      cache: new Map(reactions ? [["x", { count: reactions }]] : []),
+    },
+  });
+  const selected = selectStoryIngredients(
+    [
+      mkMsg("old", "普通訊息", 0, 1),
+      mkMsg("hot", "大家都在按這則", 5, 2),
+      mkMsg("new", "最新訊息", 0, 3),
+    ],
+    [{ name: "general", count: 3 }],
+    2,
+  );
+  assert.equal(selected.ingredients.length, 2);
+  assert.equal(selected.ingredients[0].authorName, "hot");
+  assert.match(selected.activeChannels[0], /#general/);
+});
+it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", () => {
+  const msg = {
+    content: "今天有人說晚安故事要像太空任務",
+    createdTimestamp: 1,
+    author: { id: "u1", username: "Alice" },
+    member: { displayName: "Alice" },
+    channel: { name: "chat" },
+    reactions: { cache: new Map([["star", { count: 2 }]]) },
+  };
+  const built = buildBedtimeStoryPrompt({
+    guildName: "搖E露營",
+    messages: [msg],
+    channelStats: [{ name: "chat", count: 1 }],
+    schedule: { id: "s1", recentStorySeeds: ["dream-chatroom"] },
+    now: new Date("2026-05-29T14:00:00.000Z"),
+  });
+  assert.match(built.prompt, /搖E露營/);
+  assert.match(built.prompt, /今晚故事模式/);
+  assert.match(built.prompt, /可用靈感素材/);
+  assert.match(built.prompt, /dream-chatroom/);
+  assert.ok(built.modeKey);
+  assert.equal(built.dateKey, "2026-05-29");
+});
 
 console.log("");
 console.log(`Result: ${pass} passed, ${fail} failed`);

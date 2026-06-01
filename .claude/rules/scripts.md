@@ -71,7 +71,7 @@ Covered:
 
 ## What none of these cover
 
-- Real network calls (DeepSeek / Cerebras / Groq / Gemini, fixer hosts, Discord gateway).
+- Real network calls (DeepSeek / Groq / Gemini, fixer hosts, Discord gateway).
 - Discord permission edge cases — exercised manually via the `/debug-perms` command.
 - Playwright probe behaviour against real Threads / Bahamut / PTT pages — exercised manually before merging probe changes.
 

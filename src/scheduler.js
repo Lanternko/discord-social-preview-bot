@@ -1,8 +1,14 @@
 const cron = require("node-cron");
+const { EMOJI_TRUSTED_GUILD_IDS } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
 const { trimDescription } = require("./utils");
 const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const {
+  buildEmojiMap,
+  buildEmojiPromptBlock,
+  resolveCustomEmojis,
+} = require("./ai/emoji-resolver");
 const {
   getFamiliarityRoster,
   buildFamiliarityBlock,
@@ -12,6 +18,11 @@ const {
   buildRecapStats,
   buildRecapPrompt,
 } = require("./daily-recap");
+const {
+  BEDTIME_LOOKBACK_MS,
+  buildBedtimeStoryPrompt,
+  markBedtimeStoryUsed,
+} = require("./bedtime-story");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -19,8 +30,35 @@ const {
 const TASK_TYPES = {
   bedtime_story: {
     label: "床邊故事",
-    prompt:
-      "（系統提示：現在是睡前時間。請主動講一個短短的原創床邊故事，溫馨可愛的那種。每次要講不同的故事。故事講完後，用你平常的語氣哄大家去睡覺。）",
+    buildPrompt: async (channel, client, schedule) => {
+      const guild = channel.guild;
+      if (!guild) {
+        console.warn("[bedtime-story] no guild for channel, falling back");
+        return {
+          prompt:
+            "（系統提示：現在是睡前時間。請主動講一個短短的原創床邊故事，溫馨可愛但要有一個小轉折。故事講完後，用你平常的語氣哄大家去睡覺。）",
+        };
+      }
+
+      const { messages, channelStats } = await fetchGuildMessages(
+        guild,
+        BEDTIME_LOOKBACK_MS,
+      );
+      const built = buildBedtimeStoryPrompt({
+        guildName: guild.name,
+        messages,
+        channelStats,
+        schedule,
+      });
+      console.log(
+        `[bedtime-story] guild=${guild.name} mode=${built.modeKey} ingredients=${messages.length}`,
+      );
+      return {
+        prompt: built.prompt,
+        onSuccess: () =>
+          markBedtimeStoryUsed(schedule, built.modeKey, built.dateKey),
+      };
+    },
   },
   morning_greeting: {
     label: "早安問候",
@@ -76,8 +114,15 @@ async function executeScheduledTask(schedule, client) {
   }
 
   let prompt;
+  let onSuccess;
   if (taskDef && taskDef.buildPrompt) {
-    prompt = await taskDef.buildPrompt(channel, client);
+    const built = await taskDef.buildPrompt(channel, client, schedule);
+    if (built && typeof built === "object" && !Array.isArray(built)) {
+      prompt = built.prompt;
+      onSuccess = built.onSuccess;
+    } else {
+      prompt = built;
+    }
   } else {
     prompt = customPrompt || (taskDef && taskDef.prompt);
   }
@@ -96,6 +141,8 @@ async function executeScheduledTask(schedule, client) {
 
   const tierConfig = getTierConfig(guildId);
   let persona = tierConfig.persona;
+  const emojiMap = buildEmojiMap(client, guildId, EMOJI_TRUSTED_GUILD_IDS);
+  persona += buildEmojiPromptBlock(emojiMap);
 
   // Append familiarity roster so 西寶 knows who's who, same as live replies.
   const roster = getFamiliarityRoster(guildId);
@@ -120,8 +167,18 @@ async function executeScheduledTask(schedule, client) {
       return;
     }
 
-    const text = trimDescription(result.text, tierConfig.maxReplyChars);
+    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
+    const text = resolveCustomEmojis(capped, emojiMap);
     const sent = await channel.send({ content: text });
+    if (typeof onSuccess === "function") {
+      try {
+        onSuccess({ text, sent });
+      } catch (hookErr) {
+        console.warn(
+          `[scheduler] post-send hook failed schedule=${schedule.id}: ${hookErr.message}`,
+        );
+      }
+    }
     console.log(
       `[scheduler] sent task=${taskType} schedule=${schedule.id} channel=${channelId} provider=${result.provider.label} len=${text.length}`,
     );

@@ -6,15 +6,15 @@ Deferred work with design decisions already aligned. Pick up after blockers clea
 
 ## 西寶人格分級（`/tier` 斜線指令）
 
-**狀態**：Phase 1 完成（`feat/tier-system`）— infra + `/tier` 指令 + persona overlay 已落地，brief/standard/detailed 實際會影響回覆字數、記憶深度、句數 cap。**Phase 2 未做**：精細 tier 的群組 context 收集（最近 15 則非 bot 訊息）、vision 分支（detailed + 圖片 → Gemini）。
+**狀態**：Phase 1+2 完成 — infra + `/tier` 指令 + persona overlay + group context + per-category sentence ranges 已落地。Persona 已從 A–G rule-stack 重構為 narrative-driven（2026-05-30），per-category 句數 placeholder 不再使用但保留向後相容。**未做**：vision 分支（detailed + 圖片 → Gemini）。
 
-### 三層 tier
+### 三層 tier（current values in `tier-config.js`）
 
-| Tier | turns | max chars | 模型鏈 | Vision |
+| Tier | turns | max chars | group context | Vision |
 |---|---|---|---|---|
-| `簡短`（預設） | 8 | 300 | 現況免費鏈（Cerebras / Groq / Gemini） | ✗ |
-| `標準` | ~20 | 600 | 優先 DeepSeek | ✗ |
-| `精細` | ~40 | 1200 | 文字走 DeepSeek；含圖片走 Gemini | ✓（Gemini only） |
+| `簡短`（預設） | 8 | 300 | ✗ | ✗ |
+| `標準` | 40 | 1200 | recent 15 non-bot msgs | ✗ |
+| `精細` | 60 | 2000 | recent 15 non-bot msgs | ✓（planned） |
 
 ### 已對齊的決策
 
