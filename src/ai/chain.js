@@ -305,17 +305,12 @@ async function generateAIReply(message, userText) {
     }
   }
 
-  // On an imitation request with a resolved target, suppress the live group
-  // context — it's the contaminant that made 西寶 continue an ongoing roleplay
-  // (e.g. a 守門員 PK bit) instead of imitating the person's own voice. The
-  // target's samples are the relevant context. group_ctx logs as 0 so the
-  // suppression is visible.
-  if (imitationActive && targetBlock) {
-    groupBlock = "";
-    groupContextSize = 0;
-  }
-  // Group context at the front; target block right before the user turn so it
-  // sits closest to the request.
+  // Inject group context at the front (topic awareness) and the target block
+  // right before the user turn (closest to the request). We deliberately KEEP
+  // group context on imitation turns: the user wants "imitate me about the
+  // current topic" (e.g. comment on the football chat in my voice), so the
+  // topic must stay visible. Dropping any ongoing roleplay CHARACTER is the job
+  // of the target block's instruction, not of hiding the context.
   if (groupBlock) {
     turns = [{ role: "user", content: groupBlock }, ...turns];
   }
