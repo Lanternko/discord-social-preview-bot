@@ -237,12 +237,14 @@ async function generateAIReply(message, userText) {
     if (guildBlock) persona += guildBlock;
   }
 
-  // Group context is injected as a user-role message (NOT concatenated into
-  // the system prompt) so that user-controlled Discord messages don't land in
-  // the highest-privilege prompt area. This also improves DeepSeek cache hits
-  // because the system prompt suffix is no longer volatile.
+  // Group + target context are both injected as user-role turns (NOT in the
+  // system prompt) so user-controlled Discord text stays out of the highest-
+  // privilege area and the system-prompt suffix stays cache-stable. We FETCH
+  // group context here but DEFER injecting it until after target resolution,
+  // because an imitation request suppresses it (see below).
   let groupContextSize = 0;
   let groupContextLines = null;
+  let groupBlock = "";
   if (tierConfig.groupContextCount > 0 && message.channel) {
     const ctx = await fetchGroupContext(
       message.channel,
@@ -252,10 +254,7 @@ async function generateAIReply(message, userText) {
     );
     groupContextSize = ctx.length;
     groupContextLines = ctx;
-    const block = buildGroupContextBlock(ctx);
-    if (block) {
-      turns = [{ role: "user", content: block }, ...turns];
-    }
+    groupBlock = buildGroupContextBlock(ctx);
   }
 
   // Target-aware imitation/mention context: when the request is about a
@@ -263,12 +262,13 @@ async function generateAIReply(message, userText) {
   // profile and — for an explicit imitation — their real recent messages as
   // verbatim voice samples. Without this the profile block only ever describes
   // the speaker, so imitation degrades to trait-list cosplay (it cosplays the
-  // labels instead of matching the voice). See target-context.js. Inserted
-  // right before the user turn so it sits closest to the request; the extra
+  // labels instead of matching the voice). See target-context.js. The extra
   // sample fetch only runs on imitation intent.
   let targetCtxSize = 0;
+  let targetBlock = "";
+  let imitationActive = false;
   if (message.channel) {
-    const imitation = detectImitationIntent(userText);
+    imitationActive = detectImitationIntent(userText);
     const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
       ? listUserProfiles(message.guildId)
       : [];
@@ -277,11 +277,11 @@ async function generateAIReply(message, userText) {
       userText,
       groupContextLines,
       knownProfiles,
-      imitation,
+      imitationActive,
     );
     if (targets.length > 0) {
       const samplesByUser = {};
-      if (imitation) {
+      if (imitationActive) {
         for (const t of targets) {
           samplesByUser[t.userId] = await fetchUserSamples(
             message.channel,
@@ -297,18 +297,30 @@ async function generateAIReply(message, userText) {
           ? getUserProfile(message.guildId, t.userId)?.profile || null
           : null,
       }));
-      const targetBlock = buildTargetContextBlock(enriched, {
+      targetBlock = buildTargetContextBlock(enriched, {
         samplesByUser,
-        imitation,
+        imitation: imitationActive,
       });
-      if (targetBlock) {
-        targetCtxSize = targets.length;
-        turns.splice(turns.length - 1, 0, {
-          role: "user",
-          content: targetBlock,
-        });
-      }
+      if (targetBlock) targetCtxSize = targets.length;
     }
+  }
+
+  // On an imitation request with a resolved target, suppress the live group
+  // context — it's the contaminant that made 西寶 continue an ongoing roleplay
+  // (e.g. a 守門員 PK bit) instead of imitating the person's own voice. The
+  // target's samples are the relevant context. group_ctx logs as 0 so the
+  // suppression is visible.
+  if (imitationActive && targetBlock) {
+    groupBlock = "";
+    groupContextSize = 0;
+  }
+  // Group context at the front; target block right before the user turn so it
+  // sits closest to the request.
+  if (groupBlock) {
+    turns = [{ role: "user", content: groupBlock }, ...turns];
+  }
+  if (targetBlock) {
+    turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
   }
 
   const result = await runProviderChain(

@@ -1792,6 +1792,7 @@ it("buildTargetContextBlock: imitation surfaces samples + lifts no-recite rule",
     },
   );
   assert.match(block, /模仿對象參考/);
+  assert.match(block, /跳出/); // breaks any ongoing roleplay/scene
   assert.match(block, /不受「不要複述」限制/);
   assert.match(block, /不好！不好！/);
 });
