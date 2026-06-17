@@ -24,6 +24,10 @@ When a user mentions the bot (`@西寶`), the bot checks the message text after 
 
 Same message.id is processed only once. `inFlightReplies.add("mention:${message.id}")` before work; removed in `finally`. Discord gateway reconnects can fire `messageCreate` twice for the same message — without this, parallel `generateAIReply` calls would race and sometimes produce both an AI reply *and* a fallback reply for the same @.
 
+## Reply / forward context
+
+When a user replies to a message (or forwards one) and @s 西寶, `buildReferenceContext` ([chain.js](../../src/ai/chain.js)) resolves the referent and `formatReferenceContext` ([persona.js](../../src/ai/persona.js)) renders it as a `（這則在回覆 …：「…」）` / `（這則轉發了…）` line prepended to the user turn. Replies cost one `fetchReference()` round-trip; forwards read the inlined `messageSnapshots` (no fetch). Unreachable referents (deleted / no access) degrade to `""` silently; non-text referents are summarised (`(貼圖：…)` / `(圖片/附件)`). Without this, 西寶 treated every reply as a fresh turn and couldn't tell which message a user was reacting to (the "你為什麼不讀箭頭" thread). The persona's 輸入格式 section documents the marker so the model reads it as context, not as the user's own words.
+
 ## Fortune weights
 
 大大吉 1% / 大吉 9% / 中吉 16% / 小吉 20% / 末吉 20% / 吉 15% / 凶 13% / 大凶 6%（總和 100）
@@ -56,6 +60,7 @@ Key principles baked into the narrative:
 - **"被問就是被信任"** — she answers sincerely because she'd feel rude not to, not because a rule says "respond to knowledge questions"
 - **"你不逃"** — anti-dodge is framed as character trait ("那不是你，你明明想聊"), not as a ban-list
 - **"需要暖機"** — shyness is a starting state, not a permanent personality. She gets more natural over time
+- **"不唬人"** — 被要求打系統 emoji／箭頭（↖️）時老實說「只會用群組貼圖、打不出系統符號」，不瞎掰「我打了你看不到」「顯示錯誤」。系統 emoji 在 [emoji-resolver.js](../../src/ai/emoji-resolver.js) `resolveCustomEmojis` 末端會被 `UNICODE_EMOJI_RE` 硬刪，模型看不到自己的輸出被刪，沒這條就會替消失的字編藉口
 - **Hard constraints** (sentence cap, no Unicode emoji, no fabricated names, no self-identify as AI) remain explicit because the model can't derive these from character alone
 
 **Structural limit**: DeepSeek has hard alignment around cross-strait sovereignty / Tibet / Xinjiang / Tiananmen. Even with maximally permissive persona instructions, DeepSeek may soft-refuse those specific topics. If that becomes the bottleneck, reorder the chain in [src/ai/chain.js](../../src/ai/chain.js) so a non-Chinese-aligned model takes precedence for those queries.
