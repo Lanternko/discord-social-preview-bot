@@ -30,6 +30,16 @@ If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipp
 - Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../../src/ai/providers.js).
 - Any per-layer failure triggers the next layer — **bot never goes silent**.
 
+## Web search (tool-calling)
+
+DeepSeek's **API** has no native web search (only the consumer app does), so `@西寶` searches via OpenAI-style function calling: DeepSeek decides it needs fresh info → emits a `web_search` tool call → [web-search.js](../../src/ai/web-search.js) runs the query against **Tavily** → result is fed back as a `tool` message → DeepSeek answers using it. Implemented in `callDeepSeek`'s tool loop ([providers.js](../../src/ai/providers.js)), capped at `MAX_TOOL_ROUNDS` (2) before a text answer is forced.
+
+- **DeepSeek-only.** `tools` are wired only on the DeepSeek entries in `buildGuildChain`; Groq/Gemini fallbacks answer without search.
+- **Off by default.** No `TAVILY_API_KEY` → `isWebSearchEnabled()` false → no `tools` sent → plain completion, byte-identical to before.
+- **Double daily cap.** `runWebSearch` checks `web:global` then `web:<guildId>` via the shared rate-limiter (separate key namespace from the DeepSeek free-tier counter) so a free Tavily key (~1000/month) can't be drained.
+- **Failures are soft.** Quota-exhausted / HTTP error / timeout return a short Chinese note as the tool result instead of throwing — 西寶 just answers without the data.
+- Log prefix `[web-search]`; `callDeepSeek` logs `ran N tool call(s) round=<r>`.
+
 ## Circuit breaker
 
 [src/ai/circuit.js](../../src/ai/circuit.js) keeps a per-provider-label cooldown so the chain doesn't waste `AI_TIMEOUT_MS` (8 s) re-trying a known-broken provider on every mention.

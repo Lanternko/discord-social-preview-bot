@@ -10,6 +10,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
+// Keep web-search disabled in tests regardless of the shell env (config caches
+// this at require time, so it must be cleared before the first require below).
+delete process.env.TAVILY_API_KEY;
 
 const {
   normalizeUrl,
@@ -59,6 +62,9 @@ const {
   resolveCustomEmojis,
   buildEmojiPromptBlock,
 } = require("../src/ai/emoji-resolver");
+
+const { formatTavilyResults, isWebSearchEnabled } =
+  require("../src/ai/web-search");
 
 const { buildPermissionDebugMessage } = require("../src/commands");
 const { getMissingChannelPermissions } = require("../src/discord-io");
@@ -1692,6 +1698,40 @@ it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", ()
   assert.match(built.prompt, /dream-chatroom/);
   assert.ok(built.modeKey);
   assert.equal(built.dateKey, "2026-05-29");
+});
+
+console.log("web-search (pure)");
+it("formatTavilyResults renders answer + numbered results", () => {
+  const out = formatTavilyResults(
+    {
+      answer: "明天晴天",
+      results: [
+        { title: "氣象", content: "晴   時   多雲", url: "http://w" },
+        { title: "新聞", content: "x", url: "" },
+      ],
+    },
+    "天氣",
+  );
+  assert.match(out, /摘要：明天晴天/);
+  assert.match(out, /\[1\] 氣象/);
+  assert.match(out, /晴 時 多雲/); // whitespace collapsed
+  assert.match(out, /\(http:\/\/w\)/);
+  assert.match(out, /\[2\] 新聞/);
+});
+it("formatTavilyResults handles no results", () => {
+  assert.equal(formatTavilyResults({ results: [] }, "X"), "（找不到「X」的相關結果）");
+  assert.equal(formatTavilyResults({}, "Y"), "（找不到「Y」的相關結果）");
+});
+it("formatTavilyResults caps long content at 400 chars", () => {
+  const out = formatTavilyResults(
+    { results: [{ title: "T", content: "a".repeat(600), url: "" }] },
+    "q",
+  );
+  const contentLine = out.split("\n").find((l) => l.startsWith("a"));
+  assert.ok(contentLine.length <= 400, `content too long: ${contentLine.length}`);
+});
+it("isWebSearchEnabled is false without a Tavily key", () => {
+  assert.equal(isWebSearchEnabled(), false);
 });
 
 console.log("");
