@@ -22,6 +22,12 @@ const {
   buildGroupContextBlock,
 } = require("./group-context");
 const {
+  detectImitationIntent,
+  resolveTargets,
+  fetchUserSamples,
+  buildTargetContextBlock,
+} = require("./target-context");
+const {
   getFamiliarityRoster,
   buildFamiliarityBlock,
 } = require("../familiarity");
@@ -29,6 +35,7 @@ const {
   getUserProfile,
   buildUserProfileBlock,
   appendPendingInteraction,
+  listUserProfiles,
 } = require("../user-profile-store");
 const {
   maybeExtractObservations,
@@ -230,12 +237,14 @@ async function generateAIReply(message, userText) {
     if (guildBlock) persona += guildBlock;
   }
 
-  // Group context is injected as a user-role message (NOT concatenated into
-  // the system prompt) so that user-controlled Discord messages don't land in
-  // the highest-privilege prompt area. This also improves DeepSeek cache hits
-  // because the system prompt suffix is no longer volatile.
+  // Group + target context are both injected as user-role turns (NOT in the
+  // system prompt) so user-controlled Discord text stays out of the highest-
+  // privilege area and the system-prompt suffix stays cache-stable. We FETCH
+  // group context here but DEFER injecting it until after target resolution,
+  // because an imitation request suppresses it (see below).
   let groupContextSize = 0;
   let groupContextLines = null;
+  let groupBlock = "";
   if (tierConfig.groupContextCount > 0 && message.channel) {
     const ctx = await fetchGroupContext(
       message.channel,
@@ -245,10 +254,68 @@ async function generateAIReply(message, userText) {
     );
     groupContextSize = ctx.length;
     groupContextLines = ctx;
-    const block = buildGroupContextBlock(ctx);
-    if (block) {
-      turns = [{ role: "user", content: block }, ...turns];
+    groupBlock = buildGroupContextBlock(ctx);
+  }
+
+  // Target-aware imitation/mention context: when the request is about a
+  // specific person (first-person 我 / @mention / named), surface THAT person's
+  // profile and — for an explicit imitation — their real recent messages as
+  // verbatim voice samples. Without this the profile block only ever describes
+  // the speaker, so imitation degrades to trait-list cosplay (it cosplays the
+  // labels instead of matching the voice). See target-context.js. The extra
+  // sample fetch only runs on imitation intent.
+  let targetCtxSize = 0;
+  let targetBlock = "";
+  let imitationActive = false;
+  if (message.channel) {
+    imitationActive = detectImitationIntent(userText);
+    const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
+      ? listUserProfiles(message.guildId)
+      : [];
+    const targets = resolveTargets(
+      message,
+      userText,
+      groupContextLines,
+      knownProfiles,
+      imitationActive,
+    );
+    if (targets.length > 0) {
+      const samplesByUser = {};
+      if (imitationActive) {
+        for (const t of targets) {
+          samplesByUser[t.userId] = await fetchUserSamples(
+            message.channel,
+            t.userId,
+            message.id,
+            message.client?.user?.id,
+          );
+        }
+      }
+      const enriched = targets.map((t) => ({
+        ...t,
+        profile: AI_LONG_TERM_MEMORY_ENABLED
+          ? getUserProfile(message.guildId, t.userId)?.profile || null
+          : null,
+      }));
+      targetBlock = buildTargetContextBlock(enriched, {
+        samplesByUser,
+        imitation: imitationActive,
+      });
+      if (targetBlock) targetCtxSize = targets.length;
     }
+  }
+
+  // Inject group context at the front (topic awareness) and the target block
+  // right before the user turn (closest to the request). We deliberately KEEP
+  // group context on imitation turns: the user wants "imitate me about the
+  // current topic" (e.g. comment on the football chat in my voice), so the
+  // topic must stay visible. Dropping any ongoing roleplay CHARACTER is the job
+  // of the target block's instruction, not of hiding the context.
+  if (groupBlock) {
+    turns = [{ role: "user", content: groupBlock }, ...turns];
+  }
+  if (targetBlock) {
+    turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
   }
 
   const result = await runProviderChain(
@@ -278,7 +345,7 @@ async function generateAIReply(message, userText) {
     });
     const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED) {

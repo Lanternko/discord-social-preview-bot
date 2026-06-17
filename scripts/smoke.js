@@ -36,6 +36,14 @@ const {
   formatGroupMessage,
   buildGroupContextBlock,
 } = require("../src/ai/group-context");
+const {
+  detectImitationIntent,
+  refersToSelf,
+  pickNameCores,
+  nameMatchCandidates,
+  resolveTargets,
+  buildTargetContextBlock,
+} = require("../src/ai/target-context");
 const aiMemory = require("../src/ai/memory");
 
 const {
@@ -1692,6 +1700,113 @@ it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", ()
   assert.match(built.prompt, /dream-chatroom/);
   assert.ok(built.modeKey);
   assert.equal(built.dateKey, "2026-05-29");
+});
+
+// --- target-context (imitation / mention targeting) ---
+it("detectImitationIntent: requests vs normal chat", () => {
+  assert.equal(detectImitationIntent("模仿我的語氣寫個小作文"), true);
+  assert.equal(detectImitationIntent("幫我模仿小翔"), true);
+  assert.equal(detectImitationIntent("學濤濤說話"), true);
+  assert.equal(detectImitationIntent("用他的口吻講一次"), true);
+  assert.equal(detectImitationIntent("今天晚餐吃什麼"), false);
+  assert.equal(detectImitationIntent(""), false);
+});
+
+it("refersToSelf: object-of-imitation only, not 幫我", () => {
+  assert.equal(refersToSelf("模仿我寫一篇"), true);
+  assert.equal(refersToSelf("我的語氣"), true);
+  assert.equal(refersToSelf("學我說話"), true);
+  assert.equal(refersToSelf("幫我模仿小翔"), false); // 我 = "help me", target is 小翔
+  assert.equal(refersToSelf("模仿小翔"), false);
+});
+
+it("pickNameCores extracts the called-name from a decorated handle", () => {
+  assert.ok(pickNameCores("力量の小翔_フードコート ver.").includes("小翔"));
+  assert.ok(pickNameCores("△露營濤濤_寶寶怪獸大魔王 ver.").includes("濤濤"));
+  assert.ok(pickNameCores("網路巡迴いぬDOGE_KaoWYK").includes("doge")); // latin lowercased
+  assert.ok(pickNameCores("摳捷").includes("摳捷"));
+});
+
+it("nameMatchCandidates matches a named third party, ignores unrelated text", () => {
+  const profiles = [
+    { userId: "u1", name: "力量の小翔_フードコート ver." },
+    { userId: "u2", name: "摳捷" },
+  ];
+  assert.equal(nameMatchCandidates("幫我模仿小翔", profiles, [])[0]?.userId, "u1");
+  assert.equal(nameMatchCandidates("隨便聊聊天氣", profiles, []).length, 0);
+});
+
+function fakeImitMsg({ authorId = "author1", botId = "bot1", mentions = [] } = {}) {
+  return {
+    client: { user: { id: botId } },
+    author: { id: authorId, username: "說話者" },
+    member: { displayName: "說話者" },
+    mentions: { users: new Map(mentions.map((u) => [u.id, u])) },
+  };
+}
+
+it("resolveTargets: first-person → author (self)", () => {
+  const t = resolveTargets(fakeImitMsg(), "模仿我寫一篇", [], [], true);
+  assert.equal(t.length, 1);
+  assert.equal(t[0].userId, "author1");
+  assert.equal(t[0].via, "self");
+});
+
+it("resolveTargets: @mention honoured w/o imitation, bot excluded", () => {
+  const msg = fakeImitMsg({
+    mentions: [
+      { id: "u3", username: "阿明" },
+      { id: "bot1", username: "西寶" },
+    ],
+  });
+  const t = resolveTargets(msg, "這張圖 阿明 拍的", [], [], false);
+  assert.equal(t.length, 1);
+  assert.equal(t[0].userId, "u3");
+  assert.equal(t[0].via, "mention");
+});
+
+it("resolveTargets: named third party under imitation; 幫我 adds no self", () => {
+  const profiles = [{ userId: "u1", name: "力量の小翔_フードコート ver." }];
+  const t = resolveTargets(fakeImitMsg(), "幫我模仿小翔", [], profiles, true);
+  assert.equal(t.length, 1);
+  assert.equal(t[0].userId, "u1");
+  assert.equal(t[0].via, "name");
+});
+
+it("resolveTargets caps at MAX_TARGETS", () => {
+  const profiles = [
+    { userId: "u1", name: "小翔" },
+    { userId: "u2", name: "濤濤" },
+    { userId: "u3", name: "黑寶" },
+  ];
+  const t = resolveTargets(fakeImitMsg(), "模仿我 也學小翔 濤濤 黑寶", [], profiles, true);
+  assert.ok(t.length <= 2, `expected <=2 targets, got ${t.length}`);
+});
+
+it("buildTargetContextBlock: imitation surfaces samples + lifts no-recite rule", () => {
+  const block = buildTargetContextBlock(
+    [{ userId: "u1", displayName: "小翔", profile: "愛說不好不好" }],
+    {
+      samplesByUser: { u1: ["不好！不好！", "陌生人根本不會模仿吧"] },
+      imitation: true,
+    },
+  );
+  assert.match(block, /模仿對象參考/);
+  assert.match(block, /長期印象/); // profile is the primary voice source
+  assert.match(block, /放掉/); // drop any roleplay character being played
+  assert.match(block, /話題/); // comment on the current topic in their voice
+  assert.match(block, /不受「不要複述」限制/);
+  assert.match(block, /不好！不好！/); // sample present
+});
+
+it("buildTargetContextBlock: non-imitation = profile only, samples withheld", () => {
+  const block = buildTargetContextBlock(
+    [{ userId: "u1", displayName: "小翔", profile: "愛說不好不好" }],
+    { samplesByUser: { u1: ["不好！不好！"] }, imitation: false },
+  );
+  assert.match(block, /被提到的人/);
+  assert.doesNotMatch(block, /不好！不好！/);
+  assert.equal(buildTargetContextBlock([], { imitation: true }), "");
 });
 
 console.log("");
