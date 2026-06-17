@@ -43,5 +43,10 @@
 | `AI_MEMORY_TTL_MS` | `1800000` | Inactivity before channel memory is evicted (30 min) |
 | `AI_LONG_TERM_MEMORY_ENABLED` | `true` | Enables user/guild long-term observation extraction and profile prompt blocks |
 | `EMOJI_TRUSTED_GUILD_IDS` | — | Comma-separated guild IDs whose custom emoji may be shared when the current guild is also trusted |
+| `TAVILY_API_KEY` | — | Optional. Enables `@西寶` web search via DeepSeek tool-calling. Empty = search disabled (no-op). Sign up at tavily.com (free ~1000/month). See [ai-providers.md](ai-providers.md) |
+| `WEB_SEARCH_MAX_RESULTS` | `5` | Results fetched + shown per search |
+| `WEB_SEARCH_DAILY_LIMIT_GUILD` | `15` | Per-guild daily search cap |
+| `WEB_SEARCH_DAILY_LIMIT_GLOBAL` | `30` | Global daily search cap (≈900/month, under Tavily free tier) |
+| `WEB_SEARCH_TIMEOUT_MS` | `8000` | Tavily request timeout |
 
 **Reply length, memory depth, and DeepSeek model selection are now per-guild AI plan settings** (see [persona.md](persona.md) `/ai-tier` section), not env vars. The legacy `AI_MAX_REPLY_CHARS` / `AI_MEMORY_MAX_TURNS` env vars are no longer read.

@@ -66,8 +66,9 @@ Covered:
 - `getCooldownMs` per `kind` (auth 10 min, rate_limit honours retryAfterMs, timeout/network/server 60 s, queue_exceeded 30 s, **empty 0 ms**, unknown 30 s).
 - `isProviderAvailable` / `recordProviderSuccess` / `recordProviderFailure` state transitions, `failCount` increments, `cooldownRemainingMs`.
 - `runProviderChain` — first ok wins; cooling-down provider is skipped; failure cascades to next provider; chain-all-fail returns `null`; chain-all-cooling returns `null` *and calls nothing*; `empty` failure does NOT cool the provider (still callable next call).
+- **Web search** — `WEB_SEARCH_TOOL` shape; `runWebSearch` empty-query + missing-key paths; `makeToolCallHandler` dispatch (web_search vs unknown); `callDeepSeek` tool loop (search round → tool result fed back → final answer) and plain-completion-sends-no-tools. (`formatTavilyResults` pure rendering is covered in `scripts/smoke.js`.)
 
-**When to run**: any change to `chain.js`, `circuit.js`, `providers.js` failure classification, or the `ok` / `fail` shape.
+**When to run**: any change to `chain.js`, `circuit.js`, `providers.js` failure classification / tool loop, `web-search.js`, or the `ok` / `fail` shape.
 
 ## What none of these cover
 

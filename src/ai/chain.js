@@ -45,6 +45,11 @@ const {
   buildEmojiPromptBlock,
 } = require("./emoji-resolver");
 const {
+  WEB_SEARCH_TOOL,
+  isWebSearchEnabled,
+  makeToolCallHandler,
+} = require("./web-search");
+const {
   callGemini,
   callGroq,
   callDeepSeek,
@@ -107,6 +112,12 @@ function buildGuildChain(guildId, tierConfig) {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
 
+  // Web search is offered only on the DeepSeek (primary) entries; Groq/Gemini
+  // fallbacks answer without it. guildId is baked into the handler for quota.
+  const toolOpts = isWebSearchEnabled()
+    ? { tools: [WEB_SEARCH_TOOL], onToolCall: makeToolCallHandler(guildId) }
+    : {};
+
   const tierKey = tierConfig?.tier || "brief";
   const needsPro = TIER_REQUIRES_KEY[tierKey];
   const hasOwnKey = hasGuildApiKey(guildId);
@@ -123,6 +134,7 @@ function buildGuildChain(guildId, tierConfig) {
             apiKey: guildKey,
             model: DEEPSEEK_MODEL,
             reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+            ...toolOpts,
           }),
       };
       return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
@@ -130,7 +142,8 @@ function buildGuildChain(guildId, tierConfig) {
     if (isWhitelisted && DEEPSEEK_API_KEY) {
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}`,
-        call: callDeepSeek,
+        call: (turns, persona, maxTokens) =>
+          callDeepSeek(turns, persona, maxTokens, { ...toolOpts }),
       };
       return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
     }
@@ -158,6 +171,7 @@ function buildGuildChain(guildId, tierConfig) {
       callDeepSeek(turns, persona, maxTokens, {
         model: DEEPSEEK_MODEL_FREE,
         reasoningHeadroom: 0,
+        ...toolOpts,
       }),
   };
   return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };

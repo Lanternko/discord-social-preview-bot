@@ -149,6 +149,14 @@ module.exports = {
   AI_LONG_TERM_MEMORY_ENABLED:
     (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() === "true",
   EMOJI_TRUSTED_GUILD_IDS: parseCsvEnv("EMOJI_TRUSTED_GUILD_IDS"),
+  // Web search (Tavily) — exposed to DeepSeek via tool-calling. Empty key = off.
+  // Daily caps are conservative so a free Tavily key (~1000/month) can't drain:
+  // 30 global/day ≈ 900/month. Raise via env once on a paid plan.
+  TAVILY_API_KEY: process.env.TAVILY_API_KEY,
+  WEB_SEARCH_MAX_RESULTS: parsePositiveIntEnv("WEB_SEARCH_MAX_RESULTS", 5),
+  WEB_SEARCH_DAILY_LIMIT_GUILD: parsePositiveIntEnv("WEB_SEARCH_DAILY_LIMIT_GUILD", 15),
+  WEB_SEARCH_DAILY_LIMIT_GLOBAL: parsePositiveIntEnv("WEB_SEARCH_DAILY_LIMIT_GLOBAL", 30),
+  WEB_SEARCH_TIMEOUT_MS: parsePositiveIntEnv("WEB_SEARCH_TIMEOUT_MS", 8000),
   AI_PERSONA: process.env.AI_PERSONA || DEFAULT_AI_PERSONA,
   DEFAULT_AI_PERSONA,
   THREADS_EMBED_COLOR: 0x101010,

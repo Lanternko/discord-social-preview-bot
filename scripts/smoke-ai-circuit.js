@@ -8,8 +8,10 @@ const assert = require("node:assert/strict");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
+// web-search off by default in tests; individual tests stub global.fetch.
+delete process.env.TAVILY_API_KEY;
 
-const { parseRetryAfterMs, ok, fail } = require("../src/ai/providers");
+const { parseRetryAfterMs, ok, fail, callDeepSeek } = require("../src/ai/providers");
 const {
   getCooldownMs,
   isProviderAvailable,
@@ -37,6 +39,11 @@ const {
   getUsage,
   resetForTests: resetRateLimiter,
 } = require("../src/ai/rate-limiter");
+const {
+  WEB_SEARCH_TOOL,
+  runWebSearch,
+  makeToolCallHandler,
+} = require("../src/ai/web-search");
 
 let pass = 0;
 let fails = 0;
@@ -372,6 +379,98 @@ async function main() {
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry);
     assert.ok(dsEntry.label.includes("flash"), `expected flash model, got ${dsEntry.label}`);
+  });
+
+  console.log("web-search");
+  it("WEB_SEARCH_TOOL has the expected OpenAI tool shape", () => {
+    assert.equal(WEB_SEARCH_TOOL.type, "function");
+    assert.equal(WEB_SEARCH_TOOL.function.name, "web_search");
+    assert.deepEqual(WEB_SEARCH_TOOL.function.parameters.required, ["query"]);
+  });
+  await itAsync("runWebSearch rejects an empty query", async () => {
+    assert.equal(await runWebSearch("   "), "（沒有提供搜尋關鍵字）");
+  });
+  await itAsync("runWebSearch reports missing key (disabled in tests)", async () => {
+    assert.equal(await runWebSearch("天氣"), "（沒設定搜尋功能，沒辦法上網查）");
+  });
+  await itAsync("makeToolCallHandler routes web_search and rejects unknown tools", async () => {
+    const handler = makeToolCallHandler("g1");
+    assert.match(await handler("web_search", { query: "x" }), /沒設定搜尋功能/);
+    assert.match(await handler("nope", {}), /未知的工具/);
+  });
+
+  console.log("callDeepSeek tool-calling");
+  await itAsync("runs a tool call, feeds the result back, returns the answer", async () => {
+    const responses = [
+      {
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                { id: "tc1", function: { name: "web_search", arguments: '{"query":"颱風"}' } },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      },
+      { choices: [{ message: { content: "查到了，明天放假喔" }, finish_reason: "stop" }] },
+    ];
+    const sent = [];
+    let toolSeen = null;
+    let i = 0;
+    const origFetch = global.fetch;
+    global.fetch = async (url, opts) => {
+      sent.push(JSON.parse(opts.body));
+      const payload = responses[i++];
+      return { ok: true, headers: new Map(), json: async () => payload, text: async () => "" };
+    };
+    try {
+      const res = await callDeepSeek(
+        [{ role: "user", content: "明天會放颱風假嗎" }],
+        "persona",
+        100,
+        {
+          tools: [WEB_SEARCH_TOOL],
+          onToolCall: async (name, args) => {
+            toolSeen = { name, args };
+            return "氣象局：明天停班停課";
+          },
+        },
+      );
+      assert.equal(res.ok, true);
+      assert.equal(res.text, "查到了，明天放假喔");
+      assert.deepEqual(toolSeen, { name: "web_search", args: { query: "颱風" } });
+      assert.ok(sent[0].tools, "round 0 offered tools");
+      assert.ok(
+        sent[1].messages.some((m) => m.role === "tool" && m.content === "氣象局：明天停班停課"),
+        "tool result fed back on round 1",
+      );
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
+  await itAsync("plain completion sends no tools and returns text", async () => {
+    let sentBody = null;
+    const origFetch = global.fetch;
+    global.fetch = async (url, opts) => {
+      sentBody = JSON.parse(opts.body);
+      return {
+        ok: true,
+        headers: new Map(),
+        json: async () => ({ choices: [{ message: { content: "嗨嗨" } }] }),
+        text: async () => "",
+      };
+    };
+    try {
+      const res = await callDeepSeek([{ role: "user", content: "hi" }], "p", 50);
+      assert.equal(res.text, "嗨嗨");
+      assert.equal(sentBody.tools, undefined);
+    } finally {
+      global.fetch = origFetch;
+    }
   });
 
   // cleanup

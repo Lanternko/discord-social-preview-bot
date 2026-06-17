@@ -23,6 +23,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 - [memory.js](../../src/ai/memory.js) — per-channel conversation history + sweep timer.
 - [providers.js](../../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
 - [circuit.js](../../src/ai/circuit.js) — provider circuit breaker (`isProviderAvailable` / `recordProviderFailure` / cooldown lookup). Stops the chain from re-trying a known-broken provider every call.
+- [web-search.js](../../src/ai/web-search.js) — Tavily web search exposed to DeepSeek via tool-calling (`WEB_SEARCH_TOOL` + `runWebSearch` + `makeToolCallHandler`), double daily quota cap. See [ai-providers.md](ai-providers.md).
 - [group-context.js](../../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` user-role context turn for 標準 / 精細 plans.
 - [chain.js](../../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
 
@@ -49,6 +50,7 @@ src/
 │   ├── memory.js         # Per-channel conversation history + sweep timer
 │   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
 │   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
+│   ├── web-search.js     # Tavily search via DeepSeek tool-calling + daily quota caps
 │   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
 │   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
@@ -62,7 +64,7 @@ src/
 
 All scoped — grep one to isolate a subsystem:
 
-`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]`
+`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[web-search]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]`
 
 ## Smoke tests
 
