@@ -62,7 +62,7 @@ src/
 
 All scoped — grep one to isolate a subsystem:
 
-`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]`
+`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[fatal]` (top-level `unhandledRejection`/`uncaughtException` backstops in `index.js`)
 
 ## Smoke tests
 

@@ -1,4 +1,4 @@
-const { PermissionsBitField } = require("discord.js");
+const { PermissionsBitField, DiscordAPIError } = require("discord.js");
 const {
   SUPPRESS_ORIGINAL_EMBEDS,
   REPLY_MODE,
@@ -93,6 +93,64 @@ function inferMissingPermissionsFromError(error) {
     missing.push("MissingPermissions");
   }
   return [...new Set(missing)];
+}
+
+// Discord REST error codes that mean "this channel/message can't be served"
+// rather than "the bot is broken". A send/edit/delete failing with one of these
+// is operationally expected — the bot lost a permission, the channel/message is
+// gone, or (the crash that motivated this) the reply text echoed `@everyone`
+// without the Mention Everyone permission, so Discord rejects the POST with
+// 50013. None corrupt local state, so they must be swallowed: an unhandled
+// rejection out of a messageCreate handler crashes the gateway for ALL guilds
+// under Node's default --unhandled-rejections=throw.
+const RECOVERABLE_DISCORD_ERROR_CODES = new Set([
+  10003, // Unknown Channel
+  10008, // Unknown Message
+  50001, // Missing Access
+  50007, // Cannot send messages to this user
+  50013, // Missing Permissions (e.g. Mention Everyone / Send Messages)
+  160002, // Cannot reply without ReadMessageHistory
+]);
+
+function isRecoverableDiscordError(error) {
+  return (
+    error instanceof DiscordAPIError &&
+    RECOVERABLE_DISCORD_ERROR_CODES.has(Number(error.code))
+  );
+}
+
+// describeMessageLocation reads message.channel; guard so logging a send failure
+// can never itself throw (the channel may be the very thing that's gone).
+function describeMessageLocationSafe(message) {
+  try {
+    return describeMessageLocation(message);
+  } catch {
+    return `channel=${message?.channelId ?? "?"}`;
+  }
+}
+
+function logSendFailure(logPrefix, op, error, message) {
+  const where = describeMessageLocationSafe(message);
+  if (isRecoverableDiscordError(error)) {
+    console.warn(
+      `[${logPrefix}] ${op} skipped (recoverable) code=${error.code} status=${error.status} ${where}: ${error.rawError?.message || error.message}`,
+    );
+  } else {
+    console.error(`[${logPrefix}] ${op} failed ${where}: ${error?.stack || error}`);
+  }
+}
+
+// Best-effort reply. The contract is: NEVER throw. A reply failing (missing
+// permission, channel deleted, echoed @everyone, network blip) is logged and
+// swallowed, returning null. Callers must treat a reply as fire-and-forget —
+// letting it propagate out of an event handler crashes the whole process.
+async function safeReply(message, payload, logPrefix = "discord-io") {
+  try {
+    return await message.reply(payload);
+  } catch (error) {
+    logSendFailure(logPrefix, "reply", error, message);
+    return null;
+  }
 }
 
 async function suppressOriginalEmbeds(message) {
@@ -322,6 +380,8 @@ module.exports = {
   getMissingChannelPermissions,
   logMissingChannelPermissions,
   inferMissingPermissionsFromError,
+  isRecoverableDiscordError,
+  safeReply,
   suppressOriginalEmbeds,
   sendPreviews,
   apologyReply,

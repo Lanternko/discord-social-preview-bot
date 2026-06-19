@@ -565,6 +565,46 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.ok(out[2].content?.includes("bskx"));
   });
 
+  // --- safeReply send-resilience ---
+  // Regression for the gateway-wide crash: an AI mention reply that echoed the
+  // user's @everyone threw DiscordAPIError[50013], and because no catch wrapped
+  // the send, the unhandled rejection killed the process for all 13 guilds.
+  // safeReply's contract is "never throw" — a failed send is logged + swallowed.
+  console.log("discord-io safeReply");
+  const { safeReply } = require("../src/discord-io");
+  const { DiscordAPIError } = require("discord.js");
+
+  await it("swallows a 50013 reply failure and returns null", async () => {
+    const fakeMessage = {
+      channelId: "1517534420360368279",
+      guild: { name: "搖E露營" },
+      channel: { name: "可以色色" },
+      reply: async () => {
+        throw new DiscordAPIError(
+          { code: 50013, message: "Missing Permissions" },
+          50013,
+          403,
+          "POST",
+          "url",
+          {},
+        );
+      },
+    };
+    // Must resolve (not reject) — that is the whole fix.
+    const result = await safeReply(fakeMessage, { content: "@everyone hi" }, "mention");
+    assert.equal(result, null, "failed reply should resolve to null, not throw");
+  });
+
+  await it("returns the sent message on success", async () => {
+    const sentinel = { id: "sent-123" };
+    const fakeMessage = {
+      channelId: "1",
+      reply: async () => sentinel,
+    };
+    const result = await safeReply(fakeMessage, { content: "hi" }, "mention");
+    assert.equal(result, sentinel);
+  });
+
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
 
