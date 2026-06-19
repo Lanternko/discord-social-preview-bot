@@ -1,5 +1,6 @@
 const { pickRandom } = require("./utils");
 const { generateAIReply } = require("./ai/chain");
+const { safeReply } = require("./discord-io");
 
 const FORTUNE_RESULTS = [
   { label: "大大吉", weight: 1 },
@@ -58,43 +59,63 @@ async function handleMention(message, client) {
   if (textLower.includes("抽籤") || textLower.includes("運勢")) {
     const result = drawFortune();
     const comment = pickRandom(FORTUNE_COMMENTS[result]);
-    await message.reply({
-      content: `🎋 今日運勢：**${result}**\n${comment}`,
-      allowedMentions: { repliedUser: false },
-    });
+    await safeReply(
+      message,
+      {
+        content: `🎋 今日運勢：**${result}**\n${comment}`,
+        allowedMentions: { repliedUser: false },
+      },
+      "mention",
+    );
     return;
   }
 
   if (textLower === "道歉") {
-    await message.reply({
-      content: "對不起對不起…我知道我不好…///",
-      allowedMentions: { repliedUser: false },
-    });
+    await safeReply(
+      message,
+      {
+        content: "對不起對不起…我知道我不好…///",
+        allowedMentions: { repliedUser: false },
+      },
+      "mention",
+    );
     return;
   }
 
   const aiReply = await generateAIReply(message, text);
   if (aiReply) {
     console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
-    await message.reply({
-      content: aiReply,
-      allowedMentions: { repliedUser: false },
-    });
+    await safeReply(
+      message,
+      {
+        content: aiReply,
+        allowedMentions: { repliedUser: false },
+      },
+      "mention",
+    );
     return;
   }
 
   if (text === "") {
-    await message.reply({
-      content: pickRandom(FALLBACK_GREETINGS),
-      allowedMentions: { repliedUser: false },
-    });
+    await safeReply(
+      message,
+      {
+        content: pickRandom(FALLBACK_GREETINGS),
+        allowedMentions: { repliedUser: false },
+      },
+      "mention",
+    );
     return;
   }
 
-  await message.reply({
-    content: "你…你在叫我嗎？///",
-    allowedMentions: { repliedUser: false },
-  });
+  await safeReply(
+    message,
+    {
+      content: "你…你在叫我嗎？///",
+      allowedMentions: { repliedUser: false },
+    },
+    "mention",
+  );
 }
 
 function isMentioningBot(message, client) {

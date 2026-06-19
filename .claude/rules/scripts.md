@@ -35,6 +35,7 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 | `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../../src/og-fallback.js) |
 | `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../../src/og-fallback.js) |
 | `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../../src/url-routing.js) |
+| `isRecoverableDiscordError` classifies 50013/50001/10003/10008 recoverable, unknown codes + plain errors not (gates send-crash swallow vs process exit) | [discord-io.js](../../src/discord-io.js) |
 
 **When to run**: every refactor touching URL handling, persona/template wiring, tier lookup, or group-context formatting. Cheap enough to run on every save.
 
@@ -52,8 +53,9 @@ Branches covered:
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
 - **Bilibili** — API success → custom embed (no URL) / API failure → vxbilibili URL with `recoverUrls`.
 - **Preview dispatcher** ([preview.js](../../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
+- **`safeReply` send-resilience** ([discord-io.js](../../src/discord-io.js)) — a reply throwing `DiscordAPIError[50013]` resolves to `null` (swallowed, never rejects — the gateway-wide-crash regression); a successful reply returns the sent message.
 
-**When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder.
+**When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder, any change to `safeReply`.
 
 ## scripts/smoke-ai-circuit.js — AI chain + circuit breaker
 

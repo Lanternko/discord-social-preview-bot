@@ -61,7 +61,11 @@ const {
 } = require("../src/ai/emoji-resolver");
 
 const { buildPermissionDebugMessage } = require("../src/commands");
-const { getMissingChannelPermissions } = require("../src/discord-io");
+const {
+  getMissingChannelPermissions,
+  isRecoverableDiscordError,
+} = require("../src/discord-io");
+const { DiscordAPIError } = require("discord.js");
 const {
   STORY_MODES,
   localDateKey,
@@ -895,6 +899,29 @@ it("getMissingChannelPermissions returns sentinel when guild is null", () => {
     guild: null,
   });
   assert.deepEqual(result, ["GuildUnavailable"]);
+});
+
+console.log("isRecoverableDiscordError");
+// The prod crash: an AI mention reply echoed the user's @everyone, Discord
+// rejected the POST with 50013, and the unhandled rejection took the gateway
+// down for all 13 guilds. This classifier gates whether such a send failure is
+// swallowed (safeReply) or whether the process exits (uncaughtException).
+const mkDiscordError = (code) =>
+  new DiscordAPIError({ code, message: `err ${code}` }, code, 403, "POST", "url", {});
+it("classifies 50013 Missing Permissions as recoverable", () => {
+  assert.equal(isRecoverableDiscordError(mkDiscordError(50013)), true);
+});
+it("classifies 50001/10003/10008 as recoverable", () => {
+  assert.equal(isRecoverableDiscordError(mkDiscordError(50001)), true);
+  assert.equal(isRecoverableDiscordError(mkDiscordError(10003)), true);
+  assert.equal(isRecoverableDiscordError(mkDiscordError(10008)), true);
+});
+it("does NOT classify an unknown Discord code as recoverable", () => {
+  assert.equal(isRecoverableDiscordError(mkDiscordError(40005)), false);
+});
+it("does NOT classify a plain Error (or null) as recoverable", () => {
+  assert.equal(isRecoverableDiscordError(new Error("boom")), false);
+  assert.equal(isRecoverableDiscordError(null), false);
 });
 
 console.log("resolveCustomEmojis");

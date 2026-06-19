@@ -16,6 +16,7 @@ const {
   sendPreviews,
   suppressOriginalEmbeds,
   checkAndHandleEmptyEmbeds,
+  isRecoverableDiscordError,
 } = require("./discord-io");
 const { isMentioningBot, handleMention } = require("./mention");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
@@ -127,6 +128,15 @@ client.on("messageCreate", async (message) => {
 
     try {
       await handleMention(message, client);
+    } catch (error) {
+      // handleMention's reply sends are already best-effort (safeReply), but
+      // generateAIReply or anything upstream could still throw. A throw here
+      // would escape this async listener as an unhandled rejection and — under
+      // Node's default --unhandled-rejections=throw — take the whole gateway
+      // down for every guild. Swallow + log so one bad mention can't do that.
+      console.error(
+        `[mention] handler failed ${describeMessageLocation(message)}: ${error?.stack || error}`,
+      );
     } finally {
       inFlightReplies.delete(mentionKey);
     }
@@ -192,6 +202,49 @@ client.on("messageCreate", async (message) => {
 });
 
 startMemorySweepTimer();
+
+// Belt-and-suspenders against a stray async error taking 西寶 offline for all
+// guilds. The per-path handlers (mention catch, preview catch, interaction
+// catch, safeReply) should catch everything; these are the last line.
+//
+// unhandledRejection: a rejected promise that escaped a handler. The crash this
+// fix targets (50013 propagating out of the mention listener) lands HERE under
+// Node's default --unhandled-rejections=throw, which would otherwise terminate
+// the process. A rejected promise does not corrupt synchronous state, so for a
+// 24/7 bot the safe choice is to log loudly and keep serving every other guild.
+process.on("unhandledRejection", (reason) => {
+  if (isRecoverableDiscordError(reason)) {
+    console.error(
+      `[fatal] unhandledRejection (recoverable Discord) code=${reason.code} status=${reason.status}: ${reason.message}`,
+    );
+    return;
+  }
+  console.error(`[fatal] unhandledRejection: ${reason?.stack || reason}`);
+});
+
+// uncaughtException: a synchronous throw that escaped every try/catch. Unlike a
+// rejection, this CAN leave state half-mutated, so we don't blanket-continue.
+// Recoverable Discord API errors are self-contained (a failed REST call doesn't
+// corrupt shared state) → log + keep running. Anything else → log, flush the
+// familiarity roster, and exit so the cron watchdog gives a CLEAN restart
+// (~1 min) rather than running on undefined state.
+process.on("uncaughtException", (error) => {
+  if (isRecoverableDiscordError(error)) {
+    console.error(
+      `[fatal] uncaughtException (recoverable Discord) code=${error.code} status=${error.status}: ${error.message}`,
+    );
+    return;
+  }
+  console.error(
+    `[fatal] uncaughtException — exiting for clean restart: ${error?.stack || error}`,
+  );
+  try {
+    flushFamiliarity();
+  } catch {
+    // best-effort; we're already exiting
+  }
+  process.exit(1);
+});
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
