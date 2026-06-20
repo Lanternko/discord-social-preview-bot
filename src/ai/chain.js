@@ -7,6 +7,8 @@ const {
   GEMINI_MODEL,
   GROQ_API_KEY,
   GROQ_MODELS,
+  KIMI_API_KEY,
+  KIMI_MODEL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_MODEL_FREE,
@@ -54,6 +56,7 @@ const {
 const {
   callGemini,
   callGroq,
+  callKimi,
   callDeepSeek,
 } = require("./providers");
 const {
@@ -72,7 +75,7 @@ function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CON
 }
 
 // Fallback chain (Groq + Gemini) built once at startup — shared by all guilds.
-// DeepSeek entry varies per guild (model/key/rate-limit), so it's built per-call.
+// Kimi and DeepSeek are per-guild (model/key/rate-limit), built in buildGuildChain.
 function buildFallbackChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
@@ -96,6 +99,9 @@ const FALLBACK_CHAIN = buildFallbackChain();
 function buildAIProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
+  if (KIMI_API_KEY && (!only || only === "kimi")) {
+    chain.push({ label: `kimi:${KIMI_MODEL}`, call: callKimi });
+  }
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
   }
@@ -105,11 +111,21 @@ function buildAIProviderChain() {
 // Full default chain — used for startup log and backwards-compat export.
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
 
-// Per-guild chain: model is determined by tier (brief=flash, standard/detailed=pro).
-// Guilds with their own API key use that key; whitelisted guilds use the owner's key;
-// free guilds (brief only) use the owner's key with a daily rate limit.
+// Per-guild chain: Kimi first, then DeepSeek (model determined by tier), then
+// shared fallback. Guilds with their own API key use that key for DeepSeek;
+// whitelisted guilds use the owner's key; free guilds (brief only) use the
+// owner's key with a daily rate limit.
 function buildGuildChain(guildId, tierConfig) {
   const only = AI_PROVIDER_FORCE;
+
+  // Kimi as primary — prepended to every chain unless forcing a different provider
+  const kimiPrimary = (KIMI_API_KEY && (!only || only === "kimi"))
+    ? [{ label: `kimi:${KIMI_MODEL}`, call: callKimi }]
+    : [];
+
+  if (only === "kimi") {
+    return { chain: kimiPrimary, rateLimited: false };
+  }
   if (only && only !== "deepseek") {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
@@ -132,14 +148,14 @@ function buildGuildChain(guildId, tierConfig) {
             reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
           }),
       };
-      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+      return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
     }
     if (isWhitelisted && DEEPSEEK_API_KEY) {
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}`,
         call: callDeepSeek,
       };
-      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+      return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
     }
     // No key and not whitelisted — shouldn't happen (command blocks it),
     // but fall through to flash as safety net
@@ -147,7 +163,7 @@ function buildGuildChain(guildId, tierConfig) {
 
   // brief → flash model
   if (!DEEPSEEK_API_KEY) {
-    return { chain: FALLBACK_CHAIN, rateLimited: false };
+    return { chain: [...kimiPrimary, ...FALLBACK_CHAIN], rateLimited: false };
   }
 
   // Free guild (brief) — check daily rate limit
@@ -155,7 +171,7 @@ function buildGuildChain(guildId, tierConfig) {
     const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
     if (!rateCheck.allowed) {
       console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
-      return { chain: FALLBACK_CHAIN, rateLimited: true };
+      return { chain: [...kimiPrimary, ...FALLBACK_CHAIN], rateLimited: true };
     }
   }
 
@@ -167,7 +183,7 @@ function buildGuildChain(guildId, tierConfig) {
         reasoningHeadroom: 0,
       }),
   };
-  return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+  return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
 }
 
 async function runProviderChain(chain, turns, persona, maxTokens) {

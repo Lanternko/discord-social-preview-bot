@@ -3,6 +3,9 @@ const {
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
+  KIMI_API_KEY,
+  KIMI_MODEL,
+  KIMI_BASE_URL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_REASONING_HEADROOM,
@@ -162,6 +165,47 @@ async function callGroq(turns, model, persona, maxTokens) {
   });
 }
 
+async function callKimi(turns, persona, maxTokens) {
+  const body = {
+    model: KIMI_MODEL,
+    messages: buildOpenAIMessages(turns, persona),
+    temperature: 0.9,
+    top_p: 0.95,
+    max_tokens: maxTokens,
+  };
+  const label = `kimi:${KIMI_MODEL}`;
+
+  return withAbortTimeout(AI_TIMEOUT_MS, label, async (signal) => {
+    const response = await fetch(KIMI_BASE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${KIMI_API_KEY}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    logRateHeaders(label, response);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
+    }
+
+    const payload = await response.json();
+    const text = payload?.choices?.[0]?.message?.content?.trim();
+    if (!text) {
+      const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
+      console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
+      return fail("empty", { detail: finishReason });
+    }
+    return ok(text);
+  });
+}
+
 async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
   const model = overrides.model || DEEPSEEK_MODEL;
   const apiKey = overrides.apiKey || DEEPSEEK_API_KEY;
@@ -216,5 +260,6 @@ module.exports = {
   logRateHeaders,
   callGemini,
   callGroq,
+  callKimi,
   callDeepSeek,
 };

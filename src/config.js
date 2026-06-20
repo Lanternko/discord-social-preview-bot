@@ -125,6 +125,11 @@ module.exports = {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean),
+  KIMI_API_KEY: process.env.KIMI_API_KEY,
+  KIMI_MODEL: process.env.KIMI_MODEL || "kimi-k2.6",
+  KIMI_BASE_URL:
+    process.env.KIMI_BASE_URL ||
+    "https://api.moonshot.ai/v1/chat/completions",
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-chat",
   DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-v4-flash",
