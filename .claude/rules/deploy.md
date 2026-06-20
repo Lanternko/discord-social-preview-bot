@@ -14,13 +14,13 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`.
 
 ## Production deployment
 
-Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/discord-social-preview-bot/`.
+Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/apps/discord-social-preview-bot/`.
 
 ### Daily ops
 
 ```bash
 # See recent log
-tail -50 ~/side_projects/discord-social-preview-bot/bot.log
+tail -50 ~/side_projects/apps/discord-social-preview-bot/bot.log
 
 # Health check
 pgrep -f 'node src/index.js'
@@ -29,7 +29,7 @@ pgrep -f 'node src/index.js'
 ### Redeploy after merging to main
 
 ```bash
-cd ~/side_projects/discord-social-preview-bot
+cd ~/side_projects/apps/discord-social-preview-bot
 git pull
 pkill -f 'src/index.js' && sleep 1
 nohup node src/index.js > bot.log 2>&1 &
@@ -65,7 +65,7 @@ grep 'chain exhausted' bot.log   # AI chain drained for every mention
 ### Shadow-deploy a branch (test before merge)
 
 ```bash
-cd ~/side_projects/discord-social-preview-bot
+cd ~/side_projects/apps/discord-social-preview-bot
 git fetch origin
 git checkout <branch-name>
 pkill -f 'src/index.js' && sleep 1
@@ -88,6 +88,12 @@ nohup node src/index.js > bot.log 2>&1 &
 ## Auto-restart watchdog
 
 A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSPC, reboot). Script: [scripts/bot-watchdog.sh](../../scripts/bot-watchdog.sh), installed as `* * * * *` in the user crontab. Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
+
+**Current status (2026-06): the watchdog cron line is commented out — no auto-restart is active.** If the bot dies it will NOT relaunch on its own; restart it manually via the redeploy steps above. The commented crontab line also still points at the old pre-`apps/` flat path, so it would fail even if uncommented as-is. It's left disabled pending a decision on whether the watchdog should run — **do not re-enable it without confirming that's intended.** If you do re-enable it, first correct the path to the new `apps/` location:
+
+```cron
+* * * * * /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh
+```
 
 - The watchdog matches the process with `pgrep -f '[n]ode src/index.js'` — the `[n]` bracket trick stops the pattern from matching the watchdog's own shell. (Plain `pkill -f 'src/index.js'` from an interactive shell self-matches and can kill the shell — prefer `pgrep -f 'node src/index.js'` → `kill <pid>` for manual ops.)
 - **To stop the bot for maintenance, comment out the cron line first** — otherwise the watchdog relaunches it within a minute.
