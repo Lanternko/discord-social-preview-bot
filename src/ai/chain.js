@@ -13,13 +13,14 @@ const {
   DEEPSEEK_PREMIUM_GUILD_IDS,
   DEEPSEEK_REASONING_HEADROOM,
 } = require("../config");
-const { trimDescription } = require("../utils");
+const { trimDescription, sanitizeName } = require("../utils");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
   fetchGroupContext,
   buildGroupContextBlock,
+  buildReplyContextBlock,
 } = require("./group-context");
 const {
   detectImitationIntent,
@@ -305,9 +306,38 @@ async function generateAIReply(message, userText) {
     }
   }
 
-  // Inject group context at the front (topic awareness) and the target block
-  // right before the user turn (closest to the request). We deliberately KEEP
-  // group context on imitation turns: the user wants "imitate me about the
+  // Discord reply reference: when the @ is itself a reply to a specific message,
+  // that message is the explicit referent of "你剛剛說的" / "這個". Resolve it so
+  // 西寶 can see what's being replied to — crucial for replies to her OWN
+  // scheduled posts (daily recap / bedtime story), which never enter conv memory
+  // and are filtered out of group context (it drops the bot's own messages).
+  let replyBlock = "";
+  if (message.reference?.messageId && typeof message.fetchReference === "function") {
+    try {
+      const ref = await message.fetchReference();
+      const refContent = (ref.content || "").trim();
+      if (refContent) {
+        const isSelf = ref.author?.id === message.client?.user?.id;
+        const authorName = sanitizeName(
+          ref.member?.displayName ||
+            ref.author?.globalName ||
+            ref.author?.username,
+        );
+        replyBlock = buildReplyContextBlock({
+          content: trimDescription(refContent, 500),
+          authorName,
+          isSelf,
+        });
+      }
+    } catch (err) {
+      // Referenced message deleted / unfetchable — skip silently.
+      console.log(`[ai] reply reference unresolved: ${err.message}`);
+    }
+  }
+
+  // Inject group context at the front (topic awareness); target block and reply
+  // block right before the user turn (closest to the request). We deliberately
+  // KEEP group context on imitation turns: the user wants "imitate me about the
   // current topic" (e.g. comment on the football chat in my voice), so the
   // topic must stay visible. Dropping any ongoing roleplay CHARACTER is the job
   // of the target block's instruction, not of hiding the context.
@@ -316,6 +346,9 @@ async function generateAIReply(message, userText) {
   }
   if (targetBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
+  }
+  if (replyBlock) {
+    turns.splice(turns.length - 1, 0, { role: "user", content: replyBlock });
   }
 
   const result = await runProviderChain(
@@ -345,7 +378,7 @@ async function generateAIReply(message, userText) {
     });
     const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED) {
