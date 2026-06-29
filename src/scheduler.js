@@ -4,6 +4,7 @@ const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule
 const { getTierConfig } = require("./tier-config");
 const { trimDescription } = require("./utils");
 const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const { recordAITurn } = require("./ai/memory");
 const {
   buildEmojiMap,
   buildEmojiPromptBlock,
@@ -170,6 +171,20 @@ async function executeScheduledTask(schedule, client) {
     const capped = trimDescription(result.text, tierConfig.maxReplyChars);
     const text = resolveCustomEmojis(capped, emojiMap);
     const sent = await channel.send({ content: text });
+
+    // Record this post into the channel's short-term memory as an assistant
+    // turn so that when someone @s or replies to 西寶 shortly after, she
+    // remembers having posted it — otherwise scheduled posts leave zero trace
+    // in conv memory and she "plays dumb" about her own recap / story. Store
+    // the UNRESOLVED `capped` text (`:name:` form), same reasoning as
+    // ai/chain.js. No user turn is recorded — the prompt is a system
+    // instruction, not a member's message.
+    recordAITurn(channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+      guildId,
+      userId: client.user?.id,
+      displayName: client.user?.username || "西寶",
+    });
+
     if (typeof onSuccess === "function") {
       try {
         onSuccess({ text, sent });
