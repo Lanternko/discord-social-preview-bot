@@ -35,6 +35,7 @@ const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
 const {
   formatGroupMessage,
   buildGroupContextBlock,
+  buildReplyContextBlock,
 } = require("../src/ai/group-context");
 const {
   detectImitationIntent,
@@ -576,6 +577,28 @@ it("wraps lines under header", () => {
   assert.match(out, /^\n\n## 最近群組對話/);
   assert.ok(out.includes("[a]: hi"));
   assert.ok(out.includes("[b]: yo"));
+});
+
+console.log("buildReplyContextBlock");
+it("returns empty string when there is no content", () => {
+  assert.equal(buildReplyContextBlock(), "");
+  assert.equal(buildReplyContextBlock({ content: "" }), "");
+  assert.equal(buildReplyContextBlock({ content: "   " }), "");
+});
+it("marks the bot's own post as self-authored", () => {
+  const out = buildReplyContextBlock({ content: "今天好熱鬧", isSelf: true });
+  assert.ok(out.includes("你自己稍早"));
+  assert.ok(out.includes("今天好熱鬧"));
+});
+it("attributes someone else's post by name", () => {
+  const out = buildReplyContextBlock({
+    content: "蟑螂",
+    authorName: "濤濤",
+    isSelf: false,
+  });
+  assert.ok(out.includes("濤濤稍早"));
+  assert.ok(out.includes("蟑螂"));
+  assert.ok(!out.includes("你自己"));
 });
 
 console.log("ai-memory");

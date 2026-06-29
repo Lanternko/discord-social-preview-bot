@@ -82,8 +82,21 @@ function buildGroupContextBlock(entries) {
   return `\n\n## 最近群組對話 (供你了解 context, 不要直接複述)\n${lines.join("\n")}`;
 }
 
+// Renders the message a reply points at into a context turn. The bot's own
+// scheduled posts (recap / bedtime story) never enter conv memory and are
+// filtered out of group context, so when someone REPLIES to one this is the
+// only way 西寶 sees what she's being asked about. `isSelf` makes her own
+// authorship explicit so she owns the post instead of playing dumb.
+function buildReplyContextBlock({ content, authorName, isSelf } = {}) {
+  const text = (content || "").trim();
+  if (!text) return "";
+  const who = isSelf ? "你自己稍早" : `${authorName || "某人"}稍早`;
+  return `## 對方正在回覆的訊息\n（${who}說過：「${text}」。對方這句話是在回應這段，請據此理解，別當作沒看過。）`;
+}
+
 module.exports = {
   fetchGroupContext,
   formatGroupMessage,
   buildGroupContextBlock,
+  buildReplyContextBlock,
 };
