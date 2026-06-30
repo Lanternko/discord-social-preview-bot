@@ -33,6 +33,12 @@ if (!DISCORD_TOKEN) {
 }
 
 const client = new Client({
+  // failIfNotExists:false — when the bot replies to a message that was
+  // deleted mid-flight, Discord otherwise rejects with 50035 (MESSAGE_
+  // REFERENCE_UNKNOWN_MESSAGE). With a 25s AI timeout the delete window is
+  // wide: a user @s 西寶, removes the message, then the reply lands. Degrade
+  // to a plain message instead of throwing. Covers every message.reply().
+  failIfNotExists: false,
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
@@ -127,6 +133,13 @@ client.on("messageCreate", async (message) => {
 
     try {
       await handleMention(message, client);
+    } catch (err) {
+      // Symmetric with interactionCreate above: a throw inside handleMention
+      // (e.g. a Discord API reject on the reply) must not escape this async
+      // listener and crash the process. Log with context and move on.
+      console.error(
+        `[mention] handler error ${describeMessageLocation(message)}: ${err?.stack || err}`,
+      );
     } finally {
       inFlightReplies.delete(mentionKey);
     }
@@ -192,6 +205,18 @@ client.on("messageCreate", async (message) => {
 });
 
 startMemorySweepTimer();
+
+// Last-resort safety net. The watchdog cron is currently disabled, so a
+// process exit means 西寶 stays dead until a manual restart. A single
+// unhandled async error (the original crash was a 50035 reject on a reply to
+// a deleted message) must not take the whole bot offline — same availability-
+// over-strictness philosophy as the per-handler try/catch above. Log and run.
+process.on("unhandledRejection", (reason) => {
+  console.error(`[fatal] unhandledRejection: ${reason?.stack || reason}`);
+});
+process.on("uncaughtException", (err) => {
+  console.error(`[fatal] uncaughtException: ${err?.stack || err}`);
+});
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
