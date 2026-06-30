@@ -169,9 +169,15 @@ async function callKimi(turns, persona, maxTokens) {
   const body = {
     model: KIMI_MODEL,
     messages: buildOpenAIMessages(turns, persona),
-    temperature: 0.9,
-    top_p: 0.95,
+    // kimi-k2.6 is a thinking model: with thinking ON it burns 700-960 hidden
+    // reasoning tokens before the visible reply, pushing a real 西寶 imitation
+    // call to ~19s and timing out the 25s budget on ~every mention. Disabling
+    // thinking drops the SAME call to ~3.5s with the in-voice quality intact.
+    // Caveat: non-thinking kimi-k2.6 is model-locked to temperature 0.6
+    // (temp:1 → HTTP 400), and no reasoning headroom is needed once it's off.
+    temperature: 0.6,
     max_tokens: maxTokens,
+    thinking: { type: "disabled" },
   };
   const label = `kimi:${KIMI_MODEL}`;
 
