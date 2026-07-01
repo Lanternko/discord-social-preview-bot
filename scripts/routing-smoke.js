@@ -251,6 +251,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasFallbackContent, true);
     assert.equal(s.hasEmbedFallback, true);
     assert.ok(
+      Array.isArray(p.videoAttachmentEmbeds) &&
+        p.videoAttachmentEmbeds.length === 1,
+      "carries a clean title/文案 embed for the successful-attachment case",
+    );
+    assert.ok(
       Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
       "video branch should expose recoverUrls",
     );

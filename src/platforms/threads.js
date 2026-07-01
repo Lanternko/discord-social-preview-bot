@@ -107,6 +107,15 @@ async function buildThreadsPayload(url) {
 
     if (metadata.video || metadata.videoCount > 0) {
       console.log(`[preview] threads-video ${url}`);
+      // Clean title + 文案 embed shown ABOVE the uploaded video when the
+      // attachment succeeds — so a video-only post keeps its author + caption
+      // instead of being a bare player.
+      const videoEmbed = buildThreadsCompactEmbed(url, metadata);
+      if (!metadata.title) {
+        videoEmbed.setTitle("Threads 影片貼文");
+      }
+      // Fixer-fallback embed: same, but notes the video couldn't load — only
+      // reached when the fixer chain ALSO fails to unfurl.
       const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
       if (!metadata.title) {
         videoFallbackEmbed.setTitle("Threads 影片貼文");
@@ -121,6 +130,7 @@ async function buildThreadsPayload(url) {
         // too big / disabled / at capacity, this whole payload IS the fixer
         // chain it falls back to (primary → secondary → embedFallback → OG).
         ...(metadata.video ? { videoAttachment: metadata.video } : {}),
+        videoAttachmentEmbeds: [videoEmbed],
         content: replaceHostFixer(url, FIXER_THREADS),
         fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
         embedFallback: { embeds: [videoFallbackEmbed] },

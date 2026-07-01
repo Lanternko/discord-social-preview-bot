@@ -124,7 +124,9 @@ async function suppressOriginalEmbeds(message) {
 async function resolveOutgoing(payload, message) {
   const base = { ...payload };
   const videoUrl = base.videoAttachment;
+  const attachmentEmbeds = base.videoAttachmentEmbeds;
   delete base.videoAttachment;
+  delete base.videoAttachmentEmbeds;
   if (!videoUrl) return base;
 
   const attachment = await fetchVideoAttachment(videoUrl, message.guild);
@@ -134,11 +136,14 @@ async function resolveOutgoing(payload, message) {
     new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
   ];
   // Video-only posts carry the fixer URL as `content`; now that the video is a
-  // real attachment, drop that link (and its secondary) so we don't also post a
-  // raw fixer URL beneath the player.
+  // real attachment, drop that link (and its secondary) and show the clean
+  // title/文案 embed instead, so the post isn't a bare player.
   if (typeof base.content === "string" && base.content.startsWith("http")) {
     delete base.content;
     delete base.fallbackContent;
+    if (!base.embeds && Array.isArray(attachmentEmbeds)) {
+      base.embeds = attachmentEmbeds;
+    }
   }
   return base;
 }
