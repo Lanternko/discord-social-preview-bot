@@ -19,7 +19,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 ## Core gotchas (load-bearing — won't be obvious from code alone)
 
 - **Mention text → `.normalize("NFC")` before comparison.** Discord can send CJK input in NFD form, causing strict equality (e.g. `抽籤`) to silently fail.
-- **Threads routing order in `buildPreviewPayloads` is load-bearing.** The `if` ladder order determines which branch a mixed (image + video) post falls into — multi-image is checked before video, so a MIXED post stays a carousel gallery AND attaches the fixer URL as `content` (Discord unfurls a playable video below the gallery), rather than dropping to a bare video fixer that loses the images. Hard-asserted by `scripts/routing-smoke.js` (MIXED case). Run `npm run test:routing` before merging any reorder.
+- **Threads routing order in `buildPreviewPayloads` is load-bearing.** The `if` ladder order determines which branch a mixed (image + video) post falls into. Hard-asserted by `scripts/routing-smoke.js` (MIXED case). Run `npm run test:routing` before merging any reorder.
 - **`normalizeUrl` tracking-param lists are NOT interchangeable.** `t` is a tracking param on X/Twitter but a timestamp on YouTube — that's why there's a `HOST_GATED_TRACKING_PARAMS` list. When adding a param, decide if it's meaningful on any supported host and gate accordingly.
 - **`inFlightReplies` Set uses two key formats** (`msgId:urls...` and `mention:msgId`) because Discord gateway reconnects can fire `messageCreate` twice — without dedup, the mention path would produce both an AI reply and a fallback reply for the same message.
 - **AI chain failures are silent by design.** Each provider failure (network, timeout, safety block, empty candidate) returns a `{ ok: false, kind }` and moves to the next layer. The ops signal is the single log line `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — grep for it when debugging a dead 西寶.
@@ -29,7 +29,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 ## Key behavioural summary
 
-- **Threads**: text-only (no image AND no video) → custom embed. Video (with or without og:image) → fixer link with secondary + OG recovery. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷時最後一個 embed description 追加 `... 還有 N 張` 提示。含 video 的混合貼文額外把 fixer URL 放進 `content`，讓 Discord 在圖集下方 unfurl 可播放影片（carousel 是保底、影片是加碼，不再把影片變成靜態截圖）。Probe error → primary + secondary fixer + OG recovery list (no longer just dropping to a single fixer). Full decision table in [routing.md](.claude/rules/routing.md).
+- **Threads**: text-only (no image AND no video) → custom embed. Video (with or without og:image) → fixer link with secondary + OG recovery. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷或含 video 時最後一個 embed description 追加 `... 還有 N 張 + 影片` 提示。Probe error → primary + secondary fixer + OG recovery list (no longer just dropping to a single fixer). Full decision table in [routing.md](.claude/rules/routing.md).
 - **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom embed. Failure → vxbilibili fixer + OG recovery.
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.

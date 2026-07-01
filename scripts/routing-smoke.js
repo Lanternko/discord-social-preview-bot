@@ -183,55 +183,29 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
-  // CRITICAL CASE (regression that bit twice in PR #15): a MIXED post must KEEP
-  // the image carousel — images must never be dropped for a bare video fixer. It
-  // now ALSO attaches the fixer URL as content so Discord unfurls a playable
-  // video below the gallery (both, not either/or). Uses 5 images to also assert
-  // the image-truncation hint survives and no longer announces "影片".
-  await it("MIXED: multi-image AND video → carousel gallery + playable video unfurl", async () => {
+  // CRITICAL CASE — this is the regression that bit twice in PR #15.
+  await it("MIXED: multi-image AND video → carousel wins (NOT video fixer)", async () => {
     _mockThreadsMetadata = {
       image: "https://x/1.jpg",
       title: "t",
       description: "d",
       twitterCard: "summary_large_image",
-      images: [
-        "https://x/1.jpg",
-        "https://x/2.jpg",
-        "https://x/3.jpg",
-        "https://x/4.jpg",
-        "https://x/5.jpg",
-      ],
-      imageCount: 5,
+      images: ["https://x/1.jpg", "https://x/2.jpg"],
+      imageCount: 2,
       videoCount: 1,
       video: true,
     };
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
-    // gallery preserved (truncated to the preview count)...
-    assert.equal(s.embedCount, 3, "keeps the image carousel (truncated to 3)");
-    // ...AND the video is handed to Discord as a content URL for a real player
-    assert.equal(
-      s.hasContent,
-      true,
-      "attaches fixer URL so Discord unfurls a playable video",
-    );
-    assert.equal(s.contentStartsWithHttp, true);
-    assert.ok(
-      s.contentText.includes("fixthreads"),
-      "video unfurl uses the primary fixer",
-    );
-    // no legacy video-fixer fallback chain — the carousel is the guaranteed floor
+    assert.equal(s.embedCount, 2, "should produce 2 carousel embeds");
+    assert.equal(s.hasContent, false, "MUST NOT route to video fixer");
     assert.equal(s.hasFallbackContent, false);
     assert.equal(s.hasEmbedFallback, false);
-    assert.equal(s.hasComponents, false);
+    assert.equal(s.hasComponents, false, "no button — description hint only");
     const lastDesc = p.embeds[p.embeds.length - 1].data?.description;
     assert.ok(
-      typeof lastDesc === "string" && lastDesc.includes("還有 2 張"),
-      `last embed should still hint remaining images, got: ${lastDesc}`,
-    );
-    assert.ok(
-      !/影片/.test(lastDesc || ""),
-      `hint must NOT announce 影片 now that it unfurls, got: ${lastDesc}`,
+      typeof lastDesc === "string" && lastDesc.includes("影片"),
+      `last embed should hint video presence, got: ${lastDesc}`,
     );
   });
 

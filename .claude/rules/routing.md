@@ -7,7 +7,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | Condition | Output |
 |---|---|
 | No image **AND** no video (`isTextOnly`) or `twitterCard === "summary"` | Custom embed (text only) |
-| Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video；混合 image+video 走 carousel **並**把 fixer URL 放進 `content`，Discord 在圖集下方 unfurl 可播放影片（影片不再變靜態截圖，所以提示也不再追加 `+ 影片`） |
+| Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷 或 `hasVideo`，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張 + 影片`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video，混合 image+video 仍走 carousel |
 | Has video / `videoCount > 0` (regardless of og:image presence) | Primary fixer (`FIXER_THREADS`) → secondary fixer (`FIXER_THREADS_SECONDARY`) → embedFallback (compact embed with description + 「影片無法載入」note) → OG recovery (lazy fetch fixer URLs) |
 | `summary_large_image` + single image | Custom embed with image |
 | Generic / partial metadata | Compact text embed |
@@ -16,7 +16,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 
 **Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js):
 
-- **MIXED case** (multi-image AND video → carousel gallery kept AND fixer URL attached as `content` for a playable video unfurl — NOT dropped to a bare video fixer that loses the images)
+- **MIXED case** (multi-image AND video → carousel wins, NOT video fixer)
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
