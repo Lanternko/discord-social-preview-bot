@@ -43,6 +43,21 @@ async function runProbe(url) {
   }
 }
 
+// Threads serves a logged-out interstitial ("Threads • Log in" + a generic
+// "Join Threads to share ideas..." description, no media) when it walls a probe
+// — common on sensitive / flagged posts. Treat it as a probe failure so
+// buildThreadsPayload falls through to the fixer chain (which CAN fetch the real
+// content) instead of rendering a useless "Threads • Log in" card.
+function isThreadsLoginWall(metadata) {
+  if (!metadata) return false;
+  const title = (metadata.title || "").trim();
+  const description = (metadata.description || "").trim();
+  return (
+    /^threads\b.*\blog\s?in$/i.test(title) ||
+    description.startsWith("Join Threads to share ideas")
+  );
+}
+
 async function fetchThreadsMetadata(url) {
   cleanupThreadsMetadataCache();
 
@@ -53,6 +68,12 @@ async function fetchThreadsMetadata(url) {
   }
 
   const metadata = await runProbe(url);
+
+  if (isThreadsLoginWall(metadata)) {
+    throw new Error(
+      `Threads served a logged-out login wall (no public metadata) for ${url}`,
+    );
+  }
 
   console.log(
     `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
@@ -81,4 +102,5 @@ module.exports = {
   runProbe,
   fetchThreadsMetadata,
   fetchPageProbeMetadata,
+  isThreadsLoginWall,
 };

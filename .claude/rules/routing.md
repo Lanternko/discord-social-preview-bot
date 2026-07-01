@@ -12,6 +12,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | `summary_large_image` + single image | Custom embed with image |
 | Generic / partial metadata | Compact text embed |
 | Probe error | Primary + secondary fixer + OG recovery list (was: just primary fixer) |
+| Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same primary + secondary fixer + OG recovery fallthrough |
 
 **Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js):
 
@@ -19,6 +20,8 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
+
+**Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it (title `Threads • Log in` or the generic `Join Threads to share ideas…` description) and throws, so the post drops to the fixer chain instead of rendering a useless login card. The secondary fixer `fzthreads.com` fetches many of these where `fixthreads.seria.moe` also walls — asserted by `scripts/smoke.js`.
 
 ## Instagram
 

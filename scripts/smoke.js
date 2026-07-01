@@ -29,6 +29,8 @@ const {
 
 const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 
+const { isThreadsLoginWall } = require("../src/probe");
+
 const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
   require("../src/ai/persona");
 
@@ -222,6 +224,38 @@ it("threads -> fixthreads", () => {
   assert.equal(
     buildFallbackUrl("https://www.threads.net/@a/post/1"),
     "https://fixthreads.seria.moe/@a/post/1",
+  );
+});
+
+// probe login-wall guard: Threads walls sensitive posts with a generic
+// "Threads • Log in" interstitial even to a working probe. isThreadsLoginWall
+// must catch it (so the post drops to the fixer chain) without over-triggering
+// on real posts whose title merely contains "Threads".
+it("isThreadsLoginWall detects the logged-out login wall", () => {
+  assert.equal(
+    isThreadsLoginWall({
+      title: "Threads • Log in",
+      description:
+        "Join Threads to share ideas, ask questions, post random thoughts, find your people and more. Log in with your Instagram.",
+    }),
+    true,
+  );
+});
+it("isThreadsLoginWall does NOT trigger on a real post", () => {
+  assert.equal(
+    isThreadsLoginWall({
+      title: "Gamepo (@game_po) on Threads",
+      description: "⤴️ Replying to @mi1hxxsy",
+    }),
+    false,
+  );
+});
+it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {
+  assert.equal(isThreadsLoginWall(null), false);
+  assert.equal(isThreadsLoginWall({}), false);
+  assert.equal(
+    isThreadsLoginWall({ title: "@a on Threads", description: "" }),
+    false,
   );
 });
 it("instagram -> ddinstagram", () => {

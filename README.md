@@ -263,7 +263,7 @@ docker run -d \
 | 純文字 | 自訂 embed（標題＋內文） |
 | 單張圖片 | 自訂 embed（標題＋內文＋圖片） |
 | 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery） |
-| 影片 | 依序嘗試 fixthreads → threadsez → 資訊卡 fallback |
+| 影片 | 依序嘗試 fixthreads → fzthreads → 資訊卡 fallback |
 
 ### Instagram
 
