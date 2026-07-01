@@ -7,7 +7,7 @@
 | `FIXER_INSTAGRAM_SECONDARY` | `fxstagram.com` | Second Instagram fixer tried if primary unfurls empty |
 | `FIXER_TWITTER` | `fxtwitter.com` | |
 | `FIXER_THREADS` | `fixthreads.seria.moe` | |
-| `FIXER_THREADS_SECONDARY` | `threadsez.net` | Second Threads fixer tried if primary unfurls empty |
+| `FIXER_THREADS_SECONDARY` | `fzthreads.com` | Second Threads fixer tried if primary unfurls empty. Was `threadsez.net` — swapped 2026-07 because it went dead (connection refused) and `fzthreads.com` fetches sensitive/walled posts the primary can't |
 | `FIXER_REDDIT` | `rxddit.com` | |
 | `FIXER_PIXIV` | `phixiv.net` | |
 | `FIXER_BLUESKY` | `bskx.app` | |

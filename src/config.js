@@ -88,7 +88,7 @@ module.exports = {
   FIXER_TWITTER: process.env.FIXER_TWITTER || "fxtwitter.com",
   FIXER_THREADS: process.env.FIXER_THREADS || "fixthreads.seria.moe",
   FIXER_THREADS_SECONDARY:
-    process.env.FIXER_THREADS_SECONDARY || "threadsez.net",
+    process.env.FIXER_THREADS_SECONDARY || "fzthreads.com",
   FIXER_REDDIT: process.env.FIXER_REDDIT || "rxddit.com",
   FIXER_PIXIV: process.env.FIXER_PIXIV || "phixiv.net",
   FIXER_BLUESKY: process.env.FIXER_BLUESKY || "bskx.app",
