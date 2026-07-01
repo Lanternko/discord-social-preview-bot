@@ -12,7 +12,8 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 - **OG fallback** — [og-fallback.js](../../src/og-fallback.js) is the lightweight HTTP fetch + OG meta parser, plus a generic embed builder. Used by `checkAndHandleEmptyEmbeds` as the last layer before delete. No Playwright — plain `fetch` + regex over `<head>`. Streams responses with a `</head>` early-bail to keep latency low.
 - **Platforms** — [platforms/](../../src/platforms/) holds one builder per platform (`threads.js`, `instagram.js`, `bilibili.js`, `bahamut.js`, `ptt.js`). Each returns a `{ content?, embeds?, fallbackContent?, embedFallback?, recoverUrls?, recoverEmbedOptions?, sourceUrl? }` payload. `recoverUrls` is the OG-fallback layer — list of URLs whose HTML to fetch + parse for OG tags when both primary and secondary fixer unfurl empty.
 - **Preview dispatcher** — [preview.js](../../src/preview.js) `buildPreviewPayloads` runs all per-URL builders in parallel via `Promise.all`. Per-platform branches dispatch to the correct builder; URL-only platforms (X/Reddit/Pixiv/Bluesky/Facebook) all share `buildSimpleFixerPayload` which always populates `recoverUrls`. The `if` ladder inside each platform builder is what's load-bearing — see [routing.md](routing.md).
-- **Discord I/O** — [discord-io.js](../../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions.
+- **Discord I/O** — [discord-io.js](../../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions. `resolveOutgoing` resolves a payload's optional `videoAttachment` (download + upload the mp4 as a file) right before sending.
+- **Video** — [video.js](../../src/video.js) downloads a Threads mp4 and hands back a Discord attachment, gated by a size cap, a global concurrency cap, a per-fetch timeout, and an optional guild allowlist. Returns null → caller falls back to the fixer chain.
 - **Mention** — [mention.js](../../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
 - **Slash commands** — [commands.js](../../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, and `/schedule`. [tier-store.js](../../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
 - **AI subsystem** — [ai/](../../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
@@ -44,6 +45,7 @@ src/
 │   └── ptt.js            # buildPttPayload — playwright probe + custom embed
 ├── preview.js            # buildPreviewPayloads — top-level platform dispatcher
 ├── discord-io.js         # send/suppress/empty-embed/dedup state/permissions
+├── video.js              # download mp4 → Discord attachment (size/concurrency/timeout/allowlist guards)
 ├── ai/
 │   ├── persona.js        # AI_PERSONA + buildUserTurn + message format helpers
 │   ├── memory.js         # Per-channel conversation history + sweep timer

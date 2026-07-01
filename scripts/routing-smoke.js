@@ -71,6 +71,8 @@ function shapeOf(payload) {
     hasComponents: Array.isArray(payload.components) && payload.components.length > 0,
     hasFallbackContent: typeof payload.fallbackContent === "string",
     hasEmbedFallback: payload.embedFallback != null,
+    hasVideoAttachment: typeof payload.videoAttachment === "string",
+    videoAttachmentText: payload.videoAttachment,
   };
 }
 
@@ -183,33 +185,51 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
-  // CRITICAL CASE — this is the regression that bit twice in PR #15.
-  await it("MIXED: multi-image AND video → carousel wins (NOT video fixer)", async () => {
+  // CRITICAL CASE (regression that bit twice in PR #15): a MIXED post must KEEP
+  // the image carousel — images must never be dropped for a bare video fixer. It
+  // now ALSO flags the video for upload (videoAttachment) so discord-io can post
+  // a real playable video below the gallery. Uses 5 images to also assert the
+  // truncation hint survives and no longer announces "影片".
+  await it("MIXED: multi-image AND video → carousel gallery + video attachment", async () => {
     _mockThreadsMetadata = {
       image: "https://x/1.jpg",
       title: "t",
       description: "d",
       twitterCard: "summary_large_image",
-      images: ["https://x/1.jpg", "https://x/2.jpg"],
-      imageCount: 2,
+      images: [
+        "https://x/1.jpg",
+        "https://x/2.jpg",
+        "https://x/3.jpg",
+        "https://x/4.jpg",
+        "https://x/5.jpg",
+      ],
+      imageCount: 5,
       videoCount: 1,
-      video: true,
+      video: "https://cdn.example/v.mp4",
     };
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
-    assert.equal(s.embedCount, 2, "should produce 2 carousel embeds");
-    assert.equal(s.hasContent, false, "MUST NOT route to video fixer");
+    // gallery preserved (truncated to the preview count)...
+    assert.equal(s.embedCount, 3, "keeps the image carousel (truncated to 3)");
+    // ...AND the video is flagged for a real upload, not a bare fixer URL
+    assert.equal(s.hasVideoAttachment, true, "flags the video for attachment");
+    assert.equal(s.videoAttachmentText, "https://cdn.example/v.mp4");
+    assert.equal(s.hasContent, false, "MUST NOT post a bare fixer/content URL");
     assert.equal(s.hasFallbackContent, false);
     assert.equal(s.hasEmbedFallback, false);
-    assert.equal(s.hasComponents, false, "no button — description hint only");
+    assert.equal(s.hasComponents, false);
     const lastDesc = p.embeds[p.embeds.length - 1].data?.description;
     assert.ok(
-      typeof lastDesc === "string" && lastDesc.includes("影片"),
-      `last embed should hint video presence, got: ${lastDesc}`,
+      typeof lastDesc === "string" && lastDesc.includes("還有 2 張"),
+      `last embed should still hint remaining images, got: ${lastDesc}`,
+    );
+    assert.ok(
+      !/影片/.test(lastDesc || ""),
+      `hint must NOT announce 影片 now that the video attaches, got: ${lastDesc}`,
     );
   });
 
-  await it("video only (no multi-image) → fixer URL + fallback chain", async () => {
+  await it("video only (no multi-image) → video attachment + fixer fallback chain", async () => {
     _mockThreadsMetadata = {
       image: "https://x/thumb.jpg",
       title: "t",
@@ -218,14 +238,23 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       images: [],
       imageCount: 0,
       videoCount: 1,
-      video: true,
+      video: "https://cdn.example/v.mp4",
     };
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
+    // tries the real video upload first...
+    assert.equal(s.hasVideoAttachment, true, "flags the video for attachment");
+    assert.equal(s.videoAttachmentText, "https://cdn.example/v.mp4");
+    // ...and still carries the full fixer chain as the fallback when it misses
     assert.equal(s.contentStartsWithHttp, true);
     assert.ok(s.contentText.includes("fixthreads"), "primary fixer present");
     assert.equal(s.hasFallbackContent, true);
     assert.equal(s.hasEmbedFallback, true);
+    assert.ok(
+      Array.isArray(p.videoAttachmentEmbeds) &&
+        p.videoAttachmentEmbeds.length === 1,
+      "carries a clean title/文案 embed for the successful-attachment case",
+    );
     assert.ok(
       Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
       "video branch should expose recoverUrls",
@@ -244,10 +273,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       images: [],
       imageCount: 0,
       videoCount: 1,
-      video: true,
+      video: "https://cdn.example/v.mp4",
     };
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
+    assert.equal(s.hasVideoAttachment, true, "flags the video for attachment");
     assert.equal(s.contentStartsWithHttp, true);
     assert.ok(
       s.contentText.includes("fixthreads"),

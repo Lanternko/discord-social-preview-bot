@@ -114,6 +114,27 @@ module.exports = {
     10,
     parsePositiveIntEnv("MULTI_IMAGE_PREVIEW_COUNT", 3),
   ),
+  // --- Video attachment (Threads video / mixed posts) ---
+  // A bot-built embed can't hold a playable video; the only way to show one the
+  // bot controls is to download the mp4 and re-upload it as a Discord attachment.
+  // Guarded so a flood of video links can't overwhelm the host: a HEAD size
+  // check before download, a global concurrency cap, and a per-fetch timeout.
+  VIDEO_ATTACHMENT_ENABLED:
+    (process.env.VIDEO_ATTACHMENT_ENABLED || "true").toLowerCase() === "true",
+  // Empty = every guild may use it (still bounded by the caps below). Set a
+  // comma-separated guild-id allowlist to restrict uploads to just those guilds.
+  VIDEO_ATTACHMENT_GUILD_IDS: parseCsvEnv("VIDEO_ATTACHMENT_GUILD_IDS"),
+  // 0 = auto (use each guild's own Discord upload limit by boost tier). A
+  // positive value caps it further (never exceeds the guild's limit).
+  VIDEO_ATTACHMENT_MAX_BYTES: parsePositiveIntEnv("VIDEO_ATTACHMENT_MAX_BYTES", 0),
+  VIDEO_ATTACHMENT_MAX_CONCURRENT: parsePositiveIntEnv(
+    "VIDEO_ATTACHMENT_MAX_CONCURRENT",
+    2,
+  ),
+  VIDEO_ATTACHMENT_TIMEOUT_MS: parsePositiveIntEnv(
+    "VIDEO_ATTACHMENT_TIMEOUT_MS",
+    20000,
+  ),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.0-flash",
   GROQ_API_KEY: process.env.GROQ_API_KEY,

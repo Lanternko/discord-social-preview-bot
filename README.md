@@ -261,8 +261,8 @@ docker run -d \
 |---|---|
 | 純文字 | 自訂 embed（標題＋內文） |
 | 單張圖片 | 自訂 embed（標題＋內文＋圖片） |
-| 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery） |
-| 影片 | 依序嘗試 fixthreads → threadsez → 資訊卡 fallback |
+| 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery）。含影片的混合貼文會在圖集下方額外附上可播放影片 |
+| 影片 | 先把影片下載後當附件上傳（可播放）；放不下才退回 fixer 連結 |
 
 ### Instagram
 
