@@ -1,4 +1,4 @@
-const { PermissionsBitField } = require("discord.js");
+const { PermissionsBitField, AttachmentBuilder } = require("discord.js");
 const {
   SUPPRESS_ORIGINAL_EMBEDS,
   REPLY_MODE,
@@ -6,6 +6,7 @@ const {
   DEDUPE_WINDOW_MS,
 } = require("./config");
 const { tryRecoverEmbedFromUrls } = require("./og-fallback");
+const { fetchVideoAttachment } = require("./video");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -115,6 +116,33 @@ async function suppressOriginalEmbeds(message) {
   }
 }
 
+// A payload may carry `videoAttachment` (a direct mp4 URL). Try to download +
+// re-upload it so Discord shows a real playable video the bot controls; on any
+// miss (too big / disabled / at capacity / fetch fail) return the payload
+// untouched so it keeps its existing behaviour — the carousel for a MIXED post,
+// or the fixer chain for a video-only post. Returns the message body to send.
+async function resolveOutgoing(payload, message) {
+  const base = { ...payload };
+  const videoUrl = base.videoAttachment;
+  delete base.videoAttachment;
+  if (!videoUrl) return base;
+
+  const attachment = await fetchVideoAttachment(videoUrl, message.guild);
+  if (!attachment) return base;
+
+  base.files = [
+    new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  ];
+  // Video-only posts carry the fixer URL as `content`; now that the video is a
+  // real attachment, drop that link (and its secondary) so we don't also post a
+  // raw fixer URL beneath the player.
+  if (typeof base.content === "string" && base.content.startsWith("http")) {
+    delete base.content;
+    delete base.fallbackContent;
+  }
+  return base;
+}
+
 async function sendPreviews(message, payloads) {
   const missingPermissions = getMissingChannelPermissions(message);
   if (missingPermissions.length > 0) {
@@ -125,8 +153,9 @@ async function sendPreviews(message, payloads) {
   const sent = [];
 
   for (const payload of payloads) {
+    const base = await resolveOutgoing(payload, message);
     const outgoing = {
-      ...payload,
+      ...base,
       allowedMentions: { repliedUser: false },
     };
 
@@ -149,19 +178,23 @@ async function sendPreviews(message, payloads) {
       }
     }
 
+    // A resolved video attachment adds `files` and clears the fixer `content`,
+    // so a successful upload counts as a pre-rendered (not url-only) preview and
+    // skips the empty-embed delete path.
     const isUrlOnly = Boolean(
-      payload.content && !payload.embeds && payload.content.startsWith("http"),
+      base.content &&
+        !base.embeds &&
+        !base.files &&
+        base.content.startsWith("http"),
     );
     sent.push({
       sentMessage,
       isUrlOnly,
-      fallbackContent: payload.fallbackContent ?? null,
-      embedFallback: payload.embedFallback ?? null,
-      recoverUrls: Array.isArray(payload.recoverUrls)
-        ? payload.recoverUrls
-        : null,
-      recoverEmbedOptions: payload.recoverEmbedOptions ?? null,
-      sourceUrl: payload.sourceUrl ?? null,
+      fallbackContent: base.fallbackContent ?? null,
+      embedFallback: base.embedFallback ?? null,
+      recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
+      recoverEmbedOptions: base.recoverEmbedOptions ?? null,
+      sourceUrl: base.sourceUrl ?? null,
     });
   }
 
