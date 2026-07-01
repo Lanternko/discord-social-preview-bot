@@ -7,8 +7,8 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | Condition | Output |
 |---|---|
 | No image **AND** no video (`isTextOnly`) or `twitterCard === "summary"` | Custom embed (text only) |
-| Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷 或 `hasVideo`，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張 + 影片`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video，混合 image+video 仍走 carousel |
-| Has video / `videoCount > 0` (regardless of og:image presence) | Primary fixer (`FIXER_THREADS`) → secondary fixer (`FIXER_THREADS_SECONDARY`) → embedFallback (compact embed with description + 「影片無法載入」note) → OG recovery (lazy fetch fixer URLs) |
+| Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video；混合 image+video 走 carousel **並**帶 `videoAttachment`（discord-io 把 mp4 下載後當附件上傳，可播放影片在圖集下方；放不下就只剩 carousel、影片降級為封面）|
+| Has video / `videoCount > 0` (regardless of og:image presence) | 先試 `videoAttachment`（下載 mp4 → 上傳可播放影片）；放不下 / 停用 / 逾時 → Primary fixer (`FIXER_THREADS`) → secondary fixer (`FIXER_THREADS_SECONDARY`) → embedFallback (compact embed + 「影片無法載入」note) → OG recovery |
 | `summary_large_image` + single image | Custom embed with image |
 | Generic / partial metadata | Compact text embed |
 | Probe error | Primary + secondary fixer + OG recovery list (was: just primary fixer) |
@@ -16,12 +16,14 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 
 **Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js):
 
-- **MIXED case** (multi-image AND video → carousel wins, NOT video fixer)
+- **MIXED case** (multi-image AND video → carousel gallery kept AND carries `videoAttachment` for a real uploaded video — NOT dropped to a bare video fixer that loses the images)
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
 
 **Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it (title `Threads • Log in` or the generic `Join Threads to share ideas…` description) and throws, so the post drops to the fixer chain instead of rendering a useless login card. The secondary fixer `fzthreads.com` fetches many of these where `fixthreads.seria.moe` also walls — asserted by `scripts/smoke.js`.
+
+**Video attachment** ([src/video.js](../../src/video.js)): a bot-built embed can't hold a playable video, so video / MIXED payloads carry `videoAttachment` (a direct mp4 URL). `sendPreviews` → `resolveOutgoing` downloads + re-uploads it as a Discord file (which DOES render an inline player). On any miss — disabled, guild not in `VIDEO_ATTACHMENT_GUILD_IDS`, over the guild's upload cap, at `VIDEO_ATTACHMENT_MAX_CONCURRENT`, or a fetch failure — it returns null and the payload keeps its existing behaviour (carousel for MIXED, fixer chain for video-only). A HEAD size pre-check + concurrency cap + per-fetch timeout keep a flood of video links from overwhelming the host. Env knobs in [env.md](env.md); pure gating asserted by `scripts/smoke.js`.
 
 ## Instagram
 

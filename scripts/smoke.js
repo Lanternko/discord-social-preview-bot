@@ -31,6 +31,12 @@ const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 
 const { isThreadsLoginWall } = require("../src/probe");
 
+const {
+  isGuildVideoAllowed,
+  uploadLimitBytes,
+  effectiveMaxBytes,
+} = require("../src/video");
+
 const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
   require("../src/ai/persona");
 
@@ -284,6 +290,29 @@ it("redd.it short -> rxddit (regression: was falling into FixEmbed wrapper)", ()
     buildFallbackUrl("https://redd.it/abc123"),
     "https://rxddit.com/abc123",
   );
+});
+
+console.log("video attachment gating (video.js)");
+it("isGuildVideoAllowed: enabled + empty allowlist → any guild allowed", () => {
+  assert.equal(isGuildVideoAllowed({ id: "123" }), true);
+});
+it("isGuildVideoAllowed: no guild context (DM) → not allowed", () => {
+  assert.equal(isGuildVideoAllowed(null), false);
+  assert.equal(isGuildVideoAllowed(undefined), false);
+});
+it("uploadLimitBytes: scales with boost tier", () => {
+  assert.equal(uploadLimitBytes({ premiumTier: 0 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 1 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 3 }), 100 * 1024 * 1024);
+  assert.equal(
+    uploadLimitBytes(null),
+    25 * 1024 * 1024,
+    "missing guild → base 25MB",
+  );
+});
+it("effectiveMaxBytes: defaults to the guild limit with no override", () => {
+  assert.equal(effectiveMaxBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
 });
 it("old.reddit.com -> rxddit", () => {
   assert.equal(

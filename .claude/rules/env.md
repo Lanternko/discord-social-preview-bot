@@ -19,9 +19,14 @@
 | `THREADS_PROBE_TIMEOUT_MS` | `10000` | Per-URL subprocess timeout |
 | `THREADS_METADATA_CACHE_TTL_MS` | `600000` | 10 min Threads metadata cache |
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
-| `MULTI_IMAGE_PREVIEW_COUNT` | `3` | Threads 多圖 carousel 顯示前 N 張。超出或含 video 時，最後一個 embed 的 description 追加 `... 還有 N 張 + 影片` 提示。clamp 上限 10（Discord 硬上限） |
+| `MULTI_IMAGE_PREVIEW_COUNT` | `3` | Threads 多圖 carousel 顯示前 N 張。被截斷時最後一個 embed 的 description 追加 `... 還有 N 張` 提示。clamp 上限 10（Discord 硬上限） |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
+| `VIDEO_ATTACHMENT_ENABLED` | `true` | 主開關。Threads 影片 / 含影片的多圖貼文會下載 mp4 → 當 Discord 附件上傳（可播放）。設 `false` 全關，一律退回 fixer |
+| `VIDEO_ATTACHMENT_GUILD_IDS` | —（空 = 全部） | 逗號分隔白名單。空 = 所有伺服器都能上傳影片（仍受下方上限保護）；填了就只有這些 guild 能用，其餘走 fixer |
+| `VIDEO_ATTACHMENT_MAX_BYTES` | `0`（自動） | `0` = 用該伺服器 boost tier 的 Discord 上傳上限（25 / 50 / 100 MiB）。填正整數再往下 clamp，永遠不超過伺服器上限 |
+| `VIDEO_ATTACHMENT_MAX_CONCURRENT` | `2` | 全域同時下載上限。滿了時新的影片貼文直接退回 fixer，不排隊、不堆積 |
+| `VIDEO_ATTACHMENT_TIMEOUT_MS` | `20000` | 單支影片下載逾時 → 退回 fixer |
 
 ## AI provider keys
 
