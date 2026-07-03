@@ -112,7 +112,7 @@ async function fetchVideoAttachment(url, guild) {
     console.log(
       `[video] attached bytes=${buffer.length} guild=${guild?.id ?? "?"}`,
     );
-    return { buffer, name: "threads-video.mp4" };
+    return { buffer, name: "video.mp4" };
   } catch (error) {
     console.warn(`[video] fetch failed: ${error.message} → fixer`);
     return null;

@@ -50,7 +50,7 @@ Branches covered:
 - **Bahamut** — normal / restricted with public title/desc → embed with login notice / restricted with no usable metadata → fixer fallback / probe error.
 - **PTT** — normal / probe error.
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
-- **Bilibili** — API success → custom embed (no URL) / API failure → vxbilibili URL with `recoverUrls`.
+- **Bilibili** — API success → custom embed (no URL) **+ `videoAttachment`** (media.vxbilibili mp4 constructed from the BVID, MIXED-style playable video) / API failure → vxbilibili URL with `recoverUrls`.
 - **Preview dispatcher** ([preview.js](../../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
 
 **When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder.

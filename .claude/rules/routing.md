@@ -32,7 +32,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 
 ## Bilibili
 
-API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success → custom embed (title / desc / cover / UP 主). Failure → `FIXER_BILIBILI` (vxbilibili.com) with OG recovery. b23.tv short links are followed via redirect first.
+API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success → custom embed (title / desc / cover / UP 主) **carrying a `videoAttachment`** — the direct mp4 at `https://media.<FIXER_BILIBILI>/video/<bvid>/1` (verified: `200 video/mp4`, no auth token; the `?_=` query is a cache-buster only). `resolveOutgoing` downloads + re-uploads it as a playable Discord video **below** the cover embed (MIXED-style, same mechanism as Threads). On any miss (disabled / guild not allow-listed / over the upload cap / at `VIDEO_ATTACHMENT_MAX_CONCURRENT` / fetch fail) the attachment resolves to null and the payload degrades to the cover embed alone — no regression. Bilibili is a video platform, so the mp4 is constructed straight from the BVID (no extra fetch). Failure (API error) → `FIXER_BILIBILI` (vxbilibili.com) with OG recovery. b23.tv short links are followed via redirect first.
 
 ## Other platforms
 

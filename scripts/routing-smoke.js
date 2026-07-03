@@ -470,7 +470,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   // === BILIBILI API WIRING ===
   console.log("buildBilibiliPayload");
 
-  await it("bilibili API success → custom embed (no fixer URL)", async () => {
+  await it("bilibili API success → custom embed + video attachment (no fixer URL)", async () => {
     _mockFetch = async (apiUrl) => {
       if (typeof apiUrl === "string" && apiUrl.includes("/x/web-interface/view")) {
         return {
@@ -502,6 +502,18 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       assert.ok(
         data.image.url.startsWith("https://"),
         "http image URL upgraded to https",
+      );
+      // API embed now ALSO carries a playable video (MIXED-style): discord-io
+      // uploads media.vxbilibili's mp4 below the cover embed, degrading to the
+      // cover alone on any miss. Direct mp4 URL constructed from the BVID.
+      assert.equal(
+        s.hasVideoAttachment,
+        true,
+        "API success should flag the video for upload",
+      );
+      assert.equal(
+        s.videoAttachmentText,
+        "https://media.vxbilibili.com/video/BV1xx/1",
       );
     } finally {
       _mockFetch = null;

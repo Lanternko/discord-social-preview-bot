@@ -92,11 +92,22 @@ async function buildBilibiliPayload(url) {
   try {
     const metadata = await fetchBilibiliMetadata(targetUrl);
     if (metadata.title) {
+      // vxbilibili serves a direct, playable mp4 at media.<host>/video/<bvid>/1
+      // (verified: 200 video/mp4, no auth token — the ?_= query is a cache-buster
+      // only). Hand it to discord-io as a `videoAttachment` so the API embed
+      // (title / UP 主 / cover) gets a real uploaded player below it, MIXED-style.
+      // On any miss (too big / disabled / at capacity / fetch fail) the payload
+      // degrades to the cover embed alone — same guards as Threads video.
+      const bvid = extractBilibiliBvid(targetUrl);
+      const videoAttachment = bvid
+        ? `https://media.${FIXER_BILIBILI}/video/${bvid}/1`
+        : undefined;
       console.log(
-        `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)}`,
+        `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)} video=${Boolean(videoAttachment)}`,
       );
       return {
         embeds: [buildBilibiliEmbed(url, metadata)],
+        ...(videoAttachment ? { videoAttachment } : {}),
       };
     }
   } catch (error) {
