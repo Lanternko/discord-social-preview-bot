@@ -78,7 +78,9 @@ function buildPttEmbed(url, metadata) {
   return embed;
 }
 
-function buildBilibiliEmbed(url, metadata) {
+// `withImage: false` drops the cover — used when a playable video is uploaded
+// alongside, since the cover is just a frame of that video and would duplicate.
+function buildBilibiliEmbed(url, metadata, { withImage = true } = {}) {
   const embed = new EmbedBuilder()
     .setColor(0x00a1d6)
     .setURL(url)
@@ -88,7 +90,7 @@ function buildBilibiliEmbed(url, metadata) {
   if (metadata.author) embed.setAuthor({ name: metadata.author });
   if (metadata.description)
     embed.setDescription(trimDescription(metadata.description, 512));
-  if (metadata.image) embed.setImage(metadata.image);
+  if (withImage && metadata.image) embed.setImage(metadata.image);
   return embed;
 }
 

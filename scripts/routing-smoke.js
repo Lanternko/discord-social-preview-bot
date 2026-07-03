@@ -515,6 +515,24 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
         s.videoAttachmentText,
         "https://media.vxbilibili.com/video/BV1xx/1",
       );
+      // The fallback embed (shown if the video can't attach) keeps the cover...
+      assert.ok(data.image, "fallback embed keeps the cover image");
+      // ...but the video-attach embed drops it, so the still frame doesn't
+      // duplicate the playable video discord-io uploads.
+      assert.ok(
+        Array.isArray(p.videoAttachmentEmbeds) &&
+          p.videoAttachmentEmbeds.length === 1,
+        "API success should supply a cover-less videoAttachmentEmbeds",
+      );
+      assert.ok(
+        !p.videoAttachmentEmbeds[0].data.image,
+        "video-attach embed must NOT repeat the cover image",
+      );
+      assert.equal(
+        p.videoAttachmentEmbeds[0].data.title,
+        "B站影片",
+        "video-attach embed keeps the title",
+      );
     } finally {
       _mockFetch = null;
     }

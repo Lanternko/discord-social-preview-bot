@@ -135,15 +135,22 @@ async function resolveOutgoing(payload, message) {
   base.files = [
     new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
   ];
+  // If the payload supplied a video-specific embed set, use it now that the
+  // video attached — it's the cover-less variant, so the still frame doesn't
+  // duplicate the playable video. Threads video-only uses it to replace its
+  // fixer link with a clean title embed; Bilibili uses it to drop the cover
+  // from its API embed. Payloads WITHOUT attachmentEmbeds (e.g. the Threads
+  // MIXED carousel, whose gallery images differ from the video) keep their
+  // original embeds untouched.
+  if (Array.isArray(attachmentEmbeds)) {
+    base.embeds = attachmentEmbeds;
+  }
   // Video-only posts carry the fixer URL as `content`; now that the video is a
-  // real attachment, drop that link (and its secondary) and show the clean
-  // title/文案 embed instead, so the post isn't a bare player.
+  // real attachment, drop that link (and its secondary) so the post isn't a
+  // bare player sitting under a link unfurl.
   if (typeof base.content === "string" && base.content.startsWith("http")) {
     delete base.content;
     delete base.fallbackContent;
-    if (!base.embeds && Array.isArray(attachmentEmbeds)) {
-      base.embeds = attachmentEmbeds;
-    }
   }
   return base;
 }

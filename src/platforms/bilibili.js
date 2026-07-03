@@ -106,8 +106,18 @@ async function buildBilibiliPayload(url) {
         `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)} video=${Boolean(videoAttachment)}`,
       );
       return {
+        // `embeds` (with cover) is what shows if the video can't attach.
         embeds: [buildBilibiliEmbed(url, metadata)],
-        ...(videoAttachment ? { videoAttachment } : {}),
+        ...(videoAttachment
+          ? {
+              videoAttachment,
+              // When the upload succeeds, discord-io swaps in this cover-less
+              // embed so the still frame doesn't duplicate the playable video.
+              videoAttachmentEmbeds: [
+                buildBilibiliEmbed(url, metadata, { withImage: false }),
+              ],
+            }
+          : {}),
       };
     }
   } catch (error) {
