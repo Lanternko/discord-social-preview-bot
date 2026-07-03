@@ -45,6 +45,7 @@ const { buildBahamutPayload } = require("../src/platforms/bahamut");
 const { buildPttPayload } = require("../src/platforms/ptt");
 const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
+const { handleReactionDelete } = require("../src/reaction-delete");
 
 // === TEST RUNNER ===
 let pass = 0;
@@ -563,6 +564,77 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.ok(out[0].content?.includes("fxtwitter"));
     assert.equal(Array.isArray(out[1].embeds), true, "threads should be embed");
     assert.ok(out[2].content?.includes("bskx"));
+  });
+
+  // === REACTION DELETE (reaction-delete.js) ===
+  // handleReactionDelete needs live Discord objects (fetchReference, member
+  // fetch, permissionsFor) that pure smoke can't reach — mock them here and
+  // assert the authorization matrix: only 西寶's OWN message, only by the
+  // link's poster (via reply reference) or a ManageMessages mod, only on 🗑️.
+  console.log("handleReactionDelete — authorization matrix");
+
+  const DELETE_CLIENT = { user: { id: "BOT" } };
+
+  function makeTrashReaction({
+    emojiName = "🗑️",
+    authorId = "BOT", // author of the reacted message (BOT = 西寶's own)
+    origAuthorId = "POSTER", // author of the original message the preview replied to
+    hasReference = true,
+    canManage = false,
+  } = {}) {
+    const state = { deleted: false };
+    const message = {
+      partial: false,
+      id: "MSG",
+      author: { id: authorId },
+      reference: hasReference ? { messageId: "ORIG" } : null,
+      fetchReference: async () => ({ author: { id: origAuthorId } }),
+      guild: {
+        name: "G",
+        members: { cache: new Map(), fetch: async () => ({ id: "m" }) },
+      },
+      channel: { name: "c", permissionsFor: () => ({ has: () => canManage }) },
+      delete: async () => {
+        state.deleted = true;
+      },
+    };
+    return { reaction: { partial: false, emoji: { name: emojiName }, message }, state };
+  }
+
+  await it("link poster's 🗑️ deletes 西寶's own message", async () => {
+    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER" });
+    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+  });
+
+  await it("random user without ManageMessages cannot delete", async () => {
+    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: false });
+    await handleReactionDelete(reaction, { id: "RANDO", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
+  });
+
+  await it("ManageMessages mod can delete even if not the poster", async () => {
+    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: true });
+    await handleReactionDelete(reaction, { id: "MOD", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+  });
+
+  await it("never deletes a message 西寶 did not author", async () => {
+    const { reaction, state } = makeTrashReaction({ authorId: "HUMAN", origAuthorId: "POSTER" });
+    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
+  });
+
+  await it("ignores non-🗑️ reactions", async () => {
+    const { reaction, state } = makeTrashReaction({ emojiName: "❌", origAuthorId: "POSTER" });
+    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
+  });
+
+  await it("ignores reactions from bots", async () => {
+    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER" });
+    await handleReactionDelete(reaction, { id: "POSTER", bot: true }, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
   });
 
   console.log("");
