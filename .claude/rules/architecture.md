@@ -14,6 +14,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../../src/index.js)
 - **Preview dispatcher** — [preview.js](../../src/preview.js) `buildPreviewPayloads` runs all per-URL builders in parallel via `Promise.all`. Per-platform branches dispatch to the correct builder; URL-only platforms (X/Reddit/Pixiv/Bluesky/Facebook) all share `buildSimpleFixerPayload` which always populates `recoverUrls`. The `if` ladder inside each platform builder is what's load-bearing — see [routing.md](routing.md).
 - **Discord I/O** — [discord-io.js](../../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions. `resolveOutgoing` resolves a payload's optional `videoAttachment` (download + upload the mp4 as a file) right before sending.
 - **Video** — [video.js](../../src/video.js) downloads a Threads mp4 and hands back a Discord attachment, gated by a size cap, a global concurrency cap, a per-fetch timeout, and an optional guild allowlist. Returns null → caller falls back to the fixer chain.
+- **Reaction delete** — [reaction-delete.js](../../src/reaction-delete.js) is the `messageReactionAdd` handler: a 🗑️ reaction on one of 西寶's own messages deletes it, authorized by the link poster (via the reply reference) or a `ManageMessages` mod. No persistent state. See [routing.md](routing.md).
 - **Mention** — [mention.js](../../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
 - **Slash commands** — [commands.js](../../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, and `/schedule`. [tier-store.js](../../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
 - **AI subsystem** — [ai/](../../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
@@ -54,6 +55,7 @@ src/
 │   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
 │   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
+├── reaction-delete.js    # 🗑️ reaction on 西寶's own message → delete it (poster or ManageMessages)
 ├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
 ├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
@@ -64,7 +66,7 @@ src/
 
 All scoped — grep one to isolate a subsystem:
 
-`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]`
+`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]`
 
 ## Smoke tests
 

@@ -86,3 +86,17 @@ Users can suppress the bot by including `nopreview`, `previewignore`, or `fxigno
 - **`inFlightReplies` Set**: prevents duplicate processing if `messageCreate` fires twice (Discord gateway reconnect). Two key formats:
   - URL preview path: `msgId:urls.join("|")`
   - Mention path: `mention:msgId`
+
+## Deleting 西寶's messages (🗑️ reaction)
+
+Handler: [src/reaction-delete.js](../../src/reaction-delete.js), wired as `messageReactionAdd` in [src/index.js](../../src/index.js). For the "傳錯連結想清掉誤發預覽" case — react 🗑️ on the bot's message and it deletes that message.
+
+- **Scope**: any message authored by 西寶 (preview, AI reply, fortune, recap…), never anyone else's.
+- **Emoji**: 🗑️ only (`U+1F5D1`). `isTrashEmoji` strips the optional `U+FE0F` variation selector so both `🗑` and `🗑️` match; other emoji (❌, 🚮) are ignored.
+- **Authorization** (conservative, to stop griefing):
+  1. The **link poster** — 西寶's preview is a `message.reply`, so `fetchReference()` gives the original author's id with no persistent state. If the reactor is that author → delete.
+  2. A **`ManageMessages` mod** in that channel → delete (cleans up others' / orphaned previews).
+  - Reactions from bots are ignored; a message 西寶 didn't author is never touched.
+- **Gap (by design, no state kept)**: if the poster deletes their *original* message first, the preview orphans and `fetchReference()` can no longer prove authorship — then only a `ManageMessages` mod can 🗑️ it. React on the preview *before* deleting the original, or just let a mod clear it.
+- **Requires**: `GuildMessageReactions` intent + `Partials.Message/Channel/Reaction` (so a 🗑️ on a pre-restart, uncached message still fires the event). Both set in [src/index.js](../../src/index.js).
+- Grep `[delete]`. Authorization matrix asserted by `scripts/routing-smoke.js`; `isTrashEmoji` by `scripts/smoke.js`.
