@@ -78,19 +78,24 @@ function buildPttEmbed(url, metadata) {
   return embed;
 }
 
-// `withImage: false` drops the cover — used when a playable video is uploaded
-// alongside, since the cover is just a frame of that video and would duplicate.
-function buildBilibiliEmbed(url, metadata, { withImage = true } = {}) {
+// `compact: true` is the slim variant shown above an uploaded video: it drops
+// the cover (a duplicate still frame of the video), drops the Bilibili footer
+// (the player already carries the watermark), and trims the description —
+// leaving just the coloured border, clickable title, author, and a short
+// caption. The full variant (no video) keeps the cover + footer as its visual.
+function buildBilibiliEmbed(url, metadata, { compact = false } = {}) {
   const embed = new EmbedBuilder()
     .setColor(0x00a1d6)
     .setURL(url)
-    .setTitle(trimDescription(metadata.title, 256))
-    .setFooter({ text: "Bilibili" });
+    .setTitle(trimDescription(metadata.title, 256));
 
   if (metadata.author) embed.setAuthor({ name: metadata.author });
   if (metadata.description)
-    embed.setDescription(trimDescription(metadata.description, 512));
-  if (withImage && metadata.image) embed.setImage(metadata.image);
+    embed.setDescription(trimDescription(metadata.description, compact ? 240 : 512));
+  if (!compact) {
+    if (metadata.image) embed.setImage(metadata.image);
+    embed.setFooter({ text: "Bilibili" });
+  }
   return embed;
 }
 

@@ -515,23 +515,32 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
         s.videoAttachmentText,
         "https://media.vxbilibili.com/video/BV1xx/1",
       );
-      // The fallback embed (shown if the video can't attach) keeps the cover...
+      // The fallback embed (shown if the video can't attach) keeps the cover
+      // + Bilibili footer as its sole visual...
       assert.ok(data.image, "fallback embed keeps the cover image");
-      // ...but the video-attach embed drops it, so the still frame doesn't
-      // duplicate the playable video discord-io uploads.
+      assert.ok(data.footer, "fallback embed keeps the Bilibili footer");
+      // ...but the slim video-attach embed drops both the cover (a duplicate
+      // still) and the footer (video carries the watermark), keeping only the
+      // border, clickable title, author, and a short caption.
+      const slim = p.videoAttachmentEmbeds;
       assert.ok(
-        Array.isArray(p.videoAttachmentEmbeds) &&
-          p.videoAttachmentEmbeds.length === 1,
-        "API success should supply a cover-less videoAttachmentEmbeds",
+        Array.isArray(slim) && slim.length === 1,
+        "API success should supply a slim videoAttachmentEmbeds",
       );
       assert.ok(
-        !p.videoAttachmentEmbeds[0].data.image,
-        "video-attach embed must NOT repeat the cover image",
+        !slim[0].data.image,
+        "slim embed must NOT repeat the cover image",
+      );
+      assert.ok(!slim[0].data.footer, "slim embed drops the Bilibili footer");
+      assert.equal(
+        slim[0].data.title,
+        "B站影片",
+        "slim embed keeps the clickable title",
       );
       assert.equal(
-        p.videoAttachmentEmbeds[0].data.title,
-        "B站影片",
-        "video-attach embed keeps the title",
+        slim[0].data.author.name,
+        "UP主",
+        "slim embed keeps the author",
       );
     } finally {
       _mockFetch = null;

@@ -111,10 +111,10 @@ async function buildBilibiliPayload(url) {
         ...(videoAttachment
           ? {
               videoAttachment,
-              // When the upload succeeds, discord-io swaps in this cover-less
-              // embed so the still frame doesn't duplicate the playable video.
+              // When the upload succeeds, discord-io swaps in this slim embed
+              // (no cover / no footer) so nothing duplicates the playable video.
               videoAttachmentEmbeds: [
-                buildBilibiliEmbed(url, metadata, { withImage: false }),
+                buildBilibiliEmbed(url, metadata, { compact: true }),
               ],
             }
           : {}),
