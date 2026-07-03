@@ -8,6 +8,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 ## NEVER
 
+- **NEVER** do feature work in the shared main checkout — and **NEVER** `git checkout` a different branch there — while another session/feature may be active. A working tree's HEAD is a property of the **folder**, not the conversation: every process pointed at that folder (other Claude sessions, your terminals, the running bot's source dir) shares one branch, so a checkout silently stomps all of them. Each concurrent feature gets its **own** `git worktree` — sibling `apps/dspb-<feature>/` (e.g. `dspb-bilibili`, `dspb-imitation`). See the Workflow section.
 - **NEVER** push directly to `main`. All changes go on a branch → PR → merge.
 - **NEVER** merge a branch into `main` without `npm test` passing locally.
 - **NEVER** let a function own more than one responsibility. When adding behaviour, decide if it belongs in an existing function or needs a new one — don't wedge flags into unrelated code.
@@ -41,7 +42,14 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 ## Workflow
 
-1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`). No direct commits to `main`.
+0. **Isolate parallel work in a `git worktree`.** The main checkout is shared by every process in that folder (other sessions, terminals, the running bot). Do NOT `git checkout` a feature branch there while others are active — spin up a dedicated worktree instead:
+   ```bash
+   git worktree add ../dspb-<feature> feat/<feature>      # sibling of the repo, own branch
+   ln -sf "$(pwd)/.env" ../dspb-<feature>/.env            # .env + node_modules are gitignored,
+   ln -sf "$(pwd)/node_modules" ../dspb-<feature>/node_modules   #   so link (or reinstall) per worktree
+   ```
+   Work, commit, and run/deploy the bot from that worktree. `git worktree list` shows who's on what; `git worktree remove <path>` when done. (The harness may reset cwd back to the main dir between commands — address the worktree by absolute path or `git -C <path>`.)
+1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
 4. After merge, **provide redeploy steps** (see [deploy.md](.claude/rules/deploy.md)) — the host tracks GitHub, not the local tree.
