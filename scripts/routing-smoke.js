@@ -519,28 +519,23 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       // + Bilibili footer as its sole visual...
       assert.ok(data.image, "fallback embed keeps the cover image");
       assert.ok(data.footer, "fallback embed keeps the Bilibili footer");
-      // ...but the slim video-attach embed drops both the cover (a duplicate
-      // still) and the footer (video carries the watermark), keeping only the
-      // border, clickable title, author, and a short caption.
-      const slim = p.videoAttachmentEmbeds;
+      // ...but when the video DOES attach, discord-io swaps in this content info
+      // bar (above the player): a clickable masked-link title, the caption, and
+      // an author subtext — no embed box, no duplicate cover.
+      const caption = p.videoAttachmentContent;
+      assert.equal(typeof caption, "string", "supplies a content info bar");
       assert.ok(
-        Array.isArray(slim) && slim.length === 1,
-        "API success should supply a slim videoAttachmentEmbeds",
+        caption.includes("[B站影片](https://www.bilibili.com/video/BV1xx)"),
+        `info bar title must be a clickable masked link, got: ${caption}`,
+      );
+      assert.ok(caption.includes("UP主"), "info bar keeps the author");
+      assert.ok(
+        caption.includes("-# "),
+        "author/source rendered as Discord subtext",
       );
       assert.ok(
-        !slim[0].data.image,
-        "slim embed must NOT repeat the cover image",
-      );
-      assert.ok(!slim[0].data.footer, "slim embed drops the Bilibili footer");
-      assert.equal(
-        slim[0].data.title,
-        "B站影片",
-        "slim embed keeps the clickable title",
-      );
-      assert.equal(
-        slim[0].data.author.name,
-        "UP主",
-        "slim embed keeps the author",
+        !Array.isArray(p.videoAttachmentEmbeds),
+        "content info bar replaces the old slim-embed approach",
       );
     } finally {
       _mockFetch = null;

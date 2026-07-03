@@ -125,8 +125,10 @@ async function resolveOutgoing(payload, message) {
   const base = { ...payload };
   const videoUrl = base.videoAttachment;
   const attachmentEmbeds = base.videoAttachmentEmbeds;
+  const attachmentContent = base.videoAttachmentContent;
   delete base.videoAttachment;
   delete base.videoAttachmentEmbeds;
+  delete base.videoAttachmentContent;
   if (!videoUrl) return base;
 
   const attachment = await fetchVideoAttachment(videoUrl, message.guild);
@@ -135,19 +137,24 @@ async function resolveOutgoing(payload, message) {
   base.files = [
     new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
   ];
-  // If the payload supplied a video-specific embed set, use it now that the
-  // video attached — it's the cover-less variant, so the still frame doesn't
-  // duplicate the playable video. Threads video-only uses it to replace its
-  // fixer link with a clean title embed; Bilibili uses it to drop the cover
-  // from its API embed. Payloads WITHOUT attachmentEmbeds (e.g. the Threads
-  // MIXED carousel, whose gallery images differ from the video) keep their
-  // original embeds untouched.
-  if (Array.isArray(attachmentEmbeds)) {
+  // Now that the video attached, pick how the caption rides with it:
+  //   1. `videoAttachmentContent` (Bilibili) — a text info bar shown as message
+  //      content ABOVE the player, replacing the embed box entirely (clickable
+  //      title + mark, no duplicate cover).
+  //   2. `videoAttachmentEmbeds` (Threads video-only) — a cover-less embed that
+  //      replaces the fixer link.
+  //   3. neither (Threads MIXED carousel, whose gallery differs from the video)
+  //      — keep the original embeds untouched.
+  if (typeof attachmentContent === "string" && attachmentContent) {
+    base.content = attachmentContent;
+    delete base.embeds;
+  } else if (Array.isArray(attachmentEmbeds)) {
     base.embeds = attachmentEmbeds;
   }
   // Video-only posts carry the fixer URL as `content`; now that the video is a
   // real attachment, drop that link (and its secondary) so the post isn't a
-  // bare player sitting under a link unfurl.
+  // bare player sitting under a link unfurl. (Skipped for the info-bar case —
+  // that content isn't an http URL.)
   if (typeof base.content === "string" && base.content.startsWith("http")) {
     delete base.content;
     delete base.fallbackContent;

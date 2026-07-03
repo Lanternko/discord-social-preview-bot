@@ -94,6 +94,9 @@ module.exports = {
   FIXER_BLUESKY: process.env.FIXER_BLUESKY || "bskx.app",
   FIXER_BILIBILI: process.env.FIXER_BILIBILI || "vxbilibili.com",
   FIXER_FACEBOOK: process.env.FIXER_FACEBOOK || "facebed.com",
+  // Optional Bilibili mark shown before the video-preview title, e.g.
+  // "<:bilibili:123456789>". Empty = omit the icon (info bar still works).
+  BILIBILI_EMOJI: process.env.BILIBILI_EMOJI || "",
   FIXER_INSTAGRAM: process.env.FIXER_INSTAGRAM || "ddinstagram.com",
   FIXER_INSTAGRAM_SECONDARY:
     process.env.FIXER_INSTAGRAM_SECONDARY || "fxstagram.com",

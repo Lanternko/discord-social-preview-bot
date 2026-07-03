@@ -78,24 +78,20 @@ function buildPttEmbed(url, metadata) {
   return embed;
 }
 
-// `compact: true` is the slim variant shown above an uploaded video: it drops
-// the cover (a duplicate still frame of the video), drops the Bilibili footer
-// (the player already carries the watermark), and trims the description —
-// leaving just the coloured border, clickable title, author, and a short
-// caption. The full variant (no video) keeps the cover + footer as its visual.
-function buildBilibiliEmbed(url, metadata, { compact = false } = {}) {
+// The full cover embed, shown only when a video CAN'T attach (fallback). When
+// the video uploads, bilibili.js supplies a content info bar instead (clickable
+// title + mark, above the player) — see buildBilibiliVideoCaption.
+function buildBilibiliEmbed(url, metadata) {
   const embed = new EmbedBuilder()
     .setColor(0x00a1d6)
     .setURL(url)
-    .setTitle(trimDescription(metadata.title, 256));
+    .setTitle(trimDescription(metadata.title, 256))
+    .setFooter({ text: "Bilibili" });
 
   if (metadata.author) embed.setAuthor({ name: metadata.author });
   if (metadata.description)
-    embed.setDescription(trimDescription(metadata.description, compact ? 240 : 512));
-  if (!compact) {
-    if (metadata.image) embed.setImage(metadata.image);
-    embed.setFooter({ text: "Bilibili" });
-  }
+    embed.setDescription(trimDescription(metadata.description, 512));
+  if (metadata.image) embed.setImage(metadata.image);
   return embed;
 }
 

@@ -1,10 +1,28 @@
-const { FIXER_BILIBILI } = require("../config");
+const { FIXER_BILIBILI, BILIBILI_EMOJI } = require("../config");
 const {
   extractBilibiliBvid,
   normalizeUrl,
   replaceHostFixer,
 } = require("../url-routing");
 const { buildBilibiliEmbed } = require("../embeds");
+const { trimDescription } = require("../utils");
+
+// The info bar shown ABOVE an uploaded Bilibili video (message content, not an
+// embed): optional Bilibili mark + clickable title, the caption, then a small
+// author/source subtext. Content renders above attachments, so the info sits
+// on top of the player — with a real cover-less layout, no embed box.
+function buildBilibiliVideoCaption(url, metadata) {
+  const mark = BILIBILI_EMOJI ? `${BILIBILI_EMOJI} ` : "";
+  // Strip ] and [ from the link text so they can't break the masked link.
+  const title = trimDescription(metadata.title || "Bilibili 影片", 200).replace(
+    /[[\]]/g,
+    "",
+  );
+  const lines = [`${mark}**[${title}](${url})**`];
+  if (metadata.description) lines.push(trimDescription(metadata.description, 200));
+  lines.push(`-# ${metadata.author ? `${metadata.author} · ` : ""}Bilibili`);
+  return lines.join("\n");
+}
 
 async function fetchBilibiliMetadata(url) {
   const bvid = extractBilibiliBvid(url);
@@ -111,11 +129,10 @@ async function buildBilibiliPayload(url) {
         ...(videoAttachment
           ? {
               videoAttachment,
-              // When the upload succeeds, discord-io swaps in this slim embed
-              // (no cover / no footer) so nothing duplicates the playable video.
-              videoAttachmentEmbeds: [
-                buildBilibiliEmbed(url, metadata, { compact: true }),
-              ],
+              // When the upload succeeds, discord-io drops the embed and shows
+              // this info bar as message content ABOVE the player — clickable
+              // title + Bilibili mark, no duplicate cover, no embed box.
+              videoAttachmentContent: buildBilibiliVideoCaption(url, metadata),
             }
           : {}),
       };
