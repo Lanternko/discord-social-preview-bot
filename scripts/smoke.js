@@ -71,6 +71,7 @@ const {
 
 const { buildPermissionDebugMessage } = require("../src/commands");
 const { getMissingChannelPermissions } = require("../src/discord-io");
+const { isTrashEmoji } = require("../src/reaction-delete");
 const {
   STORY_MODES,
   localDateKey,
@@ -1830,6 +1831,19 @@ it("buildTargetContextBlock: non-imitation = profile only, samples withheld", ()
   assert.match(block, /被提到的人/);
   assert.doesNotMatch(block, /不好！不好！/);
   assert.equal(buildTargetContextBlock([], { imitation: true }), "");
+});
+
+console.log("reaction-delete.isTrashEmoji");
+it("matches 🗑️ with and without the FE0F variation selector", () => {
+  assert.equal(isTrashEmoji("\u{1F5D1}\uFE0F"), true); // 🗑️
+  assert.equal(isTrashEmoji("\u{1F5D1}"), true); // 🗑
+});
+it("rejects other emoji and non-strings", () => {
+  assert.equal(isTrashEmoji("❌"), false);
+  assert.equal(isTrashEmoji("🚮"), false); // the litter-bin symbol, not the can
+  assert.equal(isTrashEmoji("x"), false);
+  assert.equal(isTrashEmoji(null), false);
+  assert.equal(isTrashEmoji(undefined), false);
 });
 
 console.log("");

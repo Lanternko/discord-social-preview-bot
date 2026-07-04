@@ -35,6 +35,7 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 | `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../../src/og-fallback.js) |
 | `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../../src/og-fallback.js) |
 | `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../../src/url-routing.js) |
+| `isTrashEmoji` matches 🗑️ with/without the FE0F variation selector | [reaction-delete.js](../../src/reaction-delete.js) |
 
 **When to run**: every refactor touching URL handling, persona/template wiring, tier lookup, or group-context formatting. Cheap enough to run on every save.
 
@@ -52,8 +53,9 @@ Branches covered:
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
 - **Bilibili** — API success → custom embed (no URL) / API failure → vxbilibili URL with `recoverUrls`.
 - **Preview dispatcher** ([preview.js](../../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
+- **Reaction delete** ([reaction-delete.js](../../src/reaction-delete.js)) — `handleReactionDelete` authorization matrix with mocked Discord objects (fetchReference / member fetch / permissionsFor): link poster deletes / random user can't / `ManageMessages` mod can / never deletes a non-西寶 message / ignores non-🗑️ / ignores bot reactors. Lives here (not pure smoke) because the auth path needs async Discord I/O.
 
-**When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder.
+**When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder, or any change to `reaction-delete.js` authorization.
 
 ## scripts/smoke-ai-circuit.js — AI chain + circuit breaker
 

@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits, MessageFlags } = require("discord.js");
+const { Client, GatewayIntentBits, MessageFlags, Partials } = require("discord.js");
 
 const { DISCORD_TOKEN, AI_TIMEOUT_MS } = require("./config");
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
@@ -18,6 +18,7 @@ const {
   checkAndHandleEmptyEmbeds,
 } = require("./discord-io");
 const { isMentioningBot, handleMention } = require("./mention");
+const { handleReactionDelete } = require("./reaction-delete");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
@@ -45,6 +46,12 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
   ],
+  // A 🗑️ reaction on one of 西寶's own messages requests its deletion. The
+  // target preview is usually recent (a just-sent wrong-link reply), but a
+  // reaction on a message sent before the last restart arrives as a partial —
+  // these partials let messageReactionAdd fire for uncached messages so the
+  // handler can fetch + act on them instead of silently dropping the event.
+  partials: [Partials.Message, Partials.Channel, Partials.Reaction],
 });
 
 client.once("clientReady", async () => {
@@ -102,6 +109,17 @@ client.on("interactionCreate", async (interaction) => {
         `[commands] failed to send error reply: ${replyErr?.message || replyErr}`,
       );
     }
+  }
+});
+
+client.on("messageReactionAdd", async (reaction, user) => {
+  // Symmetric with the handlers above: a throw inside handleReactionDelete
+  // (e.g. a Discord API reject on the delete) must not escape this async
+  // listener and crash the process. Log with context and move on.
+  try {
+    await handleReactionDelete(reaction, user, client);
+  } catch (err) {
+    console.error(`[delete] reaction handler error: ${err?.stack || err}`);
   }
 });
 
