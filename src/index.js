@@ -45,6 +45,12 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMessageReactions,
+    // Without this, guild.emojis.cache is only populated at GUILD_CREATE
+    // (startup): an emoji added while the bot is running stays invisible to
+    // 西寶's emoji prompt table until the next restart. GuildExpressions
+    // delivers GuildEmojisUpdate so the cache tracks live adds/removals.
+    // Non-privileged — no Dev Portal toggle needed.
+    GatewayIntentBits.GuildExpressions,
   ],
   // A 🗑️ reaction on one of 西寶's own messages requests its deletion. The
   // target preview is usually recent (a just-sent wrong-link reply), but a
