@@ -15,7 +15,7 @@ const {
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
-const { buildUserTurn } = require("./persona");
+const { buildUserTurn, formatReferenceContext } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
   fetchGroupContext,
@@ -194,11 +194,45 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
   return null;
 }
 
+// Resolve the message a user is replying to (or forwarding) into a short
+// context note for buildUserTurn. "" when there's no reference, it's unreachable
+// (deleted / no access), or it has no text worth quoting. Reply = one
+// fetchReference round-trip; forward = read the inlined snapshot, no fetch.
+function describeNonTextRef(msg) {
+  if (msg.stickers?.size) return `(貼圖：${msg.stickers.first().name})`;
+  if (msg.attachments?.size) return "(圖片/附件)";
+  if (msg.embeds?.length) return "(連結預覽)";
+  return "";
+}
+
+async function buildReferenceContext(message) {
+  const snapshot = message.messageSnapshots?.first?.();
+  if (snapshot) {
+    const content = snapshot.content || describeNonTextRef(snapshot);
+    return formatReferenceContext({ content, isForward: true });
+  }
+  if (!message.reference?.messageId) return "";
+  try {
+    const ref = await message.fetchReference();
+    if (!ref) return "";
+    const authorName =
+      ref.member?.displayName ||
+      ref.author?.globalName ||
+      ref.author?.username ||
+      "某人";
+    const content = ref.content || describeNonTextRef(ref);
+    return formatReferenceContext({ authorName, content });
+  } catch {
+    return "";
+  }
+}
+
 async function generateAIReply(message, userText) {
   const tierConfig = getTierConfig(message.guildId);
   const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
   if (guildChain.length === 0) return null;
-  const userTurn = buildUserTurn(message, userText);
+  const referenceContext = await buildReferenceContext(message);
+  const userTurn = buildUserTurn(message, userText, referenceContext);
   const history = getChannelAIHistory(message.channelId);
   let turns = [...history, { role: "user", content: userTurn }];
 

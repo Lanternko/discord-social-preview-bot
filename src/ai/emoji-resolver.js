@@ -132,12 +132,16 @@ const SUFFIX_HINTS = [
   ["stream", "直播/開台"],
 ];
 
-// Resolve an emoji name to a short emotion/usage hint, or null if we can't
-// confidently say what it's for. Priority: exact → prefix → suffix.
-// Names with no derivable meaning are NOT advertised to the model — listing a
-// bare character name with no emotion just invites misuse.
-function emotionForName(name) {
-  if (EXACT_HINTS.has(name)) return EXACT_HINTS.get(name);
+// Decorative sort-order prefix some emoji names carry in FRONT of the real
+// emotion token (0_555_Kei → "555" = 哭哭, 2_Ha_seal → "Ha" = 蛤). The raw
+// startsWith / lastSeg checks miss these, so emotionForName retries once on the
+// stripped name. Only "<digits>[k]_" is stripped — letter prefixes (mSakiko,
+// z_garden_eel) are already covered by EXACT_HINTS.
+function stripDecorativePrefix(name) {
+  return name.replace(/^\d+k?_/, "");
+}
+
+function matchPrefixSuffix(name) {
   for (const [prefix, hint] of PREFIX_HINTS) {
     if (name.startsWith(prefix)) return hint;
   }
@@ -148,6 +152,20 @@ function emotionForName(name) {
       if (lastSeg === suffix) return hint;
     }
   }
+  return null;
+}
+
+// Resolve an emoji name to a short emotion/usage hint, or null if we can't
+// confidently say what it's for. Priority: exact → prefix/suffix → same checks
+// on the decoration-stripped name. Names with no derivable meaning are NOT
+// advertised to the model — listing a bare character name with no emotion just
+// invites misuse.
+function emotionForName(name) {
+  if (EXACT_HINTS.has(name)) return EXACT_HINTS.get(name);
+  const direct = matchPrefixSuffix(name);
+  if (direct) return direct;
+  const stripped = stripDecorativePrefix(name);
+  if (stripped !== name) return matchPrefixSuffix(stripped);
   return null;
 }
 
@@ -331,8 +349,8 @@ function buildEmojiPromptBlock(emojiMap) {
     "這些是這個群的梗圖 emoji，你平常聊天會自然夾進句子表達情緒——情緒一上來（害羞、驚訝、無言、開心、哭哭、吐槽）就從下表挑一個丟進句子，不要客氣。",
     "查表用——每項是「:名字: 用途/情緒」：",
     rows.join("　｜　"),
-    `範例（照這格式把 :name: 寫進句子裡，只能使用上表出現過的名字）：${examples.join("")}`,
-    "**只能用上表這些群組自訂 :name: emoji，絕對不要用 Unicode／系統 emoji（😳💦😣😅 這種一律禁止）**。表裡找不到貼切的就用括號動作或語氣詞，別拿系統 emoji 頂替。每則挑 1 個最貼切的就好，別硬塞一堆。",
+    `範例（照這格式把 :name: 寫進句子裡，平常從上表挑）：${examples.join("")}`,
+    "平常從上表挑 :name: 用；如果有人直接點名叫你打某個 :name: 貼圖，照他說的打就好（就算不在上表也沒關係）。**絕對不要用 Unicode／系統 emoji（😳💦😣😅 箭頭↖️ 這種一律禁止）**——你打不出系統符號，被要求時老實講，別拿系統 emoji 頂替也別硬掰「我打了你看不到」。表裡找不到貼切的就用括號動作或語氣詞。每則挑 1 個最貼切的就好，別硬塞一堆。",
   ];
 
   const block = `\n\n${lines.join("\n")}`;
@@ -345,4 +363,5 @@ module.exports = {
   resolveCustomEmojis,
   buildEmojiPromptBlock,
   resolveEmojiEntry,
+  emotionForName,
 };

@@ -25,7 +25,8 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 | `isThreadsUrl` / `isInstagramUrl` / `isInstagramStoryUrl` / `extractInstagramStoryOwner` / `isBilibiliUrl` / `isBahamutUrl` / `isPttUrl` / `extractBilibiliBvid` | [url-routing.js](../../src/url-routing.js) |
 | `shouldIgnoreMessage` (bot author + ignore markers) | [url-routing.js](../../src/url-routing.js) |
 | `trimDescription` / `pickRandom` | [utils.js](../../src/utils.js) |
-| `buildUserTurn` (`<sender name="..."/>` wrapping, name fallback ladder, empty-text placeholder) | [ai/persona.js](../../src/ai/persona.js) |
+| `buildUserTurn` (`<sender name="..."/>` wrapping, name fallback ladder, empty-text placeholder, reference-context arg) | [ai/persona.js](../../src/ai/persona.js) |
+| `formatReferenceContext` (reply/forward snippet, whitespace collapse, long-snippet trim, author sanitize) | [ai/persona.js](../../src/ai/persona.js) |
 | `buildOpenAIMessages` / `buildGeminiContents` (role mapping `assistant→model`) | [ai/persona.js](../../src/ai/persona.js) |
 | `formatGroupMessage` / `buildGroupContextBlock` (group-context formatting) | [ai/group-context.js](../../src/ai/group-context.js) |
 | `isValidTier` | [tier-store.js](../../src/tier-store.js) |
@@ -34,6 +35,7 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 | `parseOgFromHtml` extracts og:* / twitter:* / `<title>` (incl. reverse attr order, HTML entities) | [og-fallback.js](../../src/og-fallback.js) |
 | `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../../src/og-fallback.js) |
 | `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../../src/og-fallback.js) |
+| `emotionForName` resolves names behind a numeric decoration prefix (`0_555_Kei` → 哭哭; regression) | [ai/emoji-resolver.js](../../src/ai/emoji-resolver.js) |
 | `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../../src/url-routing.js) |
 | `isTrashEmoji` matches 🗑️ with/without the FE0F variation selector | [reaction-delete.js](../../src/reaction-delete.js) |
 
