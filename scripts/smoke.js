@@ -1218,6 +1218,40 @@ it("buildEmojiPromptBlock examples only use available emoji names", () => {
   assert.doesNotMatch(block, /:Ha_seal:/);
   assert.doesNotMatch(block, /:555_dog:/);
 });
+// Build a snowflake id whose embedded timestamp is `ms` since Unix epoch, so the
+// "new" window can be exercised relative to the current wall clock (no fixed id
+// that would rot as real time passes).
+const DISCORD_EPOCH_TEST = 1420070400000;
+const snowflakeForMs = (ms) => String(BigInt(ms - DISCORD_EPOCH_TEST) << 22n);
+it("buildEmojiPromptBlock tags recent + animated emoji and lists new ones first", () => {
+  const map = new Map([
+    ["Good_shark", { id: snowflakeForMs(Date.parse("2020-01-01T00:00:00Z")), animated: false }],
+    ["Waku_fresh", { id: snowflakeForMs(Date.now()), animated: true }],
+  ]);
+  const block = buildEmojiPromptBlock(map);
+  // recent + animated → both tags
+  assert.match(block, /:Waku_fresh:【新】（動態） /);
+  // old one is neither new nor animated
+  assert.doesNotMatch(block, /:Good_shark:【新】/);
+  assert.doesNotMatch(block, /:Good_shark:（動態）/);
+  // new emoji is listed before the old one
+  assert.ok(block.indexOf("Waku_fresh") < block.indexOf("Good_shark"));
+});
+it("buildEmojiPromptBlock surfaces a recent emoji even with no hint", () => {
+  const map = new Map([
+    ["zzq_novelname", { id: snowflakeForMs(Date.now()), animated: false }],
+  ]);
+  const block = buildEmojiPromptBlock(map);
+  // no derivable emotion, but new → still shown, tagged 【新】, with a neutral note
+  assert.match(block, /:zzq_novelname:【新】 /);
+  assert.match(block, /新的，還沒固定用法/);
+});
+it("buildEmojiPromptBlock keeps a context gate on suggestive emoji", () => {
+  const map = new Map([["Pepe_OK", { id: "1", animated: false }]]);
+  const block = buildEmojiPromptBlock(map);
+  // style fix: 好色/曖昧 emoji stay available but are time-gated, not banned
+  assert.match(block, /看場合/);
+});
 
 // --- user-profile-store ---
 const profileStore = require("../src/user-profile-store");

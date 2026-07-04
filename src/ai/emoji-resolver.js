@@ -285,26 +285,65 @@ function resolveCustomEmojis(text, emojiMap) {
     .trim();
 }
 
+// Custom emoji ids are Discord snowflakes: the high 42 bits are a millisecond
+// timestamp, so a larger id means a more recently created emoji. This lets us
+// flag "最近新增" emoji straight from the id — no extra bookkeeping, no gateway
+// event needed. Kept dependency-free (no discord.js import) so the module stays
+// unit-testable in isolation.
+const DISCORD_EPOCH = 1420070400000;
+const NEW_EMOJI_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 天內建立的算「新」
+
+function emojiCreatedAt(id) {
+  try {
+    return Number(BigInt(id) >> 22n) + DISCORD_EPOCH;
+  } catch {
+    return 0;
+  }
+}
+
 // The emoji table is stable for a whole bot session (the guild emoji cache
 // rarely changes), but generateAIReply rebuilds the system prompt on every
-// call. Memoize on the set of emoji names so we don't re-walk the map + rebuild
-// the (large) string each reply. Cache key is the sorted name list.
+// call. Memoize on the sorted name list PLUS the current "new" set so we don't
+// re-walk the map + rebuild the (large) string each reply, yet still refresh
+// when an emoji ages out of the new-window or a fresh one is added.
 let _promptCache = { sig: null, block: "" };
 
 function buildEmojiPromptBlock(emojiMap) {
   if (!emojiMap || emojiMap.size === 0) return "";
 
   const names = [...emojiMap.keys()].sort();
-  const sig = names.join(",");
+
+  // "New" = created within NEW_EMOJI_WINDOW_MS (derived from the snowflake id).
+  // Folded into the memo signature so the block rebuilds when the new-set drifts,
+  // not only when the name set changes.
+  const newCutoff = Date.now() - NEW_EMOJI_WINDOW_MS;
+  const newSet = new Set(
+    names.filter((name) => emojiCreatedAt(emojiMap.get(name)?.id) >= newCutoff),
+  );
+  const sig = `${names.join(",")}|new:${[...newSet].join(",")}`;
   if (_promptCache.sig === sig) return _promptCache.block;
 
-  // One row per emoji we can confidently describe (exact hint or prefix). Emoji
-  // with no derivable emotion are skipped — they're noise the model would misuse.
-  const rows = [];
-  for (const name of names) {
+  // One row per emoji. The tags are metadata for the model, not part of the token:
+  //   【新】  — created within the new-window; these are listed FIRST so 西寶 can
+  //            honour "用新的貼圖" instead of scanning the whole table and grabbing
+  //            whatever stands out (which is how it kept landing on the spicy ones).
+  //   （動態）— animated emoji, so it can honour "用動態的".
+  // Emoji with no derivable emotion are normally skipped (noise the model would
+  // misuse) — EXCEPT new ones, which we surface with a neutral note so a freshly
+  // added emoji with a novel name isn't invisible exactly when someone asks 西寶
+  // to try it.
+  const makeRow = (name) => {
+    const entry = emojiMap.get(name);
+    const isNew = newSet.has(name);
     const emotion = emotionForName(name);
-    if (emotion) rows.push(`:${name}: ${emotion}`);
-  }
+    if (!emotion && !isNew) return null;
+    const tags = `${isNew ? "【新】" : ""}${entry?.animated ? "（動態）" : ""}`;
+    return `:${name}:${tags} ${emotion || "新的，還沒固定用法，看情境自由發揮"}`;
+  };
+
+  // New emoji first; each group keeps alphabetical order (names is pre-sorted).
+  const ordered = [...newSet, ...names.filter((name) => !newSet.has(name))];
+  const rows = ordered.map(makeRow).filter(Boolean);
 
   if (rows.length === 0) {
     _promptCache = { sig, block: "" };
@@ -329,10 +368,10 @@ function buildEmojiPromptBlock(emojiMap) {
   const lines = [
     "## 你超愛用的群組自訂 emoji（用 :name: 格式打出來，系統會自動轉成圖片）",
     "這些是這個群的梗圖 emoji，你平常聊天會自然夾進句子表達情緒——情緒一上來（害羞、驚訝、無言、開心、哭哭、吐槽）就從下表挑一個丟進句子，不要客氣。",
-    "查表用——每項是「:名字: 用途/情緒」：",
+    "查表用——每項是「:名字:【新】（動態） 用途/情緒」。標【新】的是群裡最近才加的，有人說「用新的貼圖／新的 emoji」時就從標【新】的裡面挑；標（動態）的是動態 emoji：",
     rows.join("　｜　"),
-    `範例（照這格式把 :name: 寫進句子裡，只能使用上表出現過的名字）：${examples.join("")}`,
-    "**只能用上表這些群組自訂 :name: emoji，絕對不要用 Unicode／系統 emoji（😳💦😣😅 這種一律禁止）**。表裡找不到貼切的就用括號動作或語氣詞，別拿系統 emoji 頂替。每則挑 1 個最貼切的就好，別硬塞一堆。",
+    `範例（照這格式把 :name: 寫進句子，標註的【新】（動態）是給你看的、打字時不要打出來，只能用上表出現過的名字）：${examples.join("")}`,
+    "**只能用上表這些群組自訂 :name: emoji，絕對不要用 Unicode／系統 emoji（😳💦😣😅 這種一律禁止）**。表裡找不到貼切的就用括號動作或語氣詞，別拿系統 emoji 頂替。每則挑 1 個最貼切的就好，別硬塞一堆。帶性暗示、黃或身體梗那類 emoji 要看場合——只在對方也在開黃腔、氣氛曖昧時才用；一般聊天、人家在問你問題或聊正經事（像在問貼圖、功能）時丟那種會很出戲，收斂點、讀空氣。",
   ];
 
   const block = `\n\n${lines.join("\n")}`;
