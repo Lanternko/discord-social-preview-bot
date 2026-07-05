@@ -564,6 +564,35 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     }
   });
 
+  await it("bilibili share-tracking params don't leak into the miss fixer URL", async () => {
+    _mockFetch = async (apiUrl) => {
+      if (typeof apiUrl === "string" && apiUrl.includes("/x/web-interface/view")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            code: 0,
+            data: { title: "B站影片", desc: null, pic: null, owner: null },
+          }),
+        };
+      }
+      throw new Error("unexpected fetch");
+    };
+    try {
+      const p = await buildBilibiliPayload(
+        "https://www.bilibili.com/video/BV1xx?buvid=XUC8E44&mid=xnHnld&p=1&plat_id=116&share_from=ugc&up_id=63231",
+      );
+      assert.equal(
+        p.videoAttachmentMissContent,
+        "https://vxbilibili.com/video/BV1xx",
+        "miss URL must be the minimal canonical form, not the tracking-param wall",
+      );
+      assert.equal(p.recoverUrls[0], "https://vxbilibili.com/video/BV1xx");
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
   await it("bilibili API failure → fixer URL + recoverUrls", async () => {
     _mockFetch = async () => {
       throw new Error("network down");

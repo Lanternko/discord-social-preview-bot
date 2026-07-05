@@ -118,6 +118,12 @@ async function buildBilibiliPayload(url) {
       const videoAttachment = bvid
         ? `https://media.${FIXER_BILIBILI}/video/${bvid}/1`
         : undefined;
+      // The expanded b23.tv URL drags a wall of share-tracking params
+      // (buvid/mid/plat_id/…) into the fixer URL. When the BVID is known,
+      // post the minimal canonical form instead — same unfurl, readable text.
+      const cleanFixerUrl = bvid
+        ? `https://${FIXER_BILIBILI}/video/${bvid}`
+        : fixerUrl;
       console.log(
         `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)} video=${Boolean(videoAttachment)}`,
       );
@@ -138,9 +144,9 @@ async function buildBilibiliPayload(url) {
               // a 55 MB video still gets a native player. If that unfurl comes
               // up empty, the empty-embed pipeline restores the cover embed
               // (embedFallback), then OG recovery.
-              videoAttachmentMissContent: fixerUrl,
+              videoAttachmentMissContent: cleanFixerUrl,
               embedFallback: { embeds: [buildBilibiliEmbed(url, metadata)] },
-              recoverUrls: [fixerUrl],
+              recoverUrls: [cleanFixerUrl],
               recoverEmbedOptions: {
                 color: 0x00a1d6,
                 footerText: "Bilibili · 預覽降級",
