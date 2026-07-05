@@ -1943,6 +1943,114 @@ it("rejects other emoji and non-strings", () => {
   assert.equal(isTrashEmoji(undefined), false);
 });
 
+console.log("daily-recap context");
+const {
+  buildMessagePreview,
+  buildMessageContext,
+  buildRecapStats,
+} = require("../src/daily-recap");
+
+// Minimal discord.js Collection stand-in: size / values / filter / map.
+function recapColl(items) {
+  return {
+    size: items.length,
+    values: () => items[Symbol.iterator](),
+    filter: (fn) => recapColl(items.filter(fn)),
+    map: (fn) => items.map(fn),
+  };
+}
+
+function recapMsg({
+  id,
+  ch = "c1",
+  chName = "閃現",
+  author = "小翔",
+  ts = 0,
+  content = "",
+  reactions = [],
+  stickers = [],
+}) {
+  return {
+    id,
+    channelId: ch,
+    channel: { id: ch, name: chName },
+    author: { id: `id-${author}`, bot: false, username: author },
+    member: { displayName: author },
+    content,
+    createdTimestamp: ts,
+    reactions: {
+      cache: recapColl(
+        reactions.map(([name, count]) => ({ emoji: { id: null, name }, count })),
+      ),
+    },
+    stickers: recapColl(stickers.map((name) => ({ name }))),
+    attachments: recapColl([]),
+  };
+}
+
+it("buildMessagePreview: sticker-only message shows the sticker name", () => {
+  const m = recapMsg({ id: "s1", stickers: ["起床重睡"] });
+  assert.equal(buildMessagePreview(m), "（貼圖：起床重睡）");
+});
+
+it("buildMessagePreview: long content truncated at 60 chars", () => {
+  const m = recapMsg({ id: "s2", content: "字".repeat(80) });
+  assert.equal(buildMessagePreview(m), "字".repeat(60) + "…");
+});
+
+it("buildMessagePreview: no content/sticker/attachment → 嵌入 placeholder", () => {
+  assert.equal(buildMessagePreview(recapMsg({ id: "s3" })), "（嵌入/連結）");
+});
+
+it("buildRecapStats: top-reacted message carries chronological context with the target marked", () => {
+  const msgs = [];
+  for (let i = 1; i <= 8; i++) {
+    msgs.push(
+      recapMsg({
+        id: `m${i}`,
+        ts: i,
+        content: `第${i}句`,
+        author: i % 2 ? "小翔" : "濤濤",
+        reactions: i === 6 ? [["😂", 5]] : [],
+      }),
+    );
+  }
+  // A different channel's message must never leak into c1's context.
+  msgs.push(recapMsg({ id: "x1", ch: "c2", chName: "蘑菇鳥", ts: 5, content: "別的頻道" }));
+
+  const stats = buildRecapStats(msgs);
+  assert.equal(stats.topReacted.length, 1);
+  const ctx = stats.topReacted[0].context;
+  // 4 before (m2..m5) + target (m6) + 2 after (m7, m8) = 7 lines
+  assert.equal(ctx.length, 7);
+  assert.match(ctx[0], /第2句/);
+  assert.match(ctx[4], /第6句/);
+  assert.match(ctx[4], /就是這句拿到反應/);
+  assert.match(ctx[6], /第8句/);
+  assert.ok(ctx.every((l) => !l.includes("別的頻道")));
+  // Only the target line carries the marker.
+  assert.equal(ctx.filter((l) => l.includes("就是這句拿到反應")).length, 1);
+});
+
+it("buildRecapStats: sticker-only reacted message gets sticker-name preview and context", () => {
+  const msgs = [
+    recapMsg({ id: "a1", ts: 1, content: "有人對後面很敏感喔", author: "狗哥" }),
+    recapMsg({ id: "a2", ts: 2, stickers: ["尷尬的Rin"], author: "濤濤", reactions: [["🤣", 4]] }),
+    recapMsg({ id: "a3", ts: 3, content: "D包廂", author: "狗哥" }),
+  ];
+  const stats = buildRecapStats(msgs);
+  const top = stats.topReacted[0];
+  assert.equal(top.preview, "（貼圖：尷尬的Rin）");
+  assert.match(top.context.join("\n"), /有人對後面很敏感喔/);
+  assert.match(top.context.join("\n"), /D包廂/);
+  assert.match(top.context.join("\n"), /貼圖：尷尬的Rin/);
+});
+
+it("buildMessageContext: target missing from pool returns empty (no crash)", () => {
+  const target = recapMsg({ id: "ghost", ts: 9 });
+  assert.deepEqual(buildMessageContext(target, []), []);
+});
+
 console.log("");
 console.log(`Result: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
