@@ -13,6 +13,9 @@
 const assert = require("node:assert/strict");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
+// Owner-delete tests below assume exactly this owner list. Set before any
+// require so config.js snapshots it at import.
+process.env.BOT_OWNER_IDS = "OWNER";
 
 // === MOCK SETUP ===
 // Pre-require the modules whose exports we need to override, then poke their
@@ -699,6 +702,24 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: true });
     await handleReactionDelete(reaction, { id: "MOD", bot: false }, DELETE_CLIENT);
     assert.equal(state.deleted, true);
+  });
+
+  await it("bot owner deletes without being poster or mod", async () => {
+    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: false });
+    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+  });
+
+  await it("bot owner deletes an orphaned preview (reference gone)", async () => {
+    const { reaction, state } = makeTrashReaction({ hasReference: false, canManage: false });
+    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+  });
+
+  await it("owner privilege still never touches non-西寶 messages", async () => {
+    const { reaction, state } = makeTrashReaction({ authorId: "HUMAN" });
+    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
   });
 
   await it("never deletes a message 西寶 did not author", async () => {

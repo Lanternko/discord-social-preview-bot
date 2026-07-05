@@ -178,6 +178,9 @@ module.exports = {
   AI_LONG_TERM_MEMORY_ENABLED:
     (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() === "true",
   EMOJI_TRUSTED_GUILD_IDS: parseCsvEnv("EMOJI_TRUSTED_GUILD_IDS"),
+  // Bot owners (comma-separated user IDs): may 🗑️-delete ANY of 西寶's
+  // messages in any guild, bypassing the poster/ManageMessages checks.
+  BOT_OWNER_IDS: parseCsvEnv("BOT_OWNER_IDS"),
   AI_PERSONA: process.env.AI_PERSONA || DEFAULT_AI_PERSONA,
   DEFAULT_AI_PERSONA,
   THREADS_EMBED_COLOR: 0x101010,
