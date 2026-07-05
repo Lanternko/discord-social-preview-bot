@@ -93,6 +93,7 @@ Handler: [src/reaction-delete.js](../../src/reaction-delete.js), wired as `messa
 
 - **Scope**: any message authored by 西寶 (preview, AI reply, fortune, recap…), never anyone else's.
 - **Emoji**: 🗑️ only (`U+1F5D1`). `isTrashEmoji` strips the optional `U+FE0F` variation selector so both `🗑` and `🗑️` match; other emoji (❌, 🚮) are ignored.
+- **Context menu twin**: right-click a message → Apps > `刪除西寶訊息` (message context menu command, registered in [src/commands.js](../../src/commands.js) as `DELETE_MESSAGE_COMMAND`, handled by `handleDeleteMessageContext`). Same `isAuthorizedToDelete` gate as the reaction; unlike the reaction every path replies ephemerally (interactions must be acknowledged).
 - **Authorization** (conservative, to stop griefing):
   0. A **bot owner** (`BOT_OWNER_IDS` env, comma-separated user IDs) → delete, any guild, no other checks. Checked first — works even on orphaned previews whose reference is gone.
   1. The **link poster** — 西寶's preview is a `message.reply`, so `fetchReference()` gives the original author's id with no persistent state. If the reactor is that author → delete.

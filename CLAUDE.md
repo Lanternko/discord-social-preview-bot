@@ -39,7 +39,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 - **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](.claude/rules/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).
-- **刪除西寶的訊息**：在西寶發的**任何**訊息上按 🗑️ 反應 → 貼連結的本人（用 reply reference 認出，不需額外狀態）或有 `ManageMessages` 的管理員可刪掉那則（清掉傳錯連結的誤發預覽）。只動西寶自己的訊息。需 `GuildMessageReactions` intent + Message/Channel/Reaction partials（皆已設於 [src/index.js](src/index.js)）。實作 [src/reaction-delete.js](src/reaction-delete.js)，grep `[delete]`。
+- **刪除西寶的訊息**：在西寶發的**任何**訊息上按 🗑️ 反應，**或**右鍵 → 應用程式 > `刪除西寶訊息`（context menu，實作在 [src/commands.js](src/commands.js)）→ 貼連結的本人（用 reply reference 認出，不需額外狀態）、有 `ManageMessages` 的管理員，或 `BOT_OWNER_IDS` 裡的 bot owner 可刪掉那則。只動西寶自己的訊息。需 `GuildMessageReactions` intent + Message/Channel/Reaction partials（皆已設於 [src/index.js](src/index.js)）。反應路徑實作 [src/reaction-delete.js](src/reaction-delete.js)，grep `[delete]`。
 
 ## Workflow
 

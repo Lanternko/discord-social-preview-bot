@@ -1,5 +1,6 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
+const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
 const {
   TIERS,
@@ -186,6 +187,17 @@ const AI_KEY_COMMAND = {
   ],
 };
 
+// Message context menu command (Apps > 刪除西寶訊息) — same authorization as
+// the 🗑️ reaction (poster / ManageMessages mod / bot owner), for people who
+// reach for a menu instead of a reaction. type 3 = MESSAGE context menu;
+// description MUST be "" (API rejects non-empty for context menu commands,
+// and commandSpecMatches needs it present to diff stably).
+const DELETE_MESSAGE_COMMAND = {
+  name: "刪除西寶訊息",
+  description: "",
+  type: 3,
+};
+
 // Returns true when the registered command matches the expected spec on the
 // fields we care about. Currently checks description + defaultMemberPermissions
 // — extend here if we ever start diffing options.
@@ -217,6 +229,7 @@ async function ensureApplicationCommands(client) {
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
     AI_KEY_COMMAND,
+    DELETE_MESSAGE_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -772,7 +785,69 @@ async function handleAiKeyCommand(interaction) {
   }
 }
 
+// Apps > 刪除西寶訊息 — menu-flavoured twin of the 🗑️ reaction. Shares
+// isAuthorizedToDelete (poster via reply reference / ManageMessages mod /
+// BOT_OWNER_IDS) and, like the reaction, never touches a non-西寶 message.
+// Unlike the reaction, an interaction MUST be acknowledged — every path
+// replies ephemerally so only the clicker sees the outcome.
+async function handleDeleteMessageContext(interaction, client) {
+  let message = interaction.targetMessage;
+  if (message?.partial) {
+    try {
+      message = await message.fetch();
+    } catch (error) {
+      await interaction.reply({
+        content: `讀不到這則訊息（${error.message}），刪除失敗。`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+
+  if (!message || message.author?.id !== client.user.id) {
+    await interaction.reply({
+      content: "這不是西寶的訊息，我只能刪西寶自己發的喔。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!(await isAuthorizedToDelete(message, interaction.user))) {
+    await interaction.reply({
+      content:
+        "你沒有刪這則的權限——要是觸發這則預覽的本人、有「管理訊息」權限的管理員，或 bot owner。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    await message.delete();
+    console.log(
+      `[delete] removed message id=${message.id} by=${interaction.user.id} via=context-menu`,
+    );
+    await interaction.reply({
+      content: "刪掉了。",
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.warn(`[delete] context-menu delete failed: ${error.message}`);
+    await interaction.reply({
+      content: `刪除失敗：${error.message}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 async function handleInteraction(interaction, client) {
+  if (
+    interaction.isMessageContextMenuCommand?.() &&
+    interaction.commandName === DELETE_MESSAGE_COMMAND.name
+  ) {
+    await handleDeleteMessageContext(interaction, client);
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   if (interaction.commandName === SERVER_COUNT_COMMAND.name) {
@@ -818,6 +893,8 @@ module.exports = {
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
   AI_KEY_COMMAND,
+  DELETE_MESSAGE_COMMAND,
+  handleDeleteMessageContext,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
   handleTierCommand,

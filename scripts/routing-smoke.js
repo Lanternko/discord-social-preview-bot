@@ -769,6 +769,54 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(state.deleted, false);
   });
 
+  // === CONTEXT MENU DELETE (commands.js) ===
+  // Apps > 刪除西寶訊息 shares isAuthorizedToDelete with the 🗑️ reaction; what's
+  // new here is the interaction plumbing (targetMessage + mandatory ephemeral
+  // acknowledgement), so assert both the auth outcome and that every path replies.
+  console.log("handleDeleteMessageContext — context menu twin");
+  const { handleDeleteMessageContext } = require("../src/commands");
+
+  function makeDeleteInteraction(messageOpts, userId) {
+    const { reaction, state } = makeTrashReaction(messageOpts);
+    const replies = [];
+    return {
+      interaction: {
+        targetMessage: reaction.message,
+        user: { id: userId, bot: false },
+        reply: async (p) => replies.push(p),
+      },
+      state,
+      replies,
+    };
+  }
+
+  await it("context menu: owner deletes and gets an ephemeral ack", async () => {
+    const { interaction, state, replies } = makeDeleteInteraction({ canManage: false }, "OWNER");
+    await handleDeleteMessageContext(interaction, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+    assert.equal(replies.length, 1, "interaction must be acknowledged");
+  });
+
+  await it("context menu: poster deletes via reply reference", async () => {
+    const { interaction, state } = makeDeleteInteraction({ origAuthorId: "POSTER" }, "POSTER");
+    await handleDeleteMessageContext(interaction, DELETE_CLIENT);
+    assert.equal(state.deleted, true);
+  });
+
+  await it("context menu: random user is refused but still acknowledged", async () => {
+    const { interaction, state, replies } = makeDeleteInteraction({ canManage: false }, "RANDO");
+    await handleDeleteMessageContext(interaction, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
+    assert.equal(replies.length, 1, "refusal must still reply ephemerally");
+  });
+
+  await it("context menu: never deletes a non-西寶 message, even for owner", async () => {
+    const { interaction, state, replies } = makeDeleteInteraction({ authorId: "HUMAN" }, "OWNER");
+    await handleDeleteMessageContext(interaction, DELETE_CLIENT);
+    assert.equal(state.deleted, false);
+    assert.equal(replies.length, 1);
+  });
+
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
 
