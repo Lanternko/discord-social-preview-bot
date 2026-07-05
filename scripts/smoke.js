@@ -1818,6 +1818,10 @@ it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", ()
   assert.match(built.prompt, /搖E露營/);
   assert.match(built.prompt, /今晚故事模式/);
   assert.match(built.prompt, /可用靈感素材/);
+  // coherence rules: few threaded items, no one-off props, character interaction
+  assert.match(built.prompt, /挑 1～3 個/);
+  assert.match(built.prompt, /只出現一次、對主線沒作用的東西就刪掉/);
+  assert.match(built.prompt, /角色之間有互動和對話/);
   assert.match(built.prompt, /dream-chatroom/);
   assert.ok(built.modeKey);
   assert.equal(built.dateKey, "2026-05-29");
