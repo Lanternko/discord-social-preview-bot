@@ -50,6 +50,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
    ln -sf "$(pwd)/node_modules" ../dspb-<feature>/node_modules   #   so link (or reinstall) per worktree
    ```
    Work, commit, and run/deploy the bot from that worktree. `git worktree list` shows who's on what; `git worktree remove <path>` when done. (The harness may reset cwd back to the main dir between commands — address the worktree by absolute path or `git -C <path>`.)
+   ⚠️ **Never `git add -A` in a worktree before checking `git status` for the `.env`/`node_modules`/`data` symlinks.** A trailing-slash gitignore pattern (`data/`) does NOT match a symlink, so `add -A` commits it — and checking that branch out in the main tree then **replaces the real directory with a self-pointing link, deleting its contents** (lost `data/` once, 2026-07-05; recovered from the running bot's memory). `.gitignore` now uses slash-less patterns to block this, but older branches may predate the fix — verify with `git ls-tree <branch> -- data node_modules .env` before any checkout in the main tree.
 1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
