@@ -1,4 +1,9 @@
-node_modules/
+# No trailing slash on node_modules/data: `x/` only matches a real DIRECTORY,
+# so a worktree's `node_modules -> main/node_modules` SYMLINK slips past it —
+# `git add -A` then commits the symlink, and checking that branch out in the
+# main tree REPLACES the real (ignored = expendable) dirs with self-pointing
+# links, deleting their contents. Cost us data/ once (2026-07-05).
+node_modules
 .env
 .env.*
 !.env.example
@@ -9,5 +14,5 @@ stop-bot.command
 bot.log
 bot.log.*
 *.log
-data/
+data
 
