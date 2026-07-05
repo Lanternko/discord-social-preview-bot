@@ -538,6 +538,24 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
         !Array.isArray(p.videoAttachmentEmbeds),
         "content info bar replaces the old slim-embed approach",
       );
+      // When the upload MISSES (e.g. video over the guild's 25 MiB cap), the
+      // payload degrades to the fixer link — Discord streams vxbilibili's
+      // og:video, so big videos still get a native player — with the cover
+      // embed as embedFallback and OG recovery behind it.
+      assert.equal(
+        p.videoAttachmentMissContent,
+        "https://vxbilibili.com/video/BV1xx",
+        "miss must degrade to the fixer URL, not the cover embed",
+      );
+      assert.ok(
+        p.embedFallback?.embeds?.length === 1 &&
+          p.embedFallback.embeds[0].data.image,
+        "cover embed rides along as the fixer's empty-unfurl fallback",
+      );
+      assert.ok(
+        Array.isArray(p.recoverUrls) && p.recoverUrls.length >= 1,
+        "OG recovery backs the miss path",
+      );
     } finally {
       _mockFetch = null;
     }

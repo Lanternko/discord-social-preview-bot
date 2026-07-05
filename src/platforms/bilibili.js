@@ -114,8 +114,6 @@ async function buildBilibiliPayload(url) {
       // (verified: 200 video/mp4, no auth token — the ?_= query is a cache-buster
       // only). Hand it to discord-io as a `videoAttachment` so the API embed
       // (title / UP 主 / cover) gets a real uploaded player below it, MIXED-style.
-      // On any miss (too big / disabled / at capacity / fetch fail) the payload
-      // degrades to the cover embed alone — same guards as Threads video.
       const bvid = extractBilibiliBvid(targetUrl);
       const videoAttachment = bvid
         ? `https://media.${FIXER_BILIBILI}/video/${bvid}/1`
@@ -124,7 +122,7 @@ async function buildBilibiliPayload(url) {
         `[preview] bilibili-api-embed ${url} title=${metadata.title.slice(0, 32)} video=${Boolean(videoAttachment)}`,
       );
       return {
-        // `embeds` (with cover) is what shows if the video can't attach.
+        // `embeds` (with cover) is what shows if there's no video to attach.
         embeds: [buildBilibiliEmbed(url, metadata)],
         ...(videoAttachment
           ? {
@@ -133,6 +131,21 @@ async function buildBilibiliPayload(url) {
               // this info bar as message content ABOVE the player — clickable
               // title + Bilibili mark, no duplicate cover, no embed box.
               videoAttachmentContent: buildBilibiliVideoCaption(url, metadata),
+              // When the upload MISSES (too big / disabled / at capacity /
+              // fetch fail), fall back to the fixer link instead of the cover:
+              // Discord unfurls vxbilibili's og:video by STREAMING the remote
+              // mp4 — no upload, so the 25 MiB guild cap doesn't apply and even
+              // a 55 MB video still gets a native player. If that unfurl comes
+              // up empty, the empty-embed pipeline restores the cover embed
+              // (embedFallback), then OG recovery.
+              videoAttachmentMissContent: fixerUrl,
+              embedFallback: { embeds: [buildBilibiliEmbed(url, metadata)] },
+              recoverUrls: [fixerUrl],
+              recoverEmbedOptions: {
+                color: 0x00a1d6,
+                footerText: "Bilibili · 預覽降級",
+              },
+              sourceUrl: url,
             }
           : {}),
       };

@@ -117,22 +117,34 @@ async function suppressOriginalEmbeds(message) {
 }
 
 // A payload may carry `videoAttachment` (a direct mp4 URL). Try to download +
-// re-upload it so Discord shows a real playable video the bot controls; on any
-// miss (too big / disabled / at capacity / fetch fail) return the payload
-// untouched so it keeps its existing behaviour — the carousel for a MIXED post,
-// or the fixer chain for a video-only post. Returns the message body to send.
+// re-upload it so Discord shows a real playable video the bot controls; on a
+// miss (too big / disabled / at capacity / fetch fail) the payload keeps its
+// existing behaviour — the carousel for a MIXED post, the fixer chain for a
+// video-only post — unless it supplied `videoAttachmentMissContent`, a fixer
+// URL to swap in instead: Discord unfurls the fixer's og:video by streaming
+// the remote mp4, so a video over the guild's upload cap still gets a native
+// player. Returns the message body to send.
 async function resolveOutgoing(payload, message) {
   const base = { ...payload };
   const videoUrl = base.videoAttachment;
   const attachmentEmbeds = base.videoAttachmentEmbeds;
   const attachmentContent = base.videoAttachmentContent;
+  const missContent = base.videoAttachmentMissContent;
   delete base.videoAttachment;
   delete base.videoAttachmentEmbeds;
   delete base.videoAttachmentContent;
+  delete base.videoAttachmentMissContent;
   if (!videoUrl) return base;
 
   const attachment = await fetchVideoAttachment(videoUrl, message.guild);
-  if (!attachment) return base;
+  if (!attachment) {
+    if (typeof missContent === "string" && missContent) {
+      console.log(`[video] miss → fixer unfurl ${missContent}`);
+      base.content = missContent;
+      delete base.embeds;
+    }
+    return base;
+  }
 
   base.files = [
     new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
