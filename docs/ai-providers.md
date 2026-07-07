@@ -2,9 +2,9 @@
 
 ## Entry point
 
-`generateAIReply(message, userText)` in [src/ai/chain.js](../../src/ai/chain.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()` (from [src/ai/persona.js](../../src/ai/persona.js)), resolves the guild's `/ai-tier`, builds a per-guild provider chain via `buildGuildChain()`, then iterates over that chain.
+`generateAIReply(message, userText)` in [src/ai/chain.js](../src/ai/chain.js) is the single entry point for `@西寶` AI replies. It builds a `userTurn` string via `buildUserTurn()` (from [src/ai/persona.js](../src/ai/persona.js)), resolves the guild's `/ai-tier`, builds a per-guild provider chain via `buildGuildChain()`, then iterates over that chain.
 
-Provider implementations live in [src/ai/providers.js](../../src/ai/providers.js); per-channel memory in [src/ai/memory.js](../../src/ai/memory.js).
+Provider implementations live in [src/ai/providers.js](../src/ai/providers.js); per-channel memory in [src/ai/memory.js](../src/ai/memory.js).
 
 **First non-null reply wins.** On null/error, move to the next layer. Chain exhausted → returns `null` → mention handler falls back to hardcoded replies.
 
@@ -27,12 +27,12 @@ If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipp
 - All providers use `withAbortTimeout()` for timeout + error handling.
 - DeepSeek + Groq share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
-- Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../../src/ai/providers.js).
+- Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../src/ai/providers.js).
 - Any per-layer failure triggers the next layer — **bot never goes silent**.
 
 ## Circuit breaker
 
-[src/ai/circuit.js](../../src/ai/circuit.js) keeps a per-provider-label cooldown so the chain doesn't waste `AI_TIMEOUT_MS` (8 s) re-trying a known-broken provider on every mention.
+[src/ai/circuit.js](../src/ai/circuit.js) keeps a per-provider-label cooldown so the chain doesn't waste `AI_TIMEOUT_MS` (8 s) re-trying a known-broken provider on every mention.
 
 **State** is `Map<label, { cooldownUntil, lastFailureKind, lastFailureAt, failCount }>`, in-memory, cleared on restart. Same lifetime model as `aiConversationHistory`.
 
@@ -47,7 +47,7 @@ If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipp
 | `empty` | 0 s (no cooldown) | Content issue (safety block / empty candidate), not a provider issue — let next call try again |
 | anything else | 30 s | Defensive default |
 
-**Where it's wired** — [src/ai/chain.js](../../src/ai/chain.js) `runProviderChain`:
+**Where it's wired** — [src/ai/chain.js](../src/ai/chain.js) `runProviderChain`:
 
 1. Before each provider call: `isProviderAvailable(label)`. If cooling, log `[ai] skip cooling-down provider=<label>` and continue to next.
 2. After call: `recordProviderSuccess(label)` (clears state) on `{ ok: true }`; `recordProviderFailure(label, failure)` on `{ ok: false }`.
