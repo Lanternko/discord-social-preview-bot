@@ -1,6 +1,6 @@
 # Smoke tests
 
-Three self-contained Node scripts under [scripts/](../../scripts/). No Jest, no Mocha — each script is `node scripts/<name>.js`, exits non-zero on any failure. They share one stub: `process.env.DISCORD_TOKEN = "smoke-dummy"` so `src/config.js` doesn't crash on import.
+Three self-contained Node scripts under [scripts/](../scripts/). No Jest, no Mocha — each script is `node scripts/<name>.js`, exits non-zero on any failure. They share one stub: `process.env.DISCORD_TOKEN = "smoke-dummy"` so `src/config.js` doesn't crash on import.
 
 Why three layers and not one: pure-function tests can't reach payload-builder branch order, and payload-builder tests can't reach AI chain behaviour. Each layer plugs a different blind spot.
 
@@ -19,29 +19,29 @@ Fastest layer (no I/O, no mocks). Covers everything that takes plain values in a
 
 | What it covers | Module |
 |---|---|
-| `normalizeUrl` strips universal + host-gated tracking params | [url-routing.js](../../src/url-routing.js) |
-| `extractSupportedUrls` filters & dedups | [url-routing.js](../../src/url-routing.js) |
-| `replaceHostFixer` / `buildFallbackUrl` | [url-routing.js](../../src/url-routing.js) |
-| `isThreadsUrl` / `isInstagramUrl` / `isInstagramStoryUrl` / `extractInstagramStoryOwner` / `isBilibiliUrl` / `isBahamutUrl` / `isPttUrl` / `extractBilibiliBvid` | [url-routing.js](../../src/url-routing.js) |
-| `shouldIgnoreMessage` (bot author + ignore markers) | [url-routing.js](../../src/url-routing.js) |
-| `trimDescription` / `pickRandom` | [utils.js](../../src/utils.js) |
-| `buildUserTurn` (`<sender name="..."/>` wrapping, name fallback ladder, empty-text placeholder) | [ai/persona.js](../../src/ai/persona.js) |
-| `buildOpenAIMessages` / `buildGeminiContents` (role mapping `assistant→model`) | [ai/persona.js](../../src/ai/persona.js) |
-| `formatGroupMessage` / `buildGroupContextBlock` (group-context formatting) | [ai/group-context.js](../../src/ai/group-context.js) |
-| `isValidTier` | [tier-store.js](../../src/tier-store.js) |
-| `buildPersonaFromTemplate` placeholder substitution | [tier-config.js](../../src/tier-config.js) |
-| `getTierConfig` defaults to `brief` for missing guildId | [tier-config.js](../../src/tier-config.js) |
-| `parseOgFromHtml` extracts og:* / twitter:* / `<title>` (incl. reverse attr order, HTML entities) | [og-fallback.js](../../src/og-fallback.js) |
-| `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../../src/og-fallback.js) |
-| `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../../src/og-fallback.js) |
-| `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../../src/url-routing.js) |
-| `isTrashEmoji` matches 🗑️ with/without the FE0F variation selector | [reaction-delete.js](../../src/reaction-delete.js) |
+| `normalizeUrl` strips universal + host-gated tracking params | [url-routing.js](../src/url-routing.js) |
+| `extractSupportedUrls` filters & dedups | [url-routing.js](../src/url-routing.js) |
+| `replaceHostFixer` / `buildFallbackUrl` | [url-routing.js](../src/url-routing.js) |
+| `isThreadsUrl` / `isInstagramUrl` / `isInstagramStoryUrl` / `extractInstagramStoryOwner` / `isBilibiliUrl` / `isBahamutUrl` / `isPttUrl` / `extractBilibiliBvid` | [url-routing.js](../src/url-routing.js) |
+| `shouldIgnoreMessage` (bot author + ignore markers) | [url-routing.js](../src/url-routing.js) |
+| `trimDescription` / `pickRandom` | [utils.js](../src/utils.js) |
+| `buildUserTurn` (`<sender name="..."/>` wrapping, name fallback ladder, empty-text placeholder) | [ai/persona.js](../src/ai/persona.js) |
+| `buildOpenAIMessages` / `buildGeminiContents` (role mapping `assistant→model`) | [ai/persona.js](../src/ai/persona.js) |
+| `formatGroupMessage` / `buildGroupContextBlock` (group-context formatting) | [ai/group-context.js](../src/ai/group-context.js) |
+| `isValidTier` | [tier-store.js](../src/tier-store.js) |
+| `buildPersonaFromTemplate` placeholder substitution | [tier-config.js](../src/tier-config.js) |
+| `getTierConfig` defaults to `brief` for missing guildId | [tier-config.js](../src/tier-config.js) |
+| `parseOgFromHtml` extracts og:* / twitter:* / `<title>` (incl. reverse attr order, HTML entities) | [og-fallback.js](../src/og-fallback.js) |
+| `decodeHtmlEntities` covers named + decimal + hex entities | [og-fallback.js](../src/og-fallback.js) |
+| `hasUsefulMetadata` / `buildGenericFallbackEmbed` | [og-fallback.js](../src/og-fallback.js) |
+| `buildFallbackUrl` `redd.it` / `old.reddit.com` route to `rxddit` (regression) | [url-routing.js](../src/url-routing.js) |
+| `isTrashEmoji` matches 🗑️ with/without the FE0F variation selector | [reaction-delete.js](../src/reaction-delete.js) |
 
 **When to run**: every refactor touching URL handling, persona/template wiring, tier lookup, or group-context formatting. Cheap enough to run on every save.
 
 ## scripts/routing-smoke.js — payload builders with mocked probe
 
-Mocks [probe.js](../../src/probe.js) `fetchThreadsMetadata` / `fetchPageProbeMetadata` and `global.fetch` (for Bilibili API + b23.tv expansion + Instagram display-name probe), then asserts the shape of the payload returned by each builder.
+Mocks [probe.js](../src/probe.js) `fetchThreadsMetadata` / `fetchPageProbeMetadata` and `global.fetch` (for Bilibili API + b23.tv expansion + Instagram display-name probe), then asserts the shape of the payload returned by each builder.
 
 **Why this layer exists**: in PR #15 a Threads `if`-ladder reorder slipped past pure-function smoke twice — pure tests don't reach `buildThreadsPayload` and there's no way to test branch order without simulating probe metadata.
 
@@ -52,8 +52,8 @@ Branches covered:
 - **PTT** — normal / probe error.
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
 - **Bilibili** — API success → custom embed (no URL) **+ `videoAttachment`** (media.vxbilibili mp4 constructed from the BVID, MIXED-style playable video) / API failure → vxbilibili URL with `recoverUrls`.
-- **Preview dispatcher** ([preview.js](../../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
-- **Reaction delete** ([reaction-delete.js](../../src/reaction-delete.js)) — `handleReactionDelete` authorization matrix with mocked Discord objects (fetchReference / member fetch / permissionsFor): link poster deletes / random user can't / `ManageMessages` mod can / never deletes a non-西寶 message / ignores non-🗑️ / ignores bot reactors. Lives here (not pure smoke) because the auth path needs async Discord I/O.
+- **Preview dispatcher** ([preview.js](../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
+- **Reaction delete** ([reaction-delete.js](../src/reaction-delete.js)) — `handleReactionDelete` authorization matrix with mocked Discord objects (fetchReference / member fetch / permissionsFor): link poster deletes / random user can't / `ManageMessages` mod can / never deletes a non-西寶 message / ignores non-🗑️ / ignores bot reactors. Lives here (not pure smoke) because the auth path needs async Discord I/O.
 
 **When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder, or any change to `reaction-delete.js` authorization.
 

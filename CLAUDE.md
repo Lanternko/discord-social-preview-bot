@@ -4,7 +4,7 @@ A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit,
 
 ## Architecture
 
-CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just bootstrap + dispatch; all business logic is in focused modules. Module-by-module breakdown + full tree in [.claude/rules/architecture.md](.claude/rules/architecture.md).
+CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just bootstrap + dispatch; all business logic is in focused modules. Module-by-module breakdown + full tree in [docs/architecture.md](docs/architecture.md).
 
 ## NEVER
 
@@ -13,7 +13,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 - **NEVER** merge a branch into `main` without `npm test` passing locally.
 - **NEVER** let a function own more than one responsibility. When adding behaviour, decide if it belongs in an existing function or needs a new one — don't wedge flags into unrelated code.
 - **NEVER** convert `threads-probe.cjs` to ESM. It must stay CommonJS because Playwright's `chromium.launch` has to run in a subprocess (blocking the Discord event loop freezes the gateway).
-- **NEVER** attach a billing account to the Google Cloud project that owns the Gemini API key. See [ai-providers.md](.claude/rules/ai-providers.md) for the trap — workaround is creating a new project without billing.
+- **NEVER** attach a billing account to the Google Cloud project that owns the Gemini API key. See [ai-providers.md](docs/ai-providers.md) for the trap — workaround is creating a new project without billing.
 - **NEVER** commit `.env` or any file containing real API keys / Discord tokens.
 - **NEVER** refactor beyond the scope the task demands. One commit, one concern.
 
@@ -31,12 +31,12 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 ## Key behavioural summary
 
-- **Threads**: text-only (no image AND no video) → custom embed. Video → **video attachment** (download mp4 → upload it; [src/video.js](src/video.js)), falling back to the fixer chain + OG recovery when it can't attach. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷時最後一個 embed description 追加 `... 還有 N 張` 提示；含 video 的混合貼文另外把影片當附件上傳（放不下才退 fixer）。Probe error → primary + secondary fixer + OG recovery list. Full decision table in [routing.md](.claude/rules/routing.md).
+- **Threads**: text-only (no image AND no video) → custom embed. Video → **video attachment** (download mp4 → upload it; [src/video.js](src/video.js)), falling back to the fixer chain + OG recovery when it can't attach. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷時最後一個 embed description 追加 `... 還有 N 張` 提示；含 video 的混合貼文另外把影片當附件上傳（放不下才退 fixer）。Probe error → primary + secondary fixer + OG recovery list. Full decision table in [routing.md](docs/routing.md).
 - **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom info bar **+ `videoAttachment`**（media.vxbilibili 的直鏈 mp4）：discord-io 下載後上傳可播放影片，上方以 `videoAttachmentContent` 純文字資訊欄呈現（可點標題＋作者，無 embed 框）。**放不下（超過上傳上限）/停用/失敗 → 改貼 vxbilibili fixer 連結**（`videoAttachmentMissContent`）——Discord 串流遠端 mp4 不吃上傳上限，大影片仍有原生播放器；unfurl 空了才退含封面 embed（embedFallback）→ OG recovery。Failure（API error）→ vxbilibili fixer + OG recovery.
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.
-- **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](.claude/rules/ai-providers.md).
-- **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](.claude/rules/persona.md).
+- **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](docs/ai-providers.md).
+- **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](docs/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).
 - **刪除西寶的訊息**：在西寶發的**任何**訊息上按 🗑️ 反應，**或**右鍵 → 應用程式 > `刪除西寶訊息`（context menu，實作在 [src/commands.js](src/commands.js)）→ 貼連結的本人（用 reply reference 認出，不需額外狀態）、有 `ManageMessages` 的管理員，或 `BOT_OWNER_IDS` 裡的 bot owner 可刪掉那則。只動西寶自己的訊息。需 `GuildMessageReactions` intent + Message/Channel/Reaction partials（皆已設於 [src/index.js](src/index.js)）。反應路徑實作 [src/reaction-delete.js](src/reaction-delete.js)，grep `[delete]`。
@@ -54,7 +54,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
-4. After merge, **provide redeploy steps** (see [deploy.md](.claude/rules/deploy.md)) — the host tracks GitHub, not the local tree.
+4. After merge, **provide redeploy steps** (see [deploy.md](docs/deploy.md)) — the host tracks GitHub, not the local tree.
 5. Status reports: include **current branch, commit hash, push status, test status**. All human-facing communication in 繁體中文.
 
 ## Quick start (local)
@@ -67,20 +67,20 @@ cp .env.example .env   # fill in DISCORD_TOKEN
 npm start
 ```
 
-macOS: use `start-bot.command` / `stop-bot.command`. Full deploy / SSH ops in [deploy.md](.claude/rules/deploy.md).
+macOS: use `start-bot.command` / `stop-bot.command`. Full deploy / SSH ops in [deploy.md](docs/deploy.md).
 
 ## Where to look for details
 
-Pure data and per-topic depth live under `.claude/rules/` so this file stays lean:
+Pure data and per-topic depth live under `docs/` so this file stays lean. **They are read on demand — do NOT move them (back) into `.claude/rules/`**: everything under `.claude/rules/` gets auto-loaded verbatim into every session's (and every subagent's) context, which once cost ~50KB of always-on tokens per agent. Read the file for the area you're touching; skip the rest:
 
-- [`architecture.md`](.claude/rules/architecture.md) — module groups, full `src/` tree, log prefixes.
-- [`env.md`](.claude/rules/env.md) — full environment variable reference.
-- [`routing.md`](.claude/rules/routing.md) — per-platform routing tables, empty-embed fallback flow, URL normalization, ignore markers, dedup.
-- [`ai-providers.md`](.claude/rules/ai-providers.md) — provider chain, call shapes, circuit breaker, observability, short-term memory, Gemini billing trap.
-- [`persona.md`](.claude/rules/persona.md) — 西寶 persona (narrative-driven), mention routing, fortune weights, `/ai-tier` / `/ai-key`.
-- [`scripts.md`](.claude/rules/scripts.md) — three smoke layers and when to run which.
-- [`deploy.md`](.claude/rules/deploy.md) — local run, SSH deploy, redeploy steps, secrets.
+- [`architecture.md`](docs/architecture.md) — module groups, full `src/` tree, log prefixes.
+- [`env.md`](docs/env.md) — full environment variable reference.
+- [`routing.md`](docs/routing.md) — per-platform routing tables, empty-embed fallback flow, URL normalization, ignore markers, dedup.
+- [`ai-providers.md`](docs/ai-providers.md) — provider chain, call shapes, circuit breaker, observability, short-term memory, Gemini billing trap.
+- [`persona.md`](docs/persona.md) — 西寶 persona (narrative-driven), mention routing, fortune weights, `/ai-tier` / `/ai-key`.
+- [`scripts.md`](docs/scripts.md) — three smoke layers and when to run which.
+- [`deploy.md`](docs/deploy.md) — local run, SSH deploy, redeploy steps, secrets.
 
 ## Self-evolution
 
-When a mistake recurs or you learn a non-obvious rule, add it here (under the right section) or to a sub-file under `.claude/rules/`. Lead with the _why_. Keep this file under ~80 lines — if it grows past that, move the newest addition into a sub-file and leave a one-line pointer here.
+When a mistake recurs or you learn a non-obvious rule, add it here (under the right section) or to a sub-file under `docs/` (never `.claude/rules/` — see above). Lead with the _why_. Keep this file under ~80 lines — if it grows past that, move the newest addition into a sub-file and leave a one-line pointer here.

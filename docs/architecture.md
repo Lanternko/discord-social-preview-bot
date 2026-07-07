@@ -1,0 +1,79 @@
+# Architecture
+
+CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); everything else is a focused module.
+
+## Module groups
+
+- **Bootstrap** — [index.js](../src/index.js) wires Discord client, intents, and the `messageCreate` dispatcher. ~150 lines, no business logic of its own.
+- **Config** — [config.js](../src/config.js) reads every env var and exports the constants (`FIXER_*`, `AI_*`, timeouts, default persona). One source of truth; nothing else touches `process.env`.
+- **URL plumbing** — [url-routing.js](../src/url-routing.js) handles host sets, `normalizeUrl`, `extractSupportedUrls`, `isXxxUrl` predicates, and `replaceHostFixer` / `buildFallbackUrl`. [utils.js](../src/utils.js) holds `trimDescription` / `pickRandom`.
+- **Probe** — [probe.js](../src/probe.js) wraps the Playwright subprocess via `execFile` and caches Threads metadata. The actual browser code lives in [threads-probe.cjs](../src/threads-probe.cjs) — kept CommonJS because it must run in its own process (Playwright's `chromium.launch` blocks the Discord event loop).
+- **Embeds** — [embeds.js](../src/embeds.js) is the single home for `EmbedBuilder` factories (Threads / Bahamut / PTT / Bilibili).
+- **OG fallback** — [og-fallback.js](../src/og-fallback.js) is the lightweight HTTP fetch + OG meta parser, plus a generic embed builder. Used by `checkAndHandleEmptyEmbeds` as the last layer before delete. No Playwright — plain `fetch` + regex over `<head>`. Streams responses with a `</head>` early-bail to keep latency low.
+- **Platforms** — [platforms/](../src/platforms/) holds one builder per platform (`threads.js`, `instagram.js`, `bilibili.js`, `bahamut.js`, `ptt.js`). Each returns a `{ content?, embeds?, fallbackContent?, embedFallback?, recoverUrls?, recoverEmbedOptions?, sourceUrl? }` payload. `recoverUrls` is the OG-fallback layer — list of URLs whose HTML to fetch + parse for OG tags when both primary and secondary fixer unfurl empty.
+- **Preview dispatcher** — [preview.js](../src/preview.js) `buildPreviewPayloads` runs all per-URL builders in parallel via `Promise.all`. Per-platform branches dispatch to the correct builder; URL-only platforms (X/Reddit/Pixiv/Bluesky/Facebook) all share `buildSimpleFixerPayload` which always populates `recoverUrls`. The `if` ladder inside each platform builder is what's load-bearing — see [routing.md](routing.md).
+- **Discord I/O** — [discord-io.js](../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions. `resolveOutgoing` resolves a payload's optional `videoAttachment` (download + upload the mp4 as a file) right before sending.
+- **Video** — [video.js](../src/video.js) downloads a Threads mp4 and hands back a Discord attachment, gated by a size cap, a global concurrency cap, a per-fetch timeout, and an optional guild allowlist. Returns null → caller falls back to the fixer chain.
+- **Reaction delete** — [reaction-delete.js](../src/reaction-delete.js) is the `messageReactionAdd` handler: a 🗑️ reaction on one of 西寶's own messages deletes it, authorized by the link poster (via the reply reference) or a `ManageMessages` mod. No persistent state. See [routing.md](routing.md).
+- **Mention** — [mention.js](../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
+- **Slash commands** — [commands.js](../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, and `/schedule`. [tier-store.js](../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
+- **AI subsystem** — [ai/](../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
+
+## src/ai/
+
+- [persona.js](../src/ai/persona.js) — `AI_PERSONA` template + `buildUserTurn` + OpenAI/Gemini message format helpers.
+- [memory.js](../src/ai/memory.js) — per-channel conversation history + sweep timer.
+- [providers.js](../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
+- [circuit.js](../src/ai/circuit.js) — provider circuit breaker (`isProviderAvailable` / `recordProviderFailure` / cooldown lookup). Stops the chain from re-trying a known-broken provider every call.
+- [group-context.js](../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` user-role context turn for 標準 / 精細 plans.
+- [chain.js](../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
+
+## src/ tree (full)
+
+```
+src/
+├── index.js              # Client init, event handlers, dispatcher (~150 lines)
+├── config.js             # All env vars + constants
+├── url-routing.js        # Host sets, normalizeUrl, extractSupportedUrls, isXxxUrl, fixers
+├── utils.js              # trimDescription, pickRandom
+├── probe.js              # Playwright subprocess wrapper + Threads metadata cache
+├── embeds.js             # All EmbedBuilder factories
+├── platforms/
+│   ├── threads.js        # buildThreadsPayload — multi-image, video, single, fallback
+│   ├── instagram.js      # buildInstagramPayload — story owner detection + ddinstagram
+│   ├── bilibili.js       # buildBilibiliPayload — b23.tv expansion + vxbilibili
+│   ├── bahamut.js        # buildBahamutPayload — playwright probe + custom embed
+│   └── ptt.js            # buildPttPayload — playwright probe + custom embed
+├── preview.js            # buildPreviewPayloads — top-level platform dispatcher
+├── discord-io.js         # send/suppress/empty-embed/dedup state/permissions
+├── video.js              # download mp4 → Discord attachment (size/concurrency/timeout/allowlist guards)
+├── ai/
+│   ├── persona.js        # AI_PERSONA + buildUserTurn + message format helpers
+│   ├── memory.js         # Per-channel conversation history + sweep timer
+│   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
+│   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
+│   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
+│   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply
+├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
+├── reaction-delete.js    # 🗑️ reaction on 西寶's own message → delete it (poster or ManageMessages)
+├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
+├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
+├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
+└── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
+```
+
+## Log prefixes
+
+All scoped — grep one to isolate a subsystem:
+
+`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]`
+
+## Smoke tests
+
+Three layers, all in [scripts/](../scripts/) — see [scripts.md](scripts.md):
+
+- `scripts/smoke.js` — pure functions (URL routing, persona, group-context formatting, tier lookup).
+- `scripts/routing-smoke.js` — platform payload builders with mocked probe (catches Threads branch-order regressions).
+- `scripts/smoke-ai-circuit.js` — AI provider chain + circuit breaker behaviour.
+
+Run all three with `npm test`.

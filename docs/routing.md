@@ -1,6 +1,6 @@
 # Platform Routing (`buildPreviewPayloads`)
 
-Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform builders under [src/platforms/](../../src/platforms/).
+Top-level dispatcher: [src/preview.js](../src/preview.js). Per-platform builders under [src/platforms/](../src/platforms/).
 
 ## Threads
 
@@ -14,16 +14,16 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | Probe error | Primary + secondary fixer + OG recovery list (was: just primary fixer) |
 | Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same primary + secondary fixer + OG recovery fallthrough |
 
-**Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js):
+**Order is load-bearing.** See [src/platforms/threads.js](../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../scripts/routing-smoke.js):
 
 - **MIXED case** (multi-image AND video → carousel gallery kept AND carries `videoAttachment` for a real uploaded video — NOT dropped to a bare video fixer that loses the images)
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
 
-**Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it (title `Threads • Log in` or the generic `Join Threads to share ideas…` description) and throws, so the post drops to the fixer chain instead of rendering a useless login card. The secondary fixer `fzthreads.com` fetches many of these where `fixthreads.seria.moe` also walls — asserted by `scripts/smoke.js`.
+**Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it (title `Threads • Log in` or the generic `Join Threads to share ideas…` description) and throws, so the post drops to the fixer chain instead of rendering a useless login card. The secondary fixer `fzthreads.com` fetches many of these where `fixthreads.seria.moe` also walls — asserted by `scripts/smoke.js`.
 
-**Video attachment** ([src/video.js](../../src/video.js)): a bot-built embed can't hold a playable video, so video / MIXED payloads carry `videoAttachment` (a direct mp4 URL). `sendPreviews` → `resolveOutgoing` downloads + re-uploads it as a Discord file (which DOES render an inline player). On any miss — disabled, guild not in `VIDEO_ATTACHMENT_GUILD_IDS`, over the guild's upload cap, at `VIDEO_ATTACHMENT_MAX_CONCURRENT`, or a fetch failure — it returns null and the payload keeps its existing behaviour (carousel for MIXED, fixer chain for video-only). A HEAD size pre-check + concurrency cap + per-fetch timeout keep a flood of video links from overwhelming the host. Env knobs in [env.md](env.md); pure gating asserted by `scripts/smoke.js`.
+**Video attachment** ([src/video.js](../src/video.js)): a bot-built embed can't hold a playable video, so video / MIXED payloads carry `videoAttachment` (a direct mp4 URL). `sendPreviews` → `resolveOutgoing` downloads + re-uploads it as a Discord file (which DOES render an inline player). On any miss — disabled, guild not in `VIDEO_ATTACHMENT_GUILD_IDS`, over the guild's upload cap, at `VIDEO_ATTACHMENT_MAX_CONCURRENT`, or a fetch failure — it returns null and the payload keeps its existing behaviour (carousel for MIXED, fixer chain for video-only). A HEAD size pre-check + concurrency cap + per-fetch timeout keep a flood of video links from overwhelming the host. Env knobs in [env.md](env.md); pure gating asserted by `scripts/smoke.js`.
 
 ## Instagram
 
@@ -57,9 +57,9 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 1. **Primary `content`** (fixer URL) — Discord unfurled it → done ✓
 2. **`fallbackContent`** (secondary fixer URL) — edit message, wait `EMBED_CHECK_DELAY_MS`. Unfurled → done ✓
 3. **`embedFallback`** (pre-built embed payload) — edit message, no further waiting needed. Done ✓
-4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../../src/og-fallback.js). Done ✓
+4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../src/og-fallback.js). Done ✓
 
-Only if all four fail (or each is null/missing) → delete message + reply `"抱歉，預覽載入失敗 🙏"`. Returns `{ allSucceeded: false }` so [src/index.js](../../src/index.js) knows NOT to suppress the user's native Discord embed.
+Only if all four fail (or each is null/missing) → delete message + reply `"抱歉，預覽載入失敗 🙏"`. Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
 
 This is the "至少要顯示 description" guarantee: as long as at least one fixer host (or the original platform URL for non-auth-walled cases) returns OG tags, the user gets at least a title/description embed.
 
@@ -89,16 +89,16 @@ Users can suppress the bot by including `nopreview`, `previewignore`, or `fxigno
 
 ## Deleting 西寶's messages (🗑️ reaction)
 
-Handler: [src/reaction-delete.js](../../src/reaction-delete.js), wired as `messageReactionAdd` in [src/index.js](../../src/index.js). For the "傳錯連結想清掉誤發預覽" case — react 🗑️ on the bot's message and it deletes that message.
+Handler: [src/reaction-delete.js](../src/reaction-delete.js), wired as `messageReactionAdd` in [src/index.js](../src/index.js). For the "傳錯連結想清掉誤發預覽" case — react 🗑️ on the bot's message and it deletes that message.
 
 - **Scope**: any message authored by 西寶 (preview, AI reply, fortune, recap…), never anyone else's.
 - **Emoji**: 🗑️ only (`U+1F5D1`). `isTrashEmoji` strips the optional `U+FE0F` variation selector so both `🗑` and `🗑️` match; other emoji (❌, 🚮) are ignored.
-- **Context menu twin**: right-click a message → Apps > `刪除西寶訊息` (message context menu command, registered in [src/commands.js](../../src/commands.js) as `DELETE_MESSAGE_COMMAND`, handled by `handleDeleteMessageContext`). Same `isAuthorizedToDelete` gate as the reaction; unlike the reaction every path replies ephemerally (interactions must be acknowledged).
+- **Context menu twin**: right-click a message → Apps > `刪除西寶訊息` (message context menu command, registered in [src/commands.js](../src/commands.js) as `DELETE_MESSAGE_COMMAND`, handled by `handleDeleteMessageContext`). Same `isAuthorizedToDelete` gate as the reaction; unlike the reaction every path replies ephemerally (interactions must be acknowledged).
 - **Authorization** (conservative, to stop griefing):
   0. A **bot owner** (`BOT_OWNER_IDS` env, comma-separated user IDs) → delete, any guild, no other checks. Checked first — works even on orphaned previews whose reference is gone.
   1. The **link poster** — 西寶's preview is a `message.reply`, so `fetchReference()` gives the original author's id with no persistent state. If the reactor is that author → delete.
   2. A **`ManageMessages` mod** in that channel → delete (cleans up others' / orphaned previews).
   - Reactions from bots are ignored; a message 西寶 didn't author is never touched — owner privilege included.
 - **Gap (by design, no state kept)**: if the poster deletes their *original* message first, the preview orphans and `fetchReference()` can no longer prove authorship — then only a `ManageMessages` mod or a bot owner can 🗑️ it. React on the preview *before* deleting the original, or just let a mod clear it.
-- **Requires**: `GuildMessageReactions` intent + `Partials.Message/Channel/Reaction` (so a 🗑️ on a pre-restart, uncached message still fires the event). Both set in [src/index.js](../../src/index.js).
+- **Requires**: `GuildMessageReactions` intent + `Partials.Message/Channel/Reaction` (so a 🗑️ on a pre-restart, uncached message still fires the event). Both set in [src/index.js](../src/index.js).
 - Grep `[delete]`. Authorization matrix asserted by `scripts/routing-smoke.js`; `isTrashEmoji` by `scripts/smoke.js`.

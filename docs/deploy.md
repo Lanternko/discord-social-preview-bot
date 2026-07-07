@@ -87,7 +87,7 @@ nohup node src/index.js > bot.log 2>&1 &
 
 ## Auto-restart watchdog
 
-A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSPC, reboot). Script: [scripts/bot-watchdog.sh](../../scripts/bot-watchdog.sh), installed as `* * * * *` in the user crontab. Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
+A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSPC, reboot). Script: [scripts/bot-watchdog.sh](../scripts/bot-watchdog.sh), installed as `* * * * *` in the user crontab. Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
 
 **Current status (2026-06): the watchdog cron line is commented out — no auto-restart is active.** If the bot dies it will NOT relaunch on its own; restart it manually via the redeploy steps above. The commented crontab line also still points at the old pre-`apps/` flat path, so it would fail even if uncommented as-is. It's left disabled pending a decision on whether the watchdog should run — **do not re-enable it without confirming that's intended.** If you do re-enable it, first correct the path to the new `apps/` location:
 
