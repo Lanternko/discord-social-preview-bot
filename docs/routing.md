@@ -1,6 +1,6 @@
 # Platform Routing (`buildPreviewPayloads`)
 
-Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform builders under [src/platforms/](../../src/platforms/).
+Top-level dispatcher: [src/preview.js](../src/preview.js). Per-platform builders under [src/platforms/](../src/platforms/).
 
 ## Threads
 
@@ -13,7 +13,7 @@ Top-level dispatcher: [src/preview.js](../../src/preview.js). Per-platform build
 | Generic / partial metadata | Compact text embed |
 | Probe error | Primary + secondary fixer + OG recovery list (was: just primary fixer) |
 
-**Order is load-bearing.** See [src/platforms/threads.js](../../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../../scripts/routing-smoke.js):
+**Order is load-bearing.** See [src/platforms/threads.js](../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../scripts/routing-smoke.js):
 
 - **MIXED case** (multi-image AND video → carousel wins, NOT video fixer)
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
@@ -52,9 +52,9 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 1. **Primary `content`** (fixer URL) — Discord unfurled it → done ✓
 2. **`fallbackContent`** (secondary fixer URL) — edit message, wait `EMBED_CHECK_DELAY_MS`. Unfurled → done ✓
 3. **`embedFallback`** (pre-built embed payload) — edit message, no further waiting needed. Done ✓
-4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../../src/og-fallback.js). Done ✓
+4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../src/og-fallback.js). Done ✓
 
-Only if all four fail (or each is null/missing) → delete message + reply `"抱歉，預覽載入失敗 🙏"`. Returns `{ allSucceeded: false }` so [src/index.js](../../src/index.js) knows NOT to suppress the user's native Discord embed.
+Only if all four fail (or each is null/missing) → delete message + reply `"抱歉，預覽載入失敗 🙏"`. Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
 
 This is the "至少要顯示 description" guarantee: as long as at least one fixer host (or the original platform URL for non-auth-walled cases) returns OG tags, the user gets at least a title/description embed.
 
@@ -84,7 +84,7 @@ Users can suppress the bot by including `nopreview`, `previewignore`, or `fxigno
 
 ## Deleting 西寶's messages (🗑️ reaction)
 
-Handler: [src/reaction-delete.js](../../src/reaction-delete.js), wired as `messageReactionAdd` in [src/index.js](../../src/index.js). For the "傳錯連結想清掉誤發預覽" case — react 🗑️ on the bot's message and it deletes that message.
+Handler: [src/reaction-delete.js](../src/reaction-delete.js), wired as `messageReactionAdd` in [src/index.js](../src/index.js). For the "傳錯連結想清掉誤發預覽" case — react 🗑️ on the bot's message and it deletes that message.
 
 - **Scope**: any message authored by 西寶 (preview, AI reply, fortune, recap…), never anyone else's.
 - **Emoji**: 🗑️ only (`U+1F5D1`). `isTrashEmoji` strips the optional `U+FE0F` variation selector so both `🗑` and `🗑️` match; other emoji (❌, 🚮) are ignored.
@@ -93,5 +93,5 @@ Handler: [src/reaction-delete.js](../../src/reaction-delete.js), wired as `messa
   2. A **`ManageMessages` mod** in that channel → delete (cleans up others' / orphaned previews).
   - Reactions from bots are ignored; a message 西寶 didn't author is never touched.
 - **Gap (by design, no state kept)**: if the poster deletes their *original* message first, the preview orphans and `fetchReference()` can no longer prove authorship — then only a `ManageMessages` mod can 🗑️ it. React on the preview *before* deleting the original, or just let a mod clear it.
-- **Requires**: `GuildMessageReactions` intent + `Partials.Message/Channel/Reaction` (so a 🗑️ on a pre-restart, uncached message still fires the event). Both set in [src/index.js](../../src/index.js).
+- **Requires**: `GuildMessageReactions` intent + `Partials.Message/Channel/Reaction` (so a 🗑️ on a pre-restart, uncached message still fires the event). Both set in [src/index.js](../src/index.js).
 - Grep `[delete]`. Authorization matrix asserted by `scripts/routing-smoke.js`; `isTrashEmoji` by `scripts/smoke.js`.

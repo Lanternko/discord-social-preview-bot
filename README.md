@@ -102,7 +102,7 @@ cp .env.example .env
 DISCORD_TOKEN=剛剛複製的 bot token
 ```
 
-其他變數（fixer 網域、AI key 等）全部可以先留空，bot 會用預設值啟動。詳情見 [.claude/rules/env.md](.claude/rules/env.md)。
+其他變數（fixer 網域、AI key 等）全部可以先留空，bot 會用預設值啟動。詳情見 [docs/env.md](docs/env.md)。
 
 ### Step 5：啟動
 
@@ -227,8 +227,8 @@ per-guild 設定，重啟後仍保留。方案決定了 AI 模型和回覆品質
 
 - `AI_PROVIDER=deepseek` → 強制只用某一層（留空 = 全鏈 fallback）
 - `AI_PERSONA="你是..."` → 覆蓋預設人格（可保留 `{SENTENCE_MIN}` / `{SENTENCE_MAX}` 等佔位符讓 AI 方案生效）
-- 完整變數表見 [.claude/rules/env.md](.claude/rules/env.md)
-- 設計細節見 [.claude/rules/ai-providers.md](.claude/rules/ai-providers.md)、AI 方案細節見 [.claude/rules/persona.md](.claude/rules/persona.md)
+- 完整變數表見 [docs/env.md](docs/env.md)
+- 設計細節見 [docs/ai-providers.md](docs/ai-providers.md)、AI 方案細節見 [docs/persona.md](docs/persona.md)
 
 ---
 
@@ -368,7 +368,7 @@ bot 已經自動帶 `over18=1` cookie，如果還是失敗代表文章已被刪�
 - [scripts/](./scripts/) — `smoke.js`（純函式）/ `routing-smoke.js`（payload builder + mock probe）/ `smoke-ai-circuit.js`（AI chain + circuit breaker），用 `npm test` 跑全部
 - [scripts/start.sh](./scripts/start.sh) / [scripts/stop.sh](./scripts/stop.sh) — Linux 啟動腳本
 - [.env.example](./.env.example) — 環境變數範本
-- [.claude/rules/](./.claude/rules/) — 模組分組與完整 tree 在 [architecture.md](./.claude/rules/architecture.md)，其他細節：[routing.md](./.claude/rules/routing.md) / [ai-providers.md](./.claude/rules/ai-providers.md) / [persona.md](./.claude/rules/persona.md) / [env.md](./.claude/rules/env.md) / [scripts.md](./.claude/rules/scripts.md) / [deploy.md](./.claude/rules/deploy.md)
+- [docs/](./docs/) — 模組分組與完整 tree 在 [architecture.md](./docs/architecture.md)，其他細節：[routing.md](./docs/routing.md) / [ai-providers.md](./docs/ai-providers.md) / [persona.md](./docs/persona.md) / [env.md](./docs/env.md) / [scripts.md](./docs/scripts.md) / [deploy.md](./docs/deploy.md)
 
 ## License
 
