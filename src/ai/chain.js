@@ -14,6 +14,9 @@ const {
   DEEPSEEK_MODEL_FREE,
   DEEPSEEK_PREMIUM_GUILD_IDS,
   DEEPSEEK_REASONING_HEADROOM,
+  RECAP_KIMI_TIMEOUT_MS,
+  RECAP_DEEPSEEK_TIMEOUT_MS,
+  RECAP_GEMINI_TIMEOUT_MS,
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
@@ -111,6 +114,50 @@ function buildAIProviderChain() {
 
 // Full default chain — used for startup log and backwards-compat export.
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
+
+// Daily recaps have a task-specific latency budget because generation starts
+// one minute before publication. Keep Groq/Llama completely out of this chain:
+// a recap should wait for the higher-quality providers instead of silently
+// changing voice. Interactive replies continue to use the default chain above.
+function buildRecapProviderChain() {
+  const chain = [];
+  const only = AI_PROVIDER_FORCE;
+  if (KIMI_API_KEY && (!only || only === "kimi")) {
+    const options = { timeoutMs: RECAP_KIMI_TIMEOUT_MS };
+    chain.push({
+      label: `kimi:${KIMI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callKimi(turns, persona, maxTokens, options),
+    });
+  }
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const options = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+      thinking: { type: "enabled" },
+      reasoningEffort: "high",
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options),
+    });
+  }
+  if (GEMINI_API_KEY && (!only || only === "gemini")) {
+    const options = { timeoutMs: RECAP_GEMINI_TIMEOUT_MS };
+    chain.push({
+      label: `gemini:${GEMINI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callGemini(turns, persona, maxTokens, options),
+    });
+  }
+  return chain;
+}
+
+const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
 
 // Per-guild chain: Kimi first, then DeepSeek (model determined by tier), then
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
@@ -434,9 +481,11 @@ async function generateAIReply(message, userText) {
 
 module.exports = {
   AI_PROVIDER_CHAIN,
+  RECAP_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
   PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
+  buildRecapProviderChain,
   buildGuildChain,
   getPersonalMemoryContextEntries,
   runProviderChain,

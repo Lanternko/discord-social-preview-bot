@@ -3,7 +3,11 @@ const { EMOJI_TRUSTED_GUILD_IDS } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
 const { trimDescription } = require("./utils");
-const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const {
+  AI_PROVIDER_CHAIN,
+  RECAP_PROVIDER_CHAIN,
+  runProviderChain,
+} = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
 const {
   buildEmojiMap,
@@ -91,10 +95,24 @@ const VALID_TASK_TYPES = Object.keys(TASK_TYPES);
 // ── Active cron jobs ────────────────────────────────────────────────────
 // Map<scheduleId, cron.ScheduledTask>
 const activeJobs = new Map();
+const RECAP_PREGENERATE_MS = 60 * 1000;
+
+function waitUntil(notBeforeMs, options = {}) {
+  if (!Number.isFinite(notBeforeMs)) return Promise.resolve();
+  const now = options.now || Date.now;
+  const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const delayMs = Math.max(0, notBeforeMs - now());
+  return delayMs > 0 ? sleep(delayMs) : Promise.resolve();
+}
+
+async function sendAtOrAfter(channel, payload, notBeforeMs, options = {}) {
+  await waitUntil(notBeforeMs, options);
+  return channel.send(payload);
+}
 
 // ── Task execution ──────────────────────────────────────────────────────
 
-async function executeScheduledTask(schedule, client) {
+async function executeScheduledTask(schedule, client, options = {}) {
   const { channelId, guildId, taskType, customPrompt } = schedule;
 
   const channel = client.channels.cache.get(channelId);
@@ -135,7 +153,10 @@ async function executeScheduledTask(schedule, client) {
     return;
   }
 
-  if (AI_PROVIDER_CHAIN.length === 0) {
+  const providerChain = taskType === "daily_recap"
+    ? RECAP_PROVIDER_CHAIN
+    : AI_PROVIDER_CHAIN;
+  if (providerChain.length === 0) {
     console.warn("[scheduler] no AI providers, skipping scheduled task");
     return;
   }
@@ -152,10 +173,15 @@ async function executeScheduledTask(schedule, client) {
   }
 
   const turns = [{ role: "user", content: prompt }];
+  if (taskType === "daily_recap") {
+    console.log(
+      `[daily-recap] promptChars=${prompt.length} personaChars=${persona.length}`,
+    );
+  }
 
   try {
     const result = await runProviderChain(
-      AI_PROVIDER_CHAIN,
+      providerChain,
       turns,
       persona,
       tierConfig.maxTokens,
@@ -170,7 +196,15 @@ async function executeScheduledTask(schedule, client) {
 
     const capped = trimDescription(result.text, tierConfig.maxReplyChars);
     const text = resolveCustomEmojis(capped, emojiMap);
-    const sent = await channel.send({ content: text });
+    // Generation starts one minute early, but publication must never happen
+    // before the user-configured wall-clock time. Awaiting a timer is
+    // non-blocking; if generation ran long, waitUntil resolves immediately.
+    const sent = await sendAtOrAfter(
+      channel,
+      { content: text },
+      options.notBeforeMs,
+      options,
+    );
 
     // Record this post into the channel's short-term memory so that when
     // someone @s or replies to 西寶 shortly after, she remembers having
@@ -247,18 +281,37 @@ function buildCronExpression(hour, minute) {
   return `${minute} ${hour} * * *`;
 }
 
+function subtractScheduleMinute(hour, minute) {
+  const totalMinutes = (Number(hour) * 60 + Number(minute) - 1 + 24 * 60) % (24 * 60);
+  return {
+    hour: Math.floor(totalMinutes / 60),
+    minute: totalMinutes % 60,
+  };
+}
+
+function recapNotBeforeMs(taskContext, now = Date.now) {
+  const scheduledStart = taskContext?.date;
+  const startMs = scheduledStart instanceof Date && Number.isFinite(scheduledStart.getTime())
+    ? scheduledStart.getTime()
+    : now();
+  return startMs + RECAP_PREGENERATE_MS;
+}
+
 function registerJob(schedule, client) {
   if (activeJobs.has(schedule.id)) {
     // Already registered — unregister first to avoid duplicates.
     unregisterJob(schedule.id);
   }
 
-  const cronExpr = buildCronExpression(schedule.hour, schedule.minute);
+  const executionTime = schedule.taskType === "daily_recap"
+    ? subtractScheduleMinute(schedule.hour, schedule.minute)
+    : { hour: schedule.hour, minute: schedule.minute };
+  const cronExpr = buildCronExpression(executionTime.hour, executionTime.minute);
   const tz = schedule.timezone || "Asia/Taipei";
 
   const task = cron.schedule(
     cronExpr,
-    () => {
+    (taskContext) => {
       // Re-read the schedule from store in case it was disabled/removed
       // between registration and execution.
       const current = getScheduleById(schedule.id);
@@ -268,7 +321,10 @@ function registerJob(schedule, client) {
         );
         return;
       }
-      executeScheduledTask(current, client).catch((err) => {
+      const executionOptions = current.taskType === "daily_recap"
+        ? { notBeforeMs: recapNotBeforeMs(taskContext) }
+        : {};
+      executeScheduledTask(current, client, executionOptions).catch((err) => {
         console.error(
           `[scheduler] unhandled error schedule=${schedule.id}: ${err?.message || err}`,
         );
@@ -309,6 +365,7 @@ function stopScheduler() {
 }
 
 module.exports = {
+  RECAP_PREGENERATE_MS,
   TASK_TYPES,
   VALID_TASK_TYPES,
   startScheduler,
@@ -316,4 +373,9 @@ module.exports = {
   registerJob,
   unregisterJob,
   executeScheduledTask,
+  buildCronExpression,
+  subtractScheduleMinute,
+  recapNotBeforeMs,
+  waitUntil,
+  sendAtOrAfter,
 };

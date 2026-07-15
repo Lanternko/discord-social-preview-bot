@@ -44,6 +44,9 @@
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
 | `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `groq`, `gemini`. Empty = full chain |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
+| `RECAP_KIMI_TIMEOUT_MS` | `45000` | Daily-recap-only Kimi timeout; interactive replies still use `AI_TIMEOUT_MS` |
+| `RECAP_DEEPSEEK_TIMEOUT_MS` | `90000` | Daily-recap-only DeepSeek timeout. Recaps explicitly keep thinking enabled and retain `DEEPSEEK_REASONING_HEADROOM` |
+| `RECAP_GEMINI_TIMEOUT_MS` | `45000` | Daily-recap-only Gemini fallback timeout. The recap chain excludes Groq/Llama |
 | `AI_PERSONA` | built-in 西寶 persona | System instruction template — override to reshape personality. Placeholders `{SENTENCE_MIN}` / `{SENTENCE_MAX}` are replaced per AI plan |
 | `AI_MEMORY_TTL_MS` | `1800000` | Inactivity before channel memory is evicted (30 min) |
 | `AI_LONG_TERM_MEMORY_ENABLED` | `true` | Enables user/guild long-term observation extraction and profile prompt blocks |

@@ -174,6 +174,17 @@ module.exports = {
     "AI_TIMEOUT_MS",
     parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
   ),
+  // Daily recaps run ahead of their publish time and may use a longer budget
+  // without making interactive @ replies wait. DeepSeek keeps reasoning on.
+  RECAP_KIMI_TIMEOUT_MS: parsePositiveIntEnv("RECAP_KIMI_TIMEOUT_MS", 45000),
+  RECAP_DEEPSEEK_TIMEOUT_MS: parsePositiveIntEnv(
+    "RECAP_DEEPSEEK_TIMEOUT_MS",
+    90000,
+  ),
+  RECAP_GEMINI_TIMEOUT_MS: parsePositiveIntEnv(
+    "RECAP_GEMINI_TIMEOUT_MS",
+    45000,
+  ),
   AI_MEMORY_TTL_MS: parsePositiveIntEnv("AI_MEMORY_TTL_MS", 30 * 60 * 1000),
   AI_PROVIDER_FORCE: (process.env.AI_PROVIDER || "").toLowerCase(),
   AI_LONG_TERM_MEMORY_ENABLED:

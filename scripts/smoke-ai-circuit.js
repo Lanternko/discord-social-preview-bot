@@ -8,8 +8,14 @@ const assert = require("node:assert/strict");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
+process.env.KIMI_API_KEY = process.env.KIMI_API_KEY || "sk-kimi-smoke-dummy";
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
+process.env.RECAP_KIMI_TIMEOUT_MS = "45000";
+process.env.RECAP_DEEPSEEK_TIMEOUT_MS = "90000";
+process.env.RECAP_GEMINI_TIMEOUT_MS = "45000";
+delete process.env.AI_PROVIDER;
 
-const { parseRetryAfterMs, ok, fail } = require("../src/ai/providers");
+const { parseRetryAfterMs, ok, fail, callDeepSeek } = require("../src/ai/providers");
 const {
   getCooldownMs,
   isProviderAvailable,
@@ -23,8 +29,17 @@ const {
   getPersonalMemoryContextEntries,
   runProviderChain,
   buildGuildChain,
+  RECAP_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
 } = require("../src/ai/chain");
+const {
+  fetchGroupContext,
+} = require("../src/ai/group-context");
+const {
+  subtractScheduleMinute,
+  recapNotBeforeMs,
+  sendAtOrAfter,
+} = require("../src/scheduler");
 const {
   getGuildApiKey,
   setGuildApiKey,
@@ -100,6 +115,138 @@ async function main() {
   console.log("ok/fail helpers");
   it("ok(text) returns success shape", () => {
     assert.deepEqual(ok("hi"), { ok: true, text: "hi" });
+  });
+
+  console.log("daily recap provider policy");
+  it("uses Kimi → DeepSeek → Gemini and excludes Groq/Llama", () => {
+    assert.deepEqual(
+      RECAP_PROVIDER_CHAIN.map((provider) => provider.label.split(":")[0]),
+      ["kimi", "deepseek", "gemini"],
+    );
+    assert.ok(RECAP_PROVIDER_CHAIN.every((provider) => !/groq|llama/i.test(provider.label)));
+    assert.equal(RECAP_PROVIDER_CHAIN[0].options.timeoutMs, 45000);
+    assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
+    assert.equal(RECAP_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
+    assert.deepEqual(RECAP_PROVIDER_CHAIN[1].options.thinking, { type: "enabled" });
+    assert.equal(RECAP_PROVIDER_CHAIN[1].options.reasoningEffort, "high");
+  });
+
+  await itAsync("sends DeepSeek recap with thinking enabled and reasoning headroom", async () => {
+    const originalFetch = global.fetch;
+    let requestBody;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "完成" }, finish_reason: "stop" }],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 34,
+            completion_tokens_details: { reasoning_tokens: 20 },
+          },
+        }),
+      };
+    };
+    try {
+      const result = await callDeepSeek(
+        [{ role: "user", content: "回顧" }],
+        "persona",
+        100,
+        {
+          timeoutMs: 90000,
+          reasoningHeadroom: 2048,
+          thinking: { type: "enabled" },
+          reasoningEffort: "high",
+        },
+      );
+      assert.equal(result.ok, true);
+      assert.deepEqual(requestBody.thinking, { type: "enabled" });
+      assert.equal(requestBody.reasoning_effort, "high");
+      assert.equal(requestBody.max_tokens, 2148);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  console.log("daily recap pre-generation timing");
+  it("moves :00 and midnight schedules one minute earlier", () => {
+    assert.deepEqual(subtractScheduleMinute(19, 0), { hour: 18, minute: 59 });
+    assert.deepEqual(subtractScheduleMinute(0, 0), { hour: 23, minute: 59 });
+    assert.deepEqual(subtractScheduleMinute(0, 30), { hour: 0, minute: 29 });
+  });
+  it("derives original publication instant from cron's scheduled start", () => {
+    const started = new Date("2026-07-15T10:59:00.000Z");
+    assert.equal(recapNotBeforeMs({ date: started }), started.getTime() + 60000);
+  });
+  await itAsync("holds a fast result until the original publication time", async () => {
+    let nowMs = 1_000_000;
+    let sentAt = null;
+    const channel = {
+      send: async () => {
+        sentAt = nowMs;
+        return { id: "sent" };
+      },
+    };
+    await sendAtOrAfter(channel, { content: "recap" }, 1_060_000, {
+      now: () => nowMs,
+      sleep: async (ms) => { nowMs += ms; },
+    });
+    assert.equal(sentAt, 1_060_000);
+  });
+  await itAsync("sends immediately when recap generation finishes late", async () => {
+    let slept = false;
+    const channel = { send: async () => ({ id: "sent" }) };
+    await sendAtOrAfter(channel, { content: "late recap" }, 1_060_000, {
+      now: () => 1_070_000,
+      sleep: async () => { slept = true; },
+    });
+    assert.equal(slept, false);
+  });
+
+  console.log("bot rich embed group context");
+  await itAsync("keeps bot rich embed previews with a neutral label but drops bot chatter", async () => {
+    const emptyColl = { size: 0, map: () => [], filter: () => emptyColl };
+    const messages = [
+      {
+        content: "西寶的一般回覆",
+        author: { id: "bot", username: "西寶" },
+        stickers: emptyColl,
+        attachments: emptyColl,
+        reactions: { cache: emptyColl },
+        embeds: [],
+      },
+      {
+        content: "",
+        author: { id: "bot", username: "西寶" },
+        stickers: emptyColl,
+        attachments: emptyColl,
+        reactions: { cache: emptyColl },
+        embeds: [{ author: { name: "外部作者" }, description: "外部貼文內容" }],
+      },
+      {
+        content: "人類訊息",
+        author: { id: "human", username: "群友" },
+        stickers: emptyColl,
+        attachments: emptyColl,
+        reactions: { cache: emptyColl },
+        embeds: [],
+      },
+    ];
+    const channel = {
+      messages: {
+        fetch: async () => ({ values: () => messages[Symbol.iterator]() }),
+      },
+    };
+    const context = await fetchGroupContext(channel, 5, "before", "bot");
+    assert.equal(context.length, 2);
+    assert.ok(context.some((entry) => /^\[連結預覽\]:/.test(entry.line)));
+    assert.ok(context.some((entry) => entry.line.includes("外部貼文內容")));
+    assert.ok(context.every((entry) => !entry.line.includes("西寶的一般回覆")));
+    const preview = context.find((entry) => entry.isLinkPreview);
+    assert.equal(preview.userId, null);
+    assert.equal(preview.displayName, null);
   });
   it("fail(kind, extra) returns failure shape", () => {
     assert.deepEqual(fail("timeout"), { ok: false, kind: "timeout" });

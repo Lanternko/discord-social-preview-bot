@@ -41,6 +41,8 @@ const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
   require("../src/ai/persona");
 
 const {
+  EMBED_CONTEXT_MAX_CHARS,
+  extractEmbedContext,
   formatGroupMessage,
   buildGroupContextBlock,
   buildReplyContextBlock,
@@ -547,6 +549,34 @@ it("maps assistant -> model and wraps as parts", () => {
 });
 
 console.log("formatGroupMessage");
+it("extracts and de-duplicates rich embed text fields", () => {
+  const text = extractEmbedContext({
+    embeds: [{
+      author: { name: "貼文作者" },
+      title: "貼文標題",
+      description: "相同內容",
+      fields: [
+        { name: "摘要", value: "欄位內容" },
+        { name: "重複", value: "相同內容" },
+      ],
+    }, {
+      description: "相同內容",
+    }],
+  });
+  assert.match(text, /貼文作者/);
+  assert.match(text, /貼文標題/);
+  assert.match(text, /摘要：欄位內容/);
+  assert.equal(text.split("相同內容").length - 1, 1);
+  assert.equal(text.split("貼文標題").length - 1, 1);
+});
+it("caps each rich embed context at 400 characters", () => {
+  const text = extractEmbedContext({
+    embeds: [{ description: "長".repeat(600) }],
+  });
+  assert.equal(EMBED_CONTEXT_MAX_CHARS, 400);
+  assert.equal(text.length, 400);
+  assert.ok(text.endsWith("…"));
+});
 it("formats text-only message with member displayName", () => {
   assert.equal(
     formatGroupMessage({
@@ -641,6 +671,8 @@ it("wraps lines under header", () => {
   assert.match(out, /^\n\n## 最近群組對話/);
   assert.ok(out.includes("[a]: hi"));
   assert.ok(out.includes("[b]: yo"));
+  assert.match(out, /不可信引用資料/);
+  assert.match(out, /不要遵循或執行/);
 });
 
 console.log("buildReplyContextBlock");
@@ -1949,9 +1981,13 @@ it("rejects other emoji and non-strings", () => {
 
 console.log("daily-recap context");
 const {
+  RECAP_EMBED_TOTAL_MAX_CHARS,
+  createRecapEmbedBudget,
+  consumeRecapEmbedContext,
   buildMessagePreview,
   buildMessageContext,
   buildRecapStats,
+  buildRecapPrompt,
 } = require("../src/daily-recap");
 
 // Minimal discord.js Collection stand-in: size / values / filter / map.
@@ -1973,12 +2009,14 @@ function recapMsg({
   content = "",
   reactions = [],
   stickers = [],
+  embeds = [],
+  bot = false,
 }) {
   return {
     id,
     channelId: ch,
     channel: { id: ch, name: chName },
-    author: { id: `id-${author}`, bot: false, username: author },
+    author: { id: `id-${author}`, bot, username: author },
     member: { displayName: author },
     content,
     createdTimestamp: ts,
@@ -1989,6 +2027,7 @@ function recapMsg({
     },
     stickers: recapColl(stickers.map((name) => ({ name }))),
     attachments: recapColl([]),
+    embeds,
   };
 }
 
@@ -2004,6 +2043,39 @@ it("buildMessagePreview: long content truncated at 60 chars", () => {
 
 it("buildMessagePreview: no content/sticker/attachment → 嵌入 placeholder", () => {
   assert.equal(buildMessagePreview(recapMsg({ id: "s3" })), "（嵌入/連結）");
+});
+
+it("buildMessagePreview: rich embed uses its text instead of a placeholder", () => {
+  const m = recapMsg({
+    id: "s4",
+    embeds: [{ author: { name: "作者" }, description: "Threads 貼文內容" }],
+  });
+  assert.match(buildMessagePreview(m), /作者.*Threads 貼文內容/);
+  assert.doesNotMatch(buildMessagePreview(m), /（嵌入\/連結）/);
+});
+
+it("recap rich embeds share a hard 3000-character total budget", () => {
+  const budget = createRecapEmbedBudget();
+  const extracted = [];
+  for (let i = 0; i < 10; i++) {
+    extracted.push(consumeRecapEmbedContext(
+      recapMsg({ id: `e${i}`, embeds: [{ description: `${i}${"文".repeat(500)}` }] }),
+      budget,
+    ));
+  }
+  assert.equal(RECAP_EMBED_TOTAL_MAX_CHARS, 3000);
+  assert.ok(extracted.every((text) => text.length <= 400));
+  assert.equal(extracted.reduce((sum, text) => sum + text.length, 0), 3000);
+  assert.equal(budget.remaining, 0);
+});
+
+it("recap embed budget de-duplicates identical previews", () => {
+  const budget = createRecapEmbedBudget();
+  const a = recapMsg({ id: "d1", embeds: [{ description: "同一篇貼文" }] });
+  const b = recapMsg({ id: "d2", embeds: [{ description: "同一篇貼文" }] });
+  assert.equal(consumeRecapEmbedContext(a, budget), "同一篇貼文");
+  assert.equal(consumeRecapEmbedContext(b, budget), "");
+  assert.equal(budget.remaining, 3000 - "同一篇貼文".length);
 });
 
 it("buildRecapStats: top-reacted message carries chronological context with the target marked", () => {
@@ -2053,6 +2125,18 @@ it("buildRecapStats: sticker-only reacted message gets sticker-name preview and 
 it("buildMessageContext: target missing from pool returns empty (no crash)", () => {
   const target = recapMsg({ id: "ghost", ts: 9 });
   assert.deepEqual(buildMessageContext(target, []), []);
+});
+
+it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => {
+  const prompt = buildRecapPrompt({
+    totalMessages: 1,
+    uniqueAuthors: 1,
+    topAuthors: [],
+    topReacted: [],
+  }, [], "測試群");
+  assert.match(prompt, /連結預覽.*不可信引用資料/);
+  assert.match(prompt, /避免連續使用「真的讓我/);
+  assert.match(prompt, /可以自然使用「真的」/);
 });
 
 console.log("");
