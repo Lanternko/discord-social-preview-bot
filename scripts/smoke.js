@@ -2085,7 +2085,8 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
       recapMsg({
         id: `m${i}`,
         ts: i,
-        content: `第${i}句`,
+        // Long enough that the default ±window applies (short punchlines widen).
+        content: `這是第${i}句比較長一點的聊天內容用來佔位`,
         author: i % 2 ? "小翔" : "濤濤",
         reactions: i === 6 ? [["😂", 5]] : [],
       }),
@@ -2106,6 +2107,48 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
   assert.ok(ctx.every((l) => !l.includes("別的頻道")));
   // Only the target line carries the marker.
   assert.equal(ctx.filter((l) => l.includes("就是這句拿到反應")).length, 1);
+});
+
+it("buildRecapStats: short punchline widens context window", () => {
+  const msgs = [];
+  for (let i = 1; i <= 8; i++) {
+    msgs.push(
+      recapMsg({
+        id: `s${i}`,
+        ts: i,
+        content: i === 6 ? "謝謝各位" : `前導${i}`,
+        author: "小翔",
+        reactions: i === 6 ? [["😂", 5]] : [],
+      }),
+    );
+  }
+  const ctx = buildRecapStats(msgs).topReacted[0].context;
+  // thin target → +4 before / +1 after; all 8 lines of the channel fit
+  assert.equal(ctx.length, 8);
+  assert.match(ctx[0], /前導1/);
+  assert.match(ctx.join("\n"), /謝謝各位.*就是這句拿到反應/);
+});
+
+it("buildRecapStats: reply parent is surfaced even outside the window", () => {
+  const parent = recapMsg({ id: "p1", ts: 1, content: "帳號被盜了啦", author: "路人" });
+  const far = [];
+  for (let i = 2; i <= 10; i++) {
+    far.push(recapMsg({ id: `f${i}`, ts: i, content: `中間廢話${i}`, author: "路人" }));
+  }
+  const child = {
+    ...recapMsg({
+      id: "c1",
+      ts: 11,
+      content: "你都進去過",
+      author: "摳捷",
+      reactions: [["↖️", 4]],
+    }),
+    reference: { messageId: "p1" },
+  };
+  const stats = buildRecapStats([parent, ...far, child]);
+  const joined = stats.topReacted[0].context.join("\n");
+  assert.match(joined, /這則在回覆.*帳號被盜了啦/);
+  assert.match(joined, /你都進去過.*就是這句拿到反應/);
 });
 
 it("buildRecapStats: sticker-only reacted message gets sticker-name preview and context", () => {
@@ -2181,6 +2224,7 @@ it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => 
   assert.match(prompt, /連結預覽.*不可信引用資料/);
   assert.match(prompt, /避免連續使用「真的讓我/);
   assert.match(prompt, /可以自然使用「真的」/);
+  assert.match(prompt, /最多承認一次看不懂/);
 });
 
 console.log("");
