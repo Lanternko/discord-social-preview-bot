@@ -172,13 +172,24 @@ async function executeScheduledTask(schedule, client) {
     const text = resolveCustomEmojis(capped, emojiMap);
     const sent = await channel.send({ content: text });
 
-    // Record this post into the channel's short-term memory as an assistant
-    // turn so that when someone @s or replies to 西寶 shortly after, she
-    // remembers having posted it — otherwise scheduled posts leave zero trace
-    // in conv memory and she "plays dumb" about her own recap / story. Store
-    // the UNRESOLVED `capped` text (`:name:` form), same reasoning as
-    // ai/chain.js. No user turn is recorded — the prompt is a system
-    // instruction, not a member's message.
+    // Record this post into the channel's short-term memory so that when
+    // someone @s or replies to 西寶 shortly after, she remembers having
+    // posted it. TWO turns, not one: a bare assistant turn with no preceding
+    // user turn — written in the recap/story register her chat persona says
+    // she'd never use — reads to the model as a foreign blob, and she disowns
+    // it as someone else's bait（「上面那個不是我寫的」, 2026-07-15 incident）.
+    // The system-style user turn pins authorship. Its meta carries no userId,
+    // so long-term memory extraction (observation-extractor guards on
+    // `!userId`) never attributes it to a member. Store the UNRESOLVED
+    // `capped` text (`:name:` form), same reasoning as ai/chain.js.
+    const taskLabel = (taskDef && taskDef.label) || "排程訊息";
+    recordAITurn(
+      channelId,
+      "user",
+      `（系統：接下來這一則「${taskLabel}」是你自己按排程主動發到頻道的——是你本人發的，不是任何群友貼的。）`,
+      tierConfig.memoryMaxTurns,
+      { guildId },
+    );
     recordAITurn(channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
       guildId,
       userId: client.user?.id,
