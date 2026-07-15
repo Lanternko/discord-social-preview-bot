@@ -113,6 +113,10 @@ function consumeRecapEmbedContext(m, budget) {
   return text;
 }
 
+function isBotLinkPreview(m) {
+  return Boolean(m?.author?.bot && extractEmbedContext(m));
+}
+
 function buildMessagePreview(m, embedBudget) {
   if (m.content) {
     return m.content.length > 60 ? m.content.slice(0, 60) + "…" : m.content;
@@ -139,7 +143,10 @@ function buildMessageContext(target, channelMessagesAsc, embedBudget) {
   for (let i = start; i < end; i++) {
     const m = channelMessagesAsc[i];
     const embedText = consumeRecapEmbedContext(m, embedBudget);
-    let line = formatGroupMessage(m, { embedText });
+    let line = formatGroupMessage(m, {
+      embedText,
+      linkPreviewLabel: isBotLinkPreview(m),
+    });
     if (!line) continue;
     if (line.length > RECAP_CONTEXT_LINE_MAX) {
       line = line.slice(0, RECAP_CONTEXT_LINE_MAX) + "…";
@@ -202,11 +209,13 @@ function buildRecapStats(messages) {
         0,
       );
       const totalReactions = counts.reduce((a, b) => a + b, 0);
-      const authorName =
-        m.member?.displayName ||
-        m.author?.globalName ||
-        m.author?.username ||
-        "未知";
+      const isLinkPreview = isBotLinkPreview(m);
+      const authorName = isLinkPreview
+        ? "連結預覽"
+        : (m.member?.displayName ||
+          m.author?.globalName ||
+          m.author?.username ||
+          "未知");
       const channelName = m.channel?.name || "未知頻道";
       return {
         authorName,
@@ -215,6 +224,7 @@ function buildRecapStats(messages) {
         score,
         reactionStr: reactionList.join(" "),
         isBot: m.author?.bot ?? false,
+        isLinkPreview,
         _msg: m,
       };
     })
@@ -294,8 +304,11 @@ function buildRecapPrompt(stats, channelStats, guildName) {
     lines.push("【最受歡迎的訊息（按反應熱度排序）】");
     for (let i = 0; i < stats.topReacted.length; i++) {
       const msg = stats.topReacted[i];
+      const source = msg.isLinkPreview
+        ? `#${msg.channelName} 的連結預覽`
+        : `${msg.authorName} 在 #${msg.channelName}`;
       lines.push(
-        `${i + 1}. ${msg.authorName} 在 #${msg.channelName}：「${msg.preview}」— ${msg.reactionStr}（共 ${msg.totalReactions} 個反應）`,
+        `${i + 1}. ${source}：「${msg.preview}」— ${msg.reactionStr}（共 ${msg.totalReactions} 個反應）`,
       );
       if (msg.context?.length > 0) {
         lines.push("   前後文：");
@@ -322,6 +335,7 @@ module.exports = {
   fetchGuildMessages,
   createRecapEmbedBudget,
   consumeRecapEmbedContext,
+  isBotLinkPreview,
   buildMessagePreview,
   buildMessageContext,
   buildRecapStats,

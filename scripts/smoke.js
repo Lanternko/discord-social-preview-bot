@@ -2122,6 +2122,50 @@ it("buildRecapStats: sticker-only reacted message gets sticker-name preview and 
   assert.match(top.context.join("\n"), /貼圖：尷尬的Rin/);
 });
 
+it("daily recap labels bot rich embed context and top source neutrally", () => {
+  const msgs = [
+    recapMsg({ id: "human", ts: 1, author: "群友", content: "看看這篇" }),
+    recapMsg({
+      id: "preview",
+      ts: 2,
+      author: "西寶",
+      bot: true,
+      embeds: [{ author: { name: "外部作者" }, description: "外部貼文文字" }],
+      reactions: [["🔥", 6]],
+    }),
+  ];
+  const stats = buildRecapStats(msgs);
+  const top = stats.topReacted[0];
+  assert.equal(top.isLinkPreview, true);
+  assert.equal(top.authorName, "連結預覽");
+  assert.match(top.context.join("\n"), /\[連結預覽\]:/);
+  assert.doesNotMatch(top.context.join("\n"), /\[西寶\]:/);
+
+  const prompt = buildRecapPrompt(stats, [], "測試群");
+  assert.match(prompt, /#閃現 的連結預覽/);
+  assert.doesNotMatch(prompt, /西寶 在 #閃現.*外部貼文文字/);
+});
+
+it("daily recap still attributes reacted bot plain text to the bot", () => {
+  const msgs = [
+    recapMsg({ id: "human2", ts: 1, author: "群友", content: "回顧來了" }),
+    recapMsg({
+      id: "bot-text",
+      ts: 2,
+      author: "西寶",
+      bot: true,
+      content: "這是我自己寫的今日回顧",
+      reactions: [["👍", 3]],
+    }),
+  ];
+  const stats = buildRecapStats(msgs);
+  const top = stats.topReacted[0];
+  assert.equal(top.isLinkPreview, false);
+  assert.equal(top.authorName, "西寶");
+  assert.match(top.context.join("\n"), /\[西寶\]:/);
+  assert.match(buildRecapPrompt(stats, [], "測試群"), /西寶 在 #閃現/);
+});
+
 it("buildMessageContext: target missing from pool returns empty (no crash)", () => {
   const target = recapMsg({ id: "ghost", ts: 9 });
   assert.deepEqual(buildMessageContext(target, []), []);
