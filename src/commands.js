@@ -33,6 +33,10 @@ const {
 } = require("./ai/guild-key-store");
 const { getUsage } = require("./ai/rate-limiter");
 const {
+  isStableObservation,
+  describeObservationEvidence,
+} = require("./ai/observation-extractor");
+const {
   DEEPSEEK_MODEL,
   DEEPSEEK_MODEL_FREE,
   DEEPSEEK_PREMIUM_GUILD_IDS,
@@ -588,7 +592,10 @@ async function handleMemoryCommand(interaction) {
     if (obs.length > 0) {
       lines.push(`\n🔍 **待整理的觀察（${obs.length} 條）**`);
       for (const o of obs.slice(0, 10)) {
-        lines.push(`- ${o.text}（信心 ${o.confidence}）`);
+        const stability = isStableObservation(o) ? "" : "，未達穩定門檻";
+        lines.push(
+          `- ${o.text}（信心 ${o.confidence}，${describeObservationEvidence(o)}${stability}）`,
+        );
       }
       if (obs.length > 10) lines.push(`…還有 ${obs.length - 10} 條`);
     }

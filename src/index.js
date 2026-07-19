@@ -22,6 +22,7 @@ const { handleReactionDelete } = require("./reaction-delete");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
+const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
 const { startScheduler, stopScheduler } = require("./scheduler");
 const {
   recordMessage: recordFamiliarityMessage,
@@ -229,6 +230,7 @@ client.on("messageCreate", async (message) => {
 });
 
 startMemorySweepTimer();
+startProfileSweepTimer();
 
 // Last-resort safety net. The watchdog cron is currently disabled, so a
 // process exit means 西寶 stays dead until a manual restart. A single
@@ -246,6 +248,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     stopScheduler();
     stopMemorySweepTimer();
+    stopProfileSweepTimer();
     flushFamiliarity();
     stopFamiliarityFlushTimer();
     process.exit(0);

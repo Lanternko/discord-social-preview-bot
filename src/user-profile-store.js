@@ -8,6 +8,8 @@ const BAK_PATH = STORE_PATH + ".bak";
 const OBSERVATION_MAX_LEN = 120;
 const PROFILE_MAX_LEN = 500;
 const PENDING_TEXT_MAX_LEN = 500;
+const PENDING_MAX_COUNT = 60;
+const EVIDENCE_MAX_PER_OBSERVATION = 10;
 const RECENT_OBSERVATIONS_PROMPT_COUNT = 3;
 const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
 
@@ -71,21 +73,41 @@ function capText(text, limit) {
   return text.replace(CONTROL_CHARS_RE, " ").trim().slice(0, limit);
 }
 
-function appendPendingInteraction(guildId, userId, displayName, userText, assistantText) {
-  if (!guildId || !userId) return;
+// meta: { messageId, source: "direct"|"passive", at }. Dedup is by Discord
+// messageId ONLY — never by text. Repeating the same sentence across messages
+// can itself be a personality trait; the same message scooped twice (passive
+// group-context re-reads, direct + later passive overlap) is the only certain
+// duplicate. Entries without a messageId are never deduped.
+function appendPendingInteraction(guildId, userId, displayName, userText, assistantText, meta = {}) {
+  if (!guildId || !userId) return false;
   const data = load();
   if (!data[guildId]) data[guildId] = {};
   const entry = data[guildId][userId] || makeEmptyEntry(displayName);
   if (displayName) entry.name = sanitizeName(displayName);
   if (!entry.pendingInteractions) entry.pendingInteractions = [];
+
+  const messageId = meta.messageId ? String(meta.messageId) : null;
+  if (messageId && entry.pendingInteractions.some((p) => p.messageId === messageId)) {
+    return false;
+  }
+
   entry.pendingInteractions.push({
     userText: capText(userText, PENDING_TEXT_MAX_LEN),
     assistantText: capText(assistantText, PENDING_TEXT_MAX_LEN),
-    at: Date.now(),
+    at: typeof meta.at === "number" && Number.isFinite(meta.at) ? meta.at : Date.now(),
+    messageId,
+    source: meta.source === "passive" ? "passive" : "direct",
   });
+  if (entry.pendingInteractions.length > PENDING_MAX_COUNT) {
+    entry.pendingInteractions.splice(
+      0,
+      entry.pendingInteractions.length - PENDING_MAX_COUNT,
+    );
+  }
   entry.updatedAt = Date.now();
   data[guildId][userId] = entry;
   save();
+  return true;
 }
 
 function getPendingInteractions(guildId, userId) {
@@ -110,6 +132,32 @@ function getUserProfile(guildId, userId) {
   return data[guildId]?.[userId] ?? null;
 }
 
+// Evidence items are { messageId, at, source } pointing at the Discord
+// messages an observation was derived from. Items without a messageId are
+// dropped — they can never satisfy the stability bar, so storing them would
+// only fake support.
+function sanitizeEvidence(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const item of list) {
+    const messageId = item?.messageId ? String(item.messageId) : null;
+    if (!messageId || seen.has(messageId)) continue;
+    seen.add(messageId);
+    out.push({
+      messageId,
+      at: typeof item.at === "number" && Number.isFinite(item.at) ? item.at : null,
+      source: item.source === "passive" ? "passive" : "direct",
+    });
+    if (out.length >= EVIDENCE_MAX_PER_OBSERVATION) break;
+  }
+  return out;
+}
+
+function mergeEvidence(existing, incoming) {
+  return sanitizeEvidence([...(existing || []), ...(incoming || [])]);
+}
+
 function appendObservations(guildId, userId, displayName, observations) {
   if (!guildId || !userId) return;
   if (!Array.isArray(observations) || observations.length === 0) return;
@@ -125,10 +173,25 @@ function appendObservations(guildId, userId, displayName, observations) {
   for (const obs of observations) {
     const text = sanitizeObservationText(obs.text);
     if (!text) continue;
+    const evidence = sanitizeEvidence(obs.evidence);
+    // Same trait re-extracted in a later batch: pool the evidence instead of
+    // duplicating the row — accumulated distinct messageIds are what let an
+    // observation cross the stability bar over time.
+    const existing = entry.observations.find((o) => o.text === text);
+    if (existing) {
+      existing.evidence = mergeEvidence(existing.evidence, evidence);
+      existing.confidence = Math.max(
+        clampConfidence(existing.confidence),
+        clampConfidence(obs.confidence),
+      );
+      existing.at = now;
+      continue;
+    }
     entry.observations.push({
       text,
       at: typeof obs.at === "number" ? obs.at : now,
       confidence: clampConfidence(obs.confidence),
+      evidence,
     });
   }
 
@@ -143,10 +206,14 @@ function setConsolidatedProfile(guildId, userId, profileText) {
   const entry = data[guildId]?.[userId];
   if (!entry) return;
 
+  // Newlines survive: the consolidated profile is field-per-line
+  // (說話風格：…\n常聊話題：…) and /memory show renders it verbatim.
   const clean = (profileText || "")
-    .replace(CONTROL_CHARS_RE, " ")
-    .replace(/ {2,}/g, " ")
-    .trim()
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(CONTROL_CHARS_RE, " ").replace(/ {2,}/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
     .slice(0, PROFILE_MAX_LEN);
 
   entry.profile = clean || null;
@@ -168,7 +235,10 @@ function buildUserProfileBlock(entry) {
   ];
 
   if (entry.profile) {
-    lines.push(`- 摘要：${entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
+    // Prompt block stays one bullet per item — flatten the field-per-line
+    // profile into a single line for injection.
+    const flat = entry.profile.replace(/\n+/g, "；");
+    lines.push(`- 摘要：${flat.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
   }
 
   const recentObservations = (entry.observations || [])
@@ -205,6 +275,29 @@ function listUserProfiles(guildId) {
   }));
 }
 
+// Users whose pending backlog reached minCount, across all guilds — feed for
+// the scheduled backlog sweep, so passively-scooped users don't wait forever
+// for their own next @mention to trigger extraction.
+function listPendingBacklog(minCount = 1) {
+  const data = load();
+  const out = [];
+  for (const [guildId, users] of Object.entries(data)) {
+    for (const [userId, entry] of Object.entries(users)) {
+      const pending = entry?.pendingInteractions ?? [];
+      if (pending.length < minCount) continue;
+      out.push({
+        guildId,
+        userId,
+        name: entry.name || null,
+        pendingCount: pending.length,
+        lastPendingAt: pending[pending.length - 1]?.at ?? 0,
+        lastExtractedAt: entry.lastExtractedAt ?? 0,
+      });
+    }
+  }
+  return out;
+}
+
 function flush() {
   save();
 }
@@ -219,8 +312,11 @@ module.exports = {
   PROFILE_MAX_LEN,
   PROFILE_PROMPT_MAX_LEN,
   PENDING_TEXT_MAX_LEN,
+  PENDING_MAX_COUNT,
+  EVIDENCE_MAX_PER_OBSERVATION,
   RECENT_OBSERVATIONS_PROMPT_COUNT,
   getUserProfile,
+  listPendingBacklog,
   appendPendingInteraction,
   getPendingInteractions,
   clearPending,

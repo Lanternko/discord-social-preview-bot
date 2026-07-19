@@ -449,7 +449,11 @@ async function generateAIReply(message, userText) {
       const userId = message.author?.id;
       const runChain = (t, p, m) => runProviderChain(guildChain, t, p, m);
       if (guildId && userId) {
-        appendPendingInteraction(guildId, userId, displayName, userText, capped);
+        appendPendingInteraction(guildId, userId, displayName, userText, capped, {
+          messageId: message.id,
+          source: "direct",
+          at: message.createdTimestamp,
+        });
         maybeExtractObservations(guildId, userId, displayName, runChain).catch(() => {});
       }
       if (guildId && groupContextLines && groupContextLines.length > 0) {
@@ -464,6 +468,7 @@ async function generateAIReply(message, userText) {
             appendPendingInteraction(
               guildId, entry.userId, entry.displayName,
               entry.line, "",
+              { messageId: entry.messageId, source: "passive", at: entry.at },
             );
           }
         }

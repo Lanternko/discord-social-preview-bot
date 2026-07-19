@@ -87,6 +87,22 @@ Avoids silent channels lingering in RAM forever:
 
 No persistence — restart clears everything.
 
+## Long-term memory (evidence pipeline)
+
+Per-user profiles in `data/user-profiles.json` ([user-profile-store.js](../src/user-profile-store.js)), built by [observation-extractor.js](../src/ai/observation-extractor.js). Flow: pending interactions → LLM 萃取 observations → LLM consolidation 成人格摘要. Log prefixes: `[observation-extractor]`, `[consolidate]`, `[backlog-sweep]`.
+
+**Two intake paths, one Discord messageId each.** `direct` = the user @ed 西寶 and got an AI reply. `passive` = the user's line sat in the last 3 group-context rows when *someone else* triggered 西寶 (`getPersonalMemoryContextEntries` in chain.js). Dedup is **by messageId only, never by text** — repeating the same sentence across messages can itself be a trait; the same message scooped twice is the only certain duplicate. Backlog is capped at `PENDING_MAX_COUNT` (60, oldest dropped).
+
+**Evidence is code-enforced, not LLM-trusted.** Extraction prompts number every pending row and tag it 【直接互動】/【旁聽片段】; the model must return `evidence: [編號]` per observation. `attachEvidence` resolves those to `{messageId, at, source}` records and caps confidence: no resolvable message → ≤0.3, single message → ≤0.4, passive-only evidence → ≤0.5. Same-text observations extracted in later batches merge and pool evidence (union by messageId), so a trait can *earn* stability over time.
+
+**Stability bar** (`isStableObservation`): ≥3 distinct messageIds, or 2 distinct messageIds ≥6 h apart. Consolidation splits observations into 已達證據門檻 (may be stated in the profile) vs 證據不足 (must be ignored or hedged with 或許/有時 — never asserted). Both personas demand neutral behavioural wording and explicitly ban unsupported praise (靈魂人物/精準/擅長…).
+
+**Profile format & old-vs-new weighting.** Consolidated profiles are field-per-line（`說話風格：…\n常聊話題：…\n互動偏好：…\n注意：…`，選填欄省略）; `setConsolidatedProfile` preserves the newlines and `buildUserProfileBlock` flattens them to `；` for prompt injection. The consolidation persona treats the existing profile as **舊印象**: new observations win on conflict, and evaluative sentences (praise *or* put-downs) with no surviving observation behind them get rewritten to behaviour or deleted — first impressions no longer anchor forever. 暱稱 is explicitly a Discord display name (joke decorations included), usable as a form of address only — never as「自稱」or trait evidence.
+
+**One-shot migration** — [scripts/redistill-profiles.js](../scripts/redistill-profiles.js) rewrites all pre-existing profiles with the current persona (`--dry-run` to preview, `--guild <id>` to scope, `--all` to redo already-migrated). It must run **while the bot is stopped** (the bot's in-memory store cache clobbers outside writes on its next save) and refuses to start if a `src/index.js` process is visible; mind the watchdog cron before stopping the bot.
+
+**Backlog sweep** ([profile-sweep.js](../src/ai/profile-sweep.js)). Extraction normally fires only on the user's own next successful AI reply — passively-scooped users would otherwise accumulate forever (the 30-筆 小翔 case, 2026-07-19). A timer (start +5 min, then every `PROFILE_SWEEP_INTERVAL_MS`, default 1 h, `0` disables) drains users whose backlog ≥ `EXTRACT_MIN_COUNT`: max 3 users per pass, skips anyone whose last pending row is <10 min old (mid-conversation), oldest `lastExtractedAt` first. Uses the same per-guild provider chain as live replies.
+
 ## Gemini billing trap
 
 If a Google Cloud project has a billing account attached (even $300 free trial), the Gemini API free tier becomes `limit: 0`.
