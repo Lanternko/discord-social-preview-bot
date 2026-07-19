@@ -52,7 +52,9 @@ const MIGRATION_NOTE =
 
 function botIsRunning() {
   try {
-    const out = execSync('pgrep -f "src/index.js" || true', { encoding: "utf8" });
+    // [s]rc bracket trick: the pgrep shell's own cmdline contains the literal
+    // "[s]rc/index.js", which the regex does not match — no self-match.
+    const out = execSync('pgrep -f "[s]rc/index\\.js" || true', { encoding: "utf8" });
     return out.trim().length > 0;
   } catch {
     return false;
