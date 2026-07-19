@@ -36,6 +36,10 @@ async function fetchGroupContext(channel, count, beforeMessageId, botUserId) {
         m.author?.globalName ||
         m.author?.username ||
         null,
+      // Identity of the underlying Discord message, so downstream personal-
+      // memory scooping can dedup by messageId instead of by text.
+      messageId: m.id ?? null,
+      at: m.createdTimestamp ?? null,
     });
     if (formatted.length >= count) break;
   }

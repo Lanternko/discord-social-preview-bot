@@ -149,6 +149,11 @@ module.exports = {
   AI_PROVIDER_FORCE: (process.env.AI_PROVIDER || "").toLowerCase(),
   AI_LONG_TERM_MEMORY_ENABLED:
     (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() === "true",
+  // Personal-memory backlog sweep cadence; "0" disables the sweep entirely.
+  PROFILE_SWEEP_INTERVAL_MS:
+    process.env.PROFILE_SWEEP_INTERVAL_MS === "0"
+      ? 0
+      : parsePositiveIntEnv("PROFILE_SWEEP_INTERVAL_MS", 60 * 60 * 1000),
   EMOJI_TRUSTED_GUILD_IDS: parseCsvEnv("EMOJI_TRUSTED_GUILD_IDS"),
   AI_PERSONA: process.env.AI_PERSONA || DEFAULT_AI_PERSONA,
   DEFAULT_AI_PERSONA,

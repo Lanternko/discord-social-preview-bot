@@ -1432,6 +1432,15 @@ const {
   buildGuildExtractionTurns,
   shouldGuildConsolidate,
   buildGuildConsolidationTurns,
+  parseEvidenceIndices,
+  attachEvidence,
+  isStableObservation,
+  describeObservationEvidence,
+  selectBacklogUsers,
+  STABLE_MIN_DISTINCT_MESSAGES,
+  STABLE_TIME_GAP_MS,
+  EXTRACTION_PERSONA,
+  CONSOLIDATION_PERSONA,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
 
@@ -1520,7 +1529,8 @@ it("shouldConsolidate true when total obs chars >= 1200", () => {
   withProfileStore(() => {
     const obs = [];
     for (let i = 0; i < 11; i++) {
-      obs.push({ text: "字".repeat(120), confidence: 0.7 });
+      // Distinct texts — identical texts would merge into one observation.
+      obs.push({ text: `${i}${"字".repeat(119)}`, confidence: 0.7 });
     }
     profileStore.appendObservations("g1", "u1", "x", obs);
     assert.equal(shouldConsolidate("g1", "u1"), true);
@@ -1575,6 +1585,211 @@ it("parseConsolidationResult returns null for garbage", () => {
   assert.equal(parseConsolidationResult("not json"), null);
   assert.equal(parseConsolidationResult(null), null);
   assert.equal(parseConsolidationResult(""), null);
+});
+// --- memory evidence pipeline ---
+console.log("memory evidence");
+it("appendPendingInteraction dedups by messageId, not by text", () => {
+  withProfileStore(() => {
+    // Same message scooped twice → one record.
+    assert.equal(
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      true,
+    );
+    assert.equal(
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      false,
+    );
+    // Same TEXT from a different message → kept (repetition can be a trait).
+    assert.equal(
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m2", source: "passive" }),
+      true,
+    );
+    // No messageId → never deduped.
+    profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "");
+    profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "");
+    const pending = profileStore.getPendingInteractions("g1", "u1");
+    assert.equal(pending.length, 4);
+  });
+});
+it("appendPendingInteraction records messageId, source, and at", () => {
+  withProfileStore(() => {
+    profileStore.appendPendingInteraction("g1", "u1", "x", "hi", "yo", {
+      messageId: "m9", source: "direct", at: 12345,
+    });
+    profileStore.appendPendingInteraction("g1", "u1", "x", "[x]: line", "", {
+      messageId: "m10", source: "passive",
+    });
+    const [direct, passive] = profileStore.getPendingInteractions("g1", "u1");
+    assert.equal(direct.messageId, "m9");
+    assert.equal(direct.source, "direct");
+    assert.equal(direct.at, 12345);
+    assert.equal(passive.source, "passive");
+    assert.ok(passive.at > 0, "missing at falls back to now");
+    // Unknown source value normalizes to direct.
+    profileStore.appendPendingInteraction("g1", "u1", "x", "a", "b", { source: "weird" });
+    const all = profileStore.getPendingInteractions("g1", "u1");
+    assert.equal(all[2].source, "direct");
+  });
+});
+it("appendPendingInteraction caps backlog at PENDING_MAX_COUNT (drops oldest)", () => {
+  withProfileStore(() => {
+    for (let i = 0; i < profileStore.PENDING_MAX_COUNT + 5; i++) {
+      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, "", { messageId: `m${i}` });
+    }
+    const pending = profileStore.getPendingInteractions("g1", "u1");
+    assert.equal(pending.length, profileStore.PENDING_MAX_COUNT);
+    assert.equal(pending[0].userText, "msg5", "oldest dropped");
+  });
+});
+it("listPendingBacklog reports users at/above minCount", () => {
+  withProfileStore(() => {
+    profileStore.appendPendingInteraction("g1", "u1", "A", "a", "", { messageId: "m1", at: 100 });
+    profileStore.appendPendingInteraction("g1", "u1", "A", "b", "", { messageId: "m2", at: 200 });
+    profileStore.appendPendingInteraction("g2", "u2", "B", "c", "", { messageId: "m3" });
+    const backlog = profileStore.listPendingBacklog(2);
+    assert.equal(backlog.length, 1);
+    assert.equal(backlog[0].guildId, "g1");
+    assert.equal(backlog[0].userId, "u1");
+    assert.equal(backlog[0].pendingCount, 2);
+    assert.equal(backlog[0].lastPendingAt, 200);
+  });
+});
+it("buildExtractionTurns numbers entries and tags direct vs passive", () => {
+  const turns = buildExtractionTurns([
+    { userText: "你好", assistantText: "嗯…", source: "direct" },
+    { userText: "[某人]: 旁聽的話", assistantText: "", source: "passive" },
+    { userText: "舊直接紀錄", assistantText: "有回覆" },
+    { userText: "[某人]: 舊旁聽紀錄", assistantText: "" },
+  ]);
+  const content = turns[0].content;
+  assert.match(content, /#1【直接互動】/);
+  assert.match(content, /#2【旁聽片段】/);
+  assert.match(content, /#3【直接互動】/, "legacy record with reply = direct");
+  assert.match(content, /#4【旁聽片段】/, "legacy record without reply = passive");
+});
+it("parseEvidenceIndices keeps unique positive ints only", () => {
+  assert.deepEqual(parseEvidenceIndices([1, 3, 3, "2", 0, -1, 1.5, "x"]), [1, 3, 2]);
+  assert.deepEqual(parseEvidenceIndices("nope"), []);
+  assert.deepEqual(parseEvidenceIndices(undefined), []);
+});
+it("parseExtractionResult carries evidence indices through", () => {
+  const obs = parseExtractionResult(
+    '{"observations":[{"text":"常聊棒球","confidence":0.8,"evidence":[1,4]}]}',
+  );
+  assert.deepEqual(obs[0].evidence, [1, 4]);
+  const noEv = parseExtractionResult('{"observations":[{"text":"x","confidence":0.8}]}');
+  assert.deepEqual(noEv[0].evidence, []);
+});
+it("attachEvidence resolves indices to messageIds and caps confidence", () => {
+  const pending = [
+    { userText: "a", assistantText: "r", messageId: "m1", at: 1000, source: "direct" },
+    { userText: "b", assistantText: "", messageId: "m2", at: 2000, source: "passive" },
+    { userText: "c", assistantText: "", messageId: null, source: "passive" },
+    { userText: "d", assistantText: "r", messageId: "m4", at: 4000, source: "direct" },
+    { userText: "e", assistantText: "", messageId: "m5", at: 5000, source: "passive" },
+  ];
+  const [full, single, none, passiveOnly] = attachEvidence(
+    [
+      { text: "三則佐證", confidence: 0.9, evidence: [1, 2, 4] },
+      { text: "單則佐證", confidence: 0.9, evidence: [1] },
+      { text: "無佐證", confidence: 0.9, evidence: [3, 99] },
+      { text: "全旁聽", confidence: 0.9, evidence: [2, 5, 2] },
+    ],
+    pending,
+  );
+  assert.deepEqual(full.evidence.map((e) => e.messageId), ["m1", "m2", "m4"]);
+  assert.equal(full.confidence, 0.9, "well-evidenced keeps confidence");
+  assert.equal(single.confidence, 0.4, "single message capped");
+  assert.equal(none.evidence.length, 0, "null-messageId and out-of-range dropped");
+  assert.equal(none.confidence, 0.3, "no evidence capped hardest");
+  assert.equal(passiveOnly.confidence, 0.5, "passive-only capped");
+});
+it("isStableObservation: 3 distinct messages, or 2 far enough apart", () => {
+  const ev = (messageId, at, source = "direct") => ({ messageId, at, source });
+  assert.equal(
+    isStableObservation({ evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)] }),
+    true,
+    `${STABLE_MIN_DISTINCT_MESSAGES} distinct messages`,
+  );
+  assert.equal(
+    isStableObservation({ evidence: [ev("m1", 0), ev("m2", 1000)] }),
+    false,
+    "2 messages in one burst",
+  );
+  assert.equal(
+    isStableObservation({ evidence: [ev("m1", 0), ev("m2", STABLE_TIME_GAP_MS)] }),
+    true,
+    "2 messages across time",
+  );
+  assert.equal(isStableObservation({ evidence: [] }), false);
+  assert.equal(isStableObservation({}), false, "legacy observation without evidence");
+});
+it("appendObservations merges same-text observations and pools evidence", () => {
+  withProfileStore(() => {
+    profileStore.appendObservations("g1", "u1", "x", [
+      { text: "常聊棒球", confidence: 0.4, evidence: [{ messageId: "m1", at: 1, source: "direct" }] },
+    ]);
+    profileStore.appendObservations("g1", "u1", "x", [
+      { text: "常聊棒球", confidence: 0.7, evidence: [{ messageId: "m2", at: 2, source: "passive" }, { messageId: "m1", at: 1, source: "direct" }] },
+    ]);
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(p.observations.length, 1, "same text merged");
+    assert.deepEqual(
+      p.observations[0].evidence.map((e) => e.messageId),
+      ["m1", "m2"],
+      "evidence unioned by messageId",
+    );
+    assert.equal(p.observations[0].confidence, 0.7, "keeps max confidence");
+  });
+});
+it("buildConsolidationTurns separates stable from under-evidenced observations", () => {
+  const ev = (id, at) => ({ messageId: id, at, source: "direct" });
+  const turns = buildConsolidationTurns({
+    name: "Alice",
+    profile: null,
+    observations: [
+      { text: "常聊棒球", confidence: 0.8, evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)] },
+      { text: "問過星座", confidence: 0.6, evidence: [ev("m4", 0)] },
+    ],
+  });
+  const content = turns[0].content;
+  assert.match(content, /已達證據門檻[\s\S]*常聊棒球（信心 0.8，3 則訊息佐證）/);
+  assert.match(content, /證據不足[\s\S]*問過星座（信心 0.6，1 則訊息佐證）/);
+  assert.ok(
+    content.indexOf("常聊棒球") < content.indexOf("證據不足"),
+    "stable section comes first",
+  );
+});
+it("describeObservationEvidence counts distinct messageIds", () => {
+  assert.equal(describeObservationEvidence({}), "無訊息佐證");
+  assert.equal(
+    describeObservationEvidence({ evidence: [{ messageId: "m1" }, { messageId: "m1" }, { messageId: "m2" }] }),
+    "2 則訊息佐證",
+  );
+});
+it("personas demand evidence and ban unsupported praise", () => {
+  assert.match(EXTRACTION_PERSONA, /evidence 必填/);
+  assert.match(EXTRACTION_PERSONA, /旁聽片段/);
+  assert.match(EXTRACTION_PERSONA, /中性/);
+  assert.match(CONSOLIDATION_PERSONA, /靈魂人物/, "praise words named as banned examples");
+  assert.match(CONSOLIDATION_PERSONA, /不可寫成斷言/);
+});
+it("selectBacklogUsers filters busy users, sorts starved-first, caps count", () => {
+  const now = 1_000_000;
+  const idle = 10 * 60 * 1000;
+  const backlog = [
+    { guildId: "g", userId: "busy", lastPendingAt: now - 1000, lastExtractedAt: 0 },
+    { guildId: "g", userId: "recent", lastPendingAt: now - idle, lastExtractedAt: 500 },
+    { guildId: "g", userId: "starved", lastPendingAt: now - idle, lastExtractedAt: 100 },
+    { guildId: "g", userId: "third", lastPendingAt: now - idle, lastExtractedAt: 300 },
+    { guildId: "g", userId: "fourth", lastPendingAt: now - idle, lastExtractedAt: 400 },
+  ];
+  const picked = selectBacklogUsers(backlog, { now, maxUsers: 3, minIdleMs: idle });
+  assert.deepEqual(
+    picked.map((b) => b.userId),
+    ["starved", "third", "fourth"],
+    "mid-conversation user excluded, oldest extraction first, capped at 3",
+  );
 });
 // --- guild-profile-store ---
 const guildStore = require("../src/guild-profile-store");
