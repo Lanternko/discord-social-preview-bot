@@ -1771,8 +1771,48 @@ it("personas demand evidence and ban unsupported praise", () => {
   assert.match(EXTRACTION_PERSONA, /evidence 必填/);
   assert.match(EXTRACTION_PERSONA, /旁聽片段/);
   assert.match(EXTRACTION_PERSONA, /中性/);
+  assert.match(EXTRACTION_PERSONA, /裝飾字[\s\S]*不是人格證據/, "nickname decorations excluded");
   assert.match(CONSOLIDATION_PERSONA, /靈魂人物/, "praise words named as banned examples");
+  assert.match(CONSOLIDATION_PERSONA, /強詞奪理/, "put-down words named as banned examples");
   assert.match(CONSOLIDATION_PERSONA, /不可寫成斷言/);
+  assert.match(CONSOLIDATION_PERSONA, /以新觀察為準/, "new evidence outweighs old profile");
+  assert.match(CONSOLIDATION_PERSONA, /說話風格：/, "field-per-line output format defined");
+  assert.match(CONSOLIDATION_PERSONA, /不要[\s\S]*「自稱」/, "nickname must not become 自稱");
+});
+it("buildConsolidationTurns labels old profile and nickname sections", () => {
+  const turns = buildConsolidationTurns({
+    name: "力量の小翔_フードコート ver.",
+    profile: "舊摘要內容",
+    observations: [],
+  });
+  const content = turns[0].content;
+  assert.match(content, /既有人格摘要（舊印象/);
+  assert.match(content, /以新觀察為準/);
+  assert.match(content, /暱稱（Discord 顯示名稱/);
+});
+it("setConsolidatedProfile preserves field-per-line newlines", () => {
+  withProfileStore(() => {
+    profileStore.appendObservations("g1", "u1", "x", [{ text: "a", confidence: 0.5 }]);
+    profileStore.setConsolidatedProfile(
+      "g1", "u1",
+      "說話風格：短句\r\n常聊話題：棒球\n\n  互動偏好：愛開玩笑  \n\x00注意：無",
+    );
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(
+      p.profile,
+      "說話風格：短句\n常聊話題：棒球\n互動偏好：愛開玩笑\n注意：無",
+      "newlines kept, CRLF/blank lines/control chars cleaned",
+    );
+  });
+});
+it("buildUserProfileBlock flattens multi-line profile for prompt injection", () => {
+  const block = profileStore.buildUserProfileBlock({
+    name: "Alice",
+    profile: "說話風格：短句\n常聊話題：棒球",
+    observations: [],
+  });
+  assert.match(block, /說話風格：短句；常聊話題：棒球/);
+  assert.ok(!/摘要：[^\n]*\n常聊/.test(block), "no raw newline inside the 摘要 bullet");
 });
 it("selectBacklogUsers filters busy users, sorts starved-first, caps count", () => {
   const now = 1_000_000;

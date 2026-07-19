@@ -206,10 +206,14 @@ function setConsolidatedProfile(guildId, userId, profileText) {
   const entry = data[guildId]?.[userId];
   if (!entry) return;
 
+  // Newlines survive: the consolidated profile is field-per-line
+  // (說話風格：…\n常聊話題：…) and /memory show renders it verbatim.
   const clean = (profileText || "")
-    .replace(CONTROL_CHARS_RE, " ")
-    .replace(/ {2,}/g, " ")
-    .trim()
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(CONTROL_CHARS_RE, " ").replace(/ {2,}/g, " ").trim())
+    .filter(Boolean)
+    .join("\n")
     .slice(0, PROFILE_MAX_LEN);
 
   entry.profile = clean || null;
@@ -231,7 +235,10 @@ function buildUserProfileBlock(entry) {
   ];
 
   if (entry.profile) {
-    lines.push(`- 摘要：${entry.profile.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
+    // Prompt block stays one bullet per item — flatten the field-per-line
+    // profile into a single line for injection.
+    const flat = entry.profile.replace(/\n+/g, "；");
+    lines.push(`- 摘要：${flat.slice(0, PROFILE_PROMPT_MAX_LEN)}`);
   }
 
   const recentObservations = (entry.observations || [])
