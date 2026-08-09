@@ -1,0 +1,25 @@
+{
+  "schema_version": "pilotfish.voice_anchors.v1",
+  "target_speaker": "西奈津美",
+  "anchors": [
+    {
+      "anchor_id": "s1-ep05-seed-001",
+      "source_id": "s1-ep05",
+      "start_s": 3.000,
+      "end_s": 5.829,
+      "speaker": "西奈津美",
+      "text": null,
+      "emotion": "unknown",
+      "confidence": 1.0,
+      "verdict": "accept",
+      "reviewer": "human-gold",
+      "reviewed_at": "2026-08-09",
+      "uncertain": false,
+      "seed_only": true,
+      "evidence": {
+        "kind": "manual_gold_anchor",
+        "note": "第一季第 5 話人工金標；只供聲紋校準 seed。"
+      }
+    }
+  ]
+}

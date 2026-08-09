@@ -1,0 +1,184 @@
+{
+  "schema_version": "pilotfish.source_inventory.v1",
+  "target_speaker": "西奈津美",
+  "collection": "正反対な君と僕 / 相反的你和我",
+  "policy": {
+    "rights": {
+      "download": "deny",
+      "research_extraction": "deny",
+      "training": "deny",
+      "redistribution": "deny"
+    },
+    "note": "Metadata-only inventory. Rights must be reviewed before any download or training use."
+  },
+  "sources": [
+    {
+      "source_id": "s1-ep01",
+      "season": 1,
+      "episode": 1,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=CnZl_mRhg14",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep02",
+      "season": 1,
+      "episode": 2,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=WRE4LKIFsNk",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep03",
+      "season": 1,
+      "episode": 3,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=5-s_FXR_VPY",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep04",
+      "season": 1,
+      "episode": 4,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=7xDprxciG7k",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep05",
+      "season": 1,
+      "episode": 5,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=yXi3aHGpPZk",
+      "locator_status": "known",
+      "note": "目前唯一登記人工 seed anchor 的來源。",
+      "rights": {
+        "download": "deny",
+        "research_extraction": "allow",
+        "training": "deny",
+        "redistribution": "deny"
+      }
+    },
+    {
+      "source_id": "s1-ep06",
+      "season": 1,
+      "episode": 6,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=GpdukzbVpmA",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep07",
+      "season": 1,
+      "episode": 7,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=uUj5bTO7GNU",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep08",
+      "season": 1,
+      "episode": 8,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=11G8oacoLfI",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep09",
+      "season": 1,
+      "episode": 9,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=6t-czEseGSs",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep10",
+      "season": 1,
+      "episode": 10,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=su9RocWbC_Y",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep11",
+      "season": 1,
+      "episode": 11,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=prxv1IB3YP4",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s1-ep12",
+      "season": 1,
+      "episode": 12,
+      "platform": "youtube",
+      "url": "https://www.youtube.com/watch?v=byAzVN6dkiM",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep13",
+      "season": 2,
+      "episode": 13,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49896",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep14",
+      "season": 2,
+      "episode": 14,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49897",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep15",
+      "season": 2,
+      "episode": 15,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49898",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep16",
+      "season": 2,
+      "episode": 16,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50320",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep17",
+      "season": 2,
+      "episode": 17,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50321",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    },
+    {
+      "source_id": "s2-ep18",
+      "season": 2,
+      "episode": 18,
+      "platform": "ani-gamer",
+      "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50322",
+      "locator_status": "known",
+      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+    }
+  ]
+}

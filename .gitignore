@@ -9,5 +9,6 @@ stop-bot.command
 bot.log
 bot.log.*
 *.log
+__pycache__/
+*.py[cod]
 data/
-
