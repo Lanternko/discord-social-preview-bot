@@ -17,6 +17,7 @@
 
   <nav class="tabs" aria-label="測評模式">
     <button class="tab active" data-kind="identity">素材身份 <span id="identity-count">0/0</span></button>
+    <button class="tab" data-kind="transcript">日文逐字稿 <span id="transcript-count">0/0</span></button>
     <button class="tab" data-kind="generation">生成品質 <span id="generation-count">0/0</span></button>
   </nav>
 
@@ -78,6 +79,15 @@
           </fieldset>
           <label class="check-row"><input type="checkbox" name="overlap"><span>有其他角色串音或重疊說話</span></label>
           <label class="notes"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        </form>
+
+        <form id="transcript-form" class="form-grid" hidden>
+          <label class="notes wide"><span>日文校正版</span><textarea name="transcript_ja_verified" rows="3" maxlength="500" required></textarea></label>
+          <fieldset class="wide"><legend>結論</legend><div class="segmented two">
+            <label><input type="radio" name="verdict" value="accept" required><span>採用校正版</span></label>
+            <label><input type="radio" name="verdict" value="reject"><span>退回草稿</span></label>
+          </div></fieldset>
+          <label class="notes wide"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
         </form>
 
         <form id="generation-form" class="form-grid" hidden>

@@ -41,6 +41,16 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
         raise ValueError("reviews document must contain a reviews object")
     staging = Path(tempfile.mkdtemp(prefix=".review-bank.", dir=out_dir.parent))
     search_roots = search_roots or []
+    transcript_reviews = {}
+    for review in reviews.values():
+        if not isinstance(review, dict):
+            continue
+        answers = review.get("answers", {})
+        media_value = review.get("media_path")
+        verified = answers.get("transcript_ja_verified")
+        if (review.get("kind") == "transcript" and answers.get("verdict") == "accept" and
+                isinstance(media_value, str) and isinstance(verified, str) and verified.strip()):
+            transcript_reviews[Path(media_value).stem] = review
     counts = {"positive": 0, "negative": 0, "ignored": 0, "reviewed_spans": 0}
     try:
         for label in ("positive", "negative"):
@@ -89,6 +99,9 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
             slug = media_path.stem
             is_new = not (destination / f"{slug}.wav").exists()
             shutil.copy2(media_path, destination / f"{slug}.wav")
+            transcript_review = transcript_reviews.get(slug) if label == "positive" else None
+            verified = (transcript_review.get("answers", {}).get("transcript_ja_verified", "").strip()
+                        if transcript_review else None)
             exported = {
                 "schema_version": "pilotfish.review_bank.v1",
                 "label": label,
@@ -99,6 +112,9 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
                 "review": review,
                 "candidate": sidecar,
             }
+            if verified:
+                exported["transcript_ja_verified"] = verified
+                exported["transcript_review"] = transcript_review
             (destination / f"{slug}.json").write_text(
                 json.dumps(exported, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",

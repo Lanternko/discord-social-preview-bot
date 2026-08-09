@@ -26,7 +26,7 @@ STATIC_ROOT = Path(__file__).with_name("review_ui")
 DEFAULT_DATA_ROOT = APP_ROOT / "data" / "voice" / "xibao"
 DEFAULT_INVENTORY = APP_ROOT / "configs" / "voice" / "xibao.sources.json"
 AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
-KINDS = {"identity", "generation"}
+KINDS = {"identity", "transcript", "generation"}
 IDENTITY_BATCH_SIZE = 5
 MAX_HIGH_CONFIDENCE_OTHERS = 3
 TARGET_SPEAKER = "西奈津美"
@@ -133,6 +133,38 @@ class ReviewStore:
             "review_batch": sidecar.get("review_batch"),
         }
 
+    def _transcript_items(self, reference_id: str | None) -> list[dict]:
+        result = []
+        root = self.data_root / "transcripts" / "asr"
+        for draft_path in sorted(root.glob("*.json")) if root.is_dir() else []:
+            if draft_path.name == "manifest.json":
+                continue
+            try:
+                draft = json.loads(draft_path.read_text(encoding="utf-8"))
+                audio = Path(draft["audio_path"]).resolve()
+            except (OSError, KeyError, TypeError, json.JSONDecodeError):
+                continue
+            if self.data_root not in audio.parents or not audio.is_file():
+                continue
+            if draft.get("audio_sha256") != hashlib.sha256(audio.read_bytes()).hexdigest():
+                continue
+            media_id = self._id(audio)
+            self.media[media_id] = audio
+            result.append({
+                "id": media_id,
+                "kind": "transcript",
+                "name": draft.get("clip_id") or audio.stem,
+                "media_url": f"/media/{media_id}",
+                "reference_id": reference_id,
+                "source_id": draft.get("source_id"),
+                "start_s": draft.get("start_s"),
+                "end_s": draft.get("end_s"),
+                "transcript": draft.get("transcript_zh_subtitle"),
+                "transcript_zh_subtitle": draft.get("transcript_zh_subtitle"),
+                "transcript_ja_asr": draft.get("transcript_ja_asr"),
+            })
+        return result
+
     def load_reviews(self) -> dict:
         if not self.review_path.is_file():
             return {}
@@ -179,6 +211,7 @@ class ReviewStore:
         ))
         generation = [self._item(path, "generation", reference_id)
                       for path in self._scan_audio("generations")]
+        transcripts = self._transcript_items(reference_id)
         reviews = self.load_reviews()
         quality_hold = False
         unlocked = min(IDENTITY_BATCH_SIZE, len(all_identity))
@@ -202,12 +235,14 @@ class ReviewStore:
         return {
             "reviewer": self.reviewer,
             "references": reference_items,
-            "queues": {"identity": identity, "generation": generation},
+            "queues": {"identity": identity, "transcript": transcripts,
+                       "generation": generation},
             "reviews": reviews,
             "counts": {
                 kind: {"total": len(items),
                        "reviewed": sum(1 for item in items if f"{self.reviewer}:{kind}:{item['id']}" in reviews)}
-                for kind, items in (("identity", identity), ("generation", generation))
+                for kind, items in (("identity", identity), ("transcript", transcripts),
+                                    ("generation", generation))
             },
             "identity_available_total": len(all_identity),
             "identity_quarantined_total": len(scanned_identity) - len(all_identity),
@@ -224,8 +259,12 @@ class ReviewStore:
         item_id = payload.get("item_id")
         if kind not in KINDS or not isinstance(item_id, str) or item_id not in self.media:
             raise ValueError("unknown review item")
-        allowed = ({"verdict", "overlap", "confidence", "notes"} if kind == "identity" else
-                   {"verdict", "likeness", "naturalness", "artifacts", "notes"})
+        allowed_by_kind = {
+            "identity": {"verdict", "overlap", "confidence", "notes"},
+            "transcript": {"verdict", "transcript_ja_verified", "notes"},
+            "generation": {"verdict", "likeness", "naturalness", "artifacts", "notes"},
+        }
+        allowed = allowed_by_kind[kind]
         answers = payload.get("answers")
         if not isinstance(answers, dict) or set(answers) - allowed:
             raise ValueError("invalid review answers")
@@ -236,6 +275,15 @@ class ReviewStore:
                 raise ValueError("overlap must be boolean")
             if answers.get("confidence") not in {1, 2, 3, 4, 5}:
                 raise ValueError("confidence must be 1..5")
+        elif kind == "transcript":
+            if answers.get("verdict") not in {"accept", "reject"}:
+                raise ValueError("transcript verdict is required")
+            verified = answers.get("transcript_ja_verified")
+            if answers.get("verdict") == "accept" and (
+                    not isinstance(verified, str) or not verified.strip()):
+                raise ValueError("accepted transcript_ja_verified must be non-empty")
+            if verified is not None and not isinstance(verified, str):
+                raise ValueError("transcript_ja_verified must be a string")
         else:
             if answers.get("verdict") not in {"accept", "reject"}:
                 raise ValueError("generation verdict is required")
@@ -289,7 +337,8 @@ class ReviewStore:
                 value.get("answers", {}).get("confidence", 0) >= 4
                 for value in batch_records
             ) >= MAX_HIGH_CONFIDENCE_OTHERS
-            if kind == "identity" and (completed_batch or failed_canary):
+            if ((kind == "identity" and (completed_batch or failed_canary)) or
+                    kind == "transcript"):
                 try:
                     self._refresh_review_bank()
                 except (OSError, ValueError, json.JSONDecodeError) as error:

@@ -123,6 +123,35 @@ class ReviewStoreTests(unittest.TestCase):
                 "verdict": "accept", "naturalness": 5, "artifacts": [], "notes": "",
             }})
 
+    def test_transcript_queue_requires_hash_and_nonempty_accepted_text(self):
+        audio = self.root / "candidates" / "candidate.wav"
+        drafts = self.root / "transcripts" / "asr"
+        drafts.mkdir(parents=True)
+        (drafts / "candidate.json").write_text(json.dumps({
+            "clip_id": "candidate", "audio_path": str(audio.resolve()),
+            "audio_sha256": hashlib.sha256(audio.read_bytes()).hexdigest(),
+            "source_id": "s1-ep05", "start_s": 1.0, "end_s": 3.0,
+            "transcript_zh_subtitle": "中文提示", "transcript_ja_asr": "草稿です",
+        }), encoding="utf-8")
+        item = self.store.session()["queues"]["transcript"][0]
+        with self.assertRaisesRegex(ValueError, "non-empty"):
+            self.store.save({"kind": "transcript", "item_id": item["id"], "answers": {
+                "verdict": "accept", "transcript_ja_verified": "", "notes": "",
+            }})
+        record = self.store.save({"kind": "transcript", "item_id": item["id"], "answers": {
+            "verdict": "accept", "transcript_ja_verified": "校正版です", "notes": "",
+        }})
+        self.assertEqual(record["answers"]["transcript_ja_verified"], "校正版です")
+
+    def test_transcript_draft_with_wrong_hash_is_quarantined(self):
+        drafts = self.root / "transcripts" / "asr"
+        drafts.mkdir(parents=True)
+        (drafts / "candidate.json").write_text(json.dumps({
+            "audio_path": str((self.root / "candidates" / "candidate.wav").resolve()),
+            "audio_sha256": "0" * 64, "transcript_ja_asr": "wrong binding",
+        }), encoding="utf-8")
+        self.assertEqual(self.store.session()["queues"]["transcript"], [])
+
     def test_unknown_media_and_extra_fields_fail_closed(self):
         self.store.session()
         with self.assertRaisesRegex(ValueError, "unknown"):

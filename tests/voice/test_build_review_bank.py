@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -63,6 +64,30 @@ class ReviewBankTests(unittest.TestCase):
             }}}), encoding="utf-8")
             counts = brb.build(reviews, root / "bank", [archive])
             self.assertEqual(counts["reviewed_spans"], 1)
+
+    def test_accepted_transcript_review_is_merged_into_positive_bank(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "clip.wav"
+            media.write_bytes(b"reviewed audio")
+            media.with_suffix(".json").write_text(json.dumps({
+                "source_id": "s1-ep05",
+                "audio_sha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+            }), encoding="utf-8")
+            reviews = root / "reviews.json"
+            reviews.write_text(json.dumps({"reviews": {
+                "identity": {"kind": "identity", "media_path": str(media),
+                             "answers": {"verdict": "target", "overlap": False,
+                                         "confidence": 5}},
+                "transcript": {"kind": "transcript", "media_path": str(media),
+                               "reviewer": "linguist", "reviewed_at": "now",
+                               "answers": {"verdict": "accept",
+                                           "transcript_ja_verified": "谷くんです。"}},
+            }}), encoding="utf-8")
+            brb.build(reviews, root / "bank")
+            exported = json.loads((root / "bank" / "positive" / "clip.json").read_text())
+            self.assertEqual(exported["transcript_ja_verified"], "谷くんです。")
+            self.assertEqual(exported["transcript_review"]["reviewer"], "linguist")
 
 
 if __name__ == "__main__":

@@ -192,3 +192,5 @@ data/voice/.venv/bin/python tools/voice/build_review_bank.py \
 只有信心 >= 3、無串音的 `target` 會成為 positive；信心 >= 3、無串音的 `other` 會成為 hard negative。不確定、低信心與串音不參與訓練，但仍寫入 reviewed-span ledger，確保不會再次出題。所有新候選仍是 `pending_human_review`、`training_eligible=false`。
 
 測評台採五段小批 canary。每批完成且品質正常才解鎖下一批；若同批出現三段高信心 `other`，後端立即設定 `quality_hold`，介面停止前進，必須先重建 speaker gate。候選目錄為空時不會用金標假裝成待評片段。
+
+`data/voice/xibao/transcripts/asr/*.json` 的日文 ASR 只能作草稿。測評台的「日文逐字稿」分頁只載入位於資料根目錄內且音檔 SHA 相符的草稿；人工可直接修正文句，再選擇採用或退回。只有 `accept` 且非空的 `transcript_ja_verified` 會連同 reviewer、時間與原始草稿 provenance 合併回 positive bank，並被 training readiness 計數。

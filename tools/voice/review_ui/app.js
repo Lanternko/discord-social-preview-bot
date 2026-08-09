@@ -13,6 +13,7 @@ document.querySelectorAll(".rating").forEach((node) => rating(node, node.dataset
 function reviewKey(item) { return `${state.session.reviewer}:${state.kind}:${item.id}`; }
 function queue() { return state.session.queues[state.kind]; }
 function current() { return queue()[state.index]; }
+function currentForm() { return $(`#${state.kind}-form`); }
 
 async function waveform(audio, canvas) {
   const context = new AudioContext();
@@ -92,40 +93,48 @@ function render() {
   renderQueue();
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
-  if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" : "data/voice/xibao/generations"; return; }
+  if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" :
+    (state.kind === "transcript" ? "data/voice/xibao/transcripts/asr" : "data/voice/xibao/generations"); return; }
   $("#clip-kind").textContent = state.kind === "identity" ?
-    (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份") : "生成品質";
+    (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份") :
+    (state.kind === "transcript" ? "日文逐字稿" : "生成品質");
   $("#clip-name").textContent = item.name;
   $("#source-id").textContent = item.source_id || "LOCAL";
   $("#time-range").textContent = item.start_s != null ? `${item.start_s}s – ${item.end_s}s` : "完整片段";
-  $("#candidate-label").textContent = state.kind === "identity" ? "待評片段" : "生成結果";
+  $("#candidate-label").textContent = state.kind === "generation" ? "生成結果" : "原始片段";
   const reference = state.session.references.find((entry) => entry.id === item.reference_id) || state.session.references[0];
   setAudio("#reference-audio", reference?.media_url);
   setAudio("#candidate-audio", item.media_url);
-  $("#transcript").hidden = !item.transcript; $("#transcript").textContent = item.transcript || "";
+  $("#transcript").hidden = !item.transcript; $("#transcript").textContent =
+    state.kind === "transcript" ? `中文提示：${item.transcript || "（無）"}` : (item.transcript || "");
   $("#identity-form").hidden = state.kind !== "identity";
+  $("#transcript-form").hidden = state.kind !== "transcript";
   $("#generation-form").hidden = state.kind !== "generation";
-  hydrate($(state.kind === "identity" ? "#identity-form" : "#generation-form"), state.session.reviews[reviewKey(item)]);
+  hydrate(currentForm(), state.session.reviews[reviewKey(item)]);
+  if (state.kind === "transcript" && !state.session.reviews[reviewKey(item)]) {
+    currentForm().elements.transcript_ja_verified.value = item.transcript_ja_asr || "";
+  }
   $("#previous").disabled = state.index === 0;
   $("#save-status").textContent = state.session.reviews[reviewKey(item)] ? "此段已有紀錄" : "";
-  if (state.session.quality_hold) {
+  if (state.kind === "identity" && state.session.quality_hold) {
     $("#save-status").textContent = "連續出現 3 筆高信心其他角色，本批已自動暫停";
   }
   $("#save").innerHTML = state.index < items.length - 1
     ? "儲存並前往下一段 <span>›</span>"
     : (state.session.reviews[reviewKey(item)] ? "更新本段" : "儲存本段");
-  $("#save").disabled = state.session.quality_hold;
+  $("#save").disabled = state.kind === "identity" && state.session.quality_hold;
 }
 
 function answers(form) {
   const data = new FormData(form);
   const base = { notes: String(data.get("notes") || "").trim() };
   if (state.kind === "identity") return { ...base, verdict: data.get("verdict"), overlap: data.get("overlap") === "on", confidence: Number(data.get("confidence")) };
+  if (state.kind === "transcript") return { ...base, verdict: data.get("verdict"), transcript_ja_verified: String(data.get("transcript_ja_verified") || "").trim() };
   return { ...base, verdict: data.get("verdict"), likeness: Number(data.get("likeness")), naturalness: Number(data.get("naturalness")), artifacts: data.getAll("artifacts") };
 }
 
 $("#save").onclick = async () => {
-  const item = current(); const form = $(state.kind === "identity" ? "#identity-form" : "#generation-form");
+  const item = current(); const form = currentForm();
   if (!form.reportValidity()) return;
   $("#save").disabled = true; $("#save-status").textContent = "儲存中…";
   const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: state.kind, item_id: item.id, answers: answers(form) }) });
