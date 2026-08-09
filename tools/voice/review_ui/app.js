@@ -94,7 +94,7 @@ function render() {
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
   if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" : "data/voice/xibao/generations"; return; }
   $("#clip-kind").textContent = state.kind === "identity" ?
-    (item.selection_kind === "visual_precheck" ? "素材身份 · 畫面預審" : "素材身份") : "生成品質";
+    (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份") : "生成品質";
   $("#clip-name").textContent = item.name;
   $("#source-id").textContent = item.source_id || "LOCAL";
   $("#time-range").textContent = item.start_s != null ? `${item.start_s}s – ${item.end_s}s` : "完整片段";

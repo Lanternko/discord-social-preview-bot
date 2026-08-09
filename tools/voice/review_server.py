@@ -68,10 +68,14 @@ class ReviewStore:
         selection = sidecar.get("selection_evidence")
         if isinstance(selection, dict):
             visual_ready = (
-                selection.get("kind") == "visual_precheck" and
+                selection.get("kind") == "visual_lipsync_precheck" and
                 selection.get("character_on_screen") == TARGET_SPEAKER and
                 isinstance(selection.get("observer"), str) and
-                isinstance(selection.get("checked_at"), str)
+                isinstance(selection.get("checked_at"), str) and
+                selection.get("mouth_motion_observed") is True and
+                selection.get("single_visible_speaker") is True and
+                selection.get("no_shot_change") is True and
+                selection.get("frames_per_second", 0) >= 8
             )
             acoustic = sidecar.get("acoustic_precheck")
             bank_manifest = self.data_root / "calibration" / "review-bank" / "manifest.json"
@@ -80,12 +84,17 @@ class ReviewStore:
                 if bank_manifest.is_file() else None
             )
             acoustic_ready = (
-                isinstance(acoustic, dict) and acoustic.get("passed") is True and
+                isinstance(acoustic, dict) and acoustic.get("review_eligible") is True and
                 acoustic.get("scorer_version") == "pilotfish.acoustic_precheck.v1" and
+                acoustic.get("decision") == "ambiguous_human_review" and
                 isinstance(acoustic.get("scored_at"), str) and
                 acoustic.get("bank_sha256") == current_bank_sha256 and
                 acoustic.get("positive_clips", 0) >= 8 and
-                acoustic.get("negative_clips", 0) >= 20
+                acoustic.get("negative_clips", 0) >= 20 and
+                isinstance(acoustic.get("speaker_probability"), (int, float)) and
+                0.25 <= acoustic["speaker_probability"] <= 0.70 and
+                isinstance(acoustic.get("identity_margin"), (int, float)) and
+                abs(acoustic["identity_margin"]) <= 0.05
             )
             if visual_ready and acoustic_ready:
                 return True

@@ -20,16 +20,21 @@ class ReviewStoreTests(unittest.TestCase):
         return {
             "review_ready": True,
             "selection_evidence": {
-                "kind": "visual_precheck", "character_on_screen": "西奈津美",
+                "kind": "visual_lipsync_precheck", "character_on_screen": "西奈津美",
                 "observer": "fixture", "checked_at": "2026-08-10T00:00:00Z",
+                "mouth_motion_observed": True, "single_visible_speaker": True,
+                "no_shot_change": True, "frames_per_second": 8,
             },
             "acoustic_precheck": {
-                "passed": True,
+                "review_eligible": True,
                 "scorer_version": "pilotfish.acoustic_precheck.v1",
+                "decision": "ambiguous_human_review",
                 "scored_at": "2026-08-10T00:00:00Z",
                 "bank_sha256": hashlib.sha256(ReviewStoreTests.bank_manifest).hexdigest(),
                 "positive_clips": 8,
                 "negative_clips": 20,
+                "speaker_probability": 0.45,
+                "identity_margin": 0.01,
             },
             **values,
         }
@@ -174,6 +179,22 @@ class ReviewStoreTests(unittest.TestCase):
     def test_acoustic_precheck_requires_sufficient_human_banks(self):
         sidecar = self.ready_sidecar()
         sidecar["acoustic_precheck"]["negative_clips"] = 19
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_obvious_acoustic_other_is_not_sent_as_ambiguous(self):
+        sidecar = self.ready_sidecar()
+        sidecar["acoustic_precheck"]["speaker_probability"] = 0.14
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_static_character_frame_is_not_lipsync_evidence(self):
+        sidecar = self.ready_sidecar()
+        sidecar["selection_evidence"]["mouth_motion_observed"] = False
         (self.root / "candidates" / "candidate.json").write_text(
             json.dumps(sidecar), encoding="utf-8",
         )
