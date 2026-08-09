@@ -81,13 +81,16 @@ function render() {
   $(`#${state.kind}-count`).textContent = `${reviewed}/${items.length}`;
   $("#position").textContent = items.length ? `${state.index + 1} / ${items.length}` : "0 / 0";
   $("#progress-bar").style.width = items.length ? `${reviewed / items.length * 100}%` : "0";
+  const quarantined = state.kind === "identity" ? state.session.identity_quarantined_total : 0;
   $("#queue-status").textContent = state.session.quality_hold ? "品質閘門暫停" :
-    (reviewed === items.length && items.length ? "本輪完成" : "審核進行中");
+    (quarantined && !items.length ? `聲線未校準，隔離 ${quarantined} 段` :
+      (reviewed === items.length && items.length ? "本輪完成" : "審核進行中"));
   renderQueue();
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
   if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" : "data/voice/xibao/generations"; return; }
-  $("#clip-kind").textContent = state.kind === "identity" ? "素材身份" : "生成品質";
+  $("#clip-kind").textContent = state.kind === "identity" ?
+    (item.selection_kind === "visual_precheck" ? "素材身份 · 畫面預審" : "素材身份") : "生成品質";
   $("#clip-name").textContent = item.name;
   $("#source-id").textContent = item.source_id || "LOCAL";
   $("#time-range").textContent = item.start_s != null ? `${item.start_s}s – ${item.end_s}s` : "完整片段";

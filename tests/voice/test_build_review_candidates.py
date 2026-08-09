@@ -53,6 +53,39 @@ class CandidateSpanTests(unittest.TestCase):
         self.assertEqual(metrics["fpr"], 0.0)
         self.assertEqual(metrics["recall"], 0.5)
 
+    def test_bank_source_ids_reads_nested_and_flat_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "flat.json").write_text(json.dumps({"source_id": "s1-ep05"}))
+            (root / "nested.json").write_text(json.dumps({
+                "candidate": {"source_id": "s1-ep07"},
+            }))
+            self.assertEqual(brc.bank_source_ids(root), {"s1-ep05", "s1-ep07"})
+
+    def test_review_gate_requires_three_positive_episodes(self):
+        held = brc.review_gate_readiness({"s1-ep05"}, minimum_episodes=3)
+        self.assertFalse(held["review_ready"])
+        self.assertFalse(held["episode_disjoint"])
+        enough_sources = brc.review_gate_readiness(
+            {"s1-ep05", "s1-ep07", "s2-ep16"}, minimum_episodes=3,
+        )
+        self.assertFalse(enough_sources["review_ready"])
+        ready = brc.finalize_review_gate(enough_sources, {
+            "episode_disjoint": True, "auc": 0.91, "fpr": 0.04,
+        })
+        self.assertTrue(ready["review_ready"])
+        self.assertTrue(ready["episode_disjoint"])
+
+    def test_review_gate_rejects_good_non_disjoint_metrics(self):
+        enough_sources = brc.review_gate_readiness(
+            {"s1-ep05", "s1-ep07", "s2-ep16"}, minimum_episodes=3,
+        )
+        held = brc.finalize_review_gate(enough_sources, {
+            "episode_disjoint": False, "auc": 0.99, "fpr": 0.0,
+        })
+        self.assertFalse(held["review_ready"])
+        self.assertIn("not episode-disjoint", " ".join(held["reasons"]))
+
 
 if __name__ == "__main__":
     unittest.main()

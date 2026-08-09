@@ -101,6 +101,74 @@ def bank_span_keys(*directories: Path) -> set[tuple[str, float, float]]:
     return keys
 
 
+def bank_source_ids(directory: Path | None) -> set[str]:
+    """Return provenance source ids from reviewed-bank sidecars."""
+    source_ids = set()
+    if directory is None or not directory.is_dir():
+        return source_ids
+    for path in directory.glob("*.json"):
+        document = json.loads(path.read_text(encoding="utf-8"))
+        candidate = document.get("candidate")
+        source_id = document.get("source_id")
+        if not isinstance(source_id, str) and isinstance(candidate, dict):
+            source_id = candidate.get("source_id") or candidate.get("source")
+        if isinstance(source_id, str) and source_id:
+            source_ids.add(source_id)
+    return source_ids
+
+
+def bank_audio_records(directory: Path | None) -> list[tuple[Path, str]]:
+    if directory is None or not directory.is_dir():
+        return []
+    records = []
+    for audio_path in sorted(directory.glob("*.wav")):
+        sidecar_path = audio_path.with_suffix(".json")
+        source_id = f"unknown:{audio_path.stem}"
+        if sidecar_path.is_file():
+            document = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            candidate = document.get("candidate")
+            value = document.get("source_id")
+            if not isinstance(value, str) and isinstance(candidate, dict):
+                value = candidate.get("source_id") or candidate.get("source")
+            if isinstance(value, str) and value:
+                source_id = value
+        records.append((audio_path, source_id))
+    return records
+
+
+def review_gate_readiness(positive_sources: set[str], *, minimum_episodes: int) -> dict[str, Any]:
+    episode_count = len(positive_sources)
+    reasons = []
+    if episode_count < minimum_episodes:
+        reasons.append(
+            f"positive bank covers {episode_count} episode(s); at least {minimum_episodes} required"
+        )
+    return {
+        "review_ready": False,
+        "positive_episode_count": episode_count,
+        "minimum_positive_episodes": minimum_episodes,
+        "episode_disjoint": False,
+        "reasons": reasons,
+    }
+
+
+def finalize_review_gate(readiness: dict[str, Any], validation: dict[str, Any] | None) -> dict[str, Any]:
+    result = {**readiness, "reasons": list(readiness["reasons"])}
+    if validation is None:
+        result["reasons"].append("speaker validation report is missing")
+    else:
+        result["episode_disjoint"] = validation.get("episode_disjoint") is True
+        if not result["episode_disjoint"]:
+            result["reasons"].append("speaker validation is not episode-disjoint")
+        if validation.get("auc", 0.0) < 0.85:
+            result["reasons"].append("speaker validation AUC is below 0.85")
+        if validation.get("fpr", 1.0) > 0.05:
+            result["reasons"].append("speaker validation FPR exceeds 0.05")
+    result["reasons"] = list(dict.fromkeys(result["reasons"]))
+    result["review_ready"] = not result["reasons"]
+    return result
+
+
 def binary_metrics(labels, probabilities, threshold: float) -> dict[str, float]:
     import numpy as np
 
@@ -131,7 +199,7 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     import torch.nn.functional as functional
     from scipy.signal import resample_poly
     from sklearn.linear_model import LogisticRegression
-    from sklearn.model_selection import LeaveOneOut, cross_val_predict
+    from sklearn.model_selection import LeaveOneOut, StratifiedGroupKFold, cross_val_predict
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     from speechbrain.inference.speaker import EncoderClassifier
@@ -156,6 +224,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     reviewed_keys = bank_span_keys(*(
         path for path in (positive_dir, negative_dir, reviewed_dir) if path
     ))
+    readiness = review_gate_readiness(
+        bank_source_ids(positive_dir), minimum_episodes=args.min_positive_episodes,
+    )
     spans = [span for span in spans if (
         args.source_id, span["start_s"], span["end_s"],
     ) not in reviewed_keys]
@@ -191,14 +262,10 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     with torch.inference_mode():
         reference_embedding = classifier.encode_batch(reference.to(device)).squeeze()
         reference_embedding = functional.normalize(reference_embedding, dim=0)
-        human_positive_embeddings = []
-        if positive_dir and positive_dir.is_dir():
-            human_positive_embeddings.extend(
-                encode_file(path) for path in sorted(positive_dir.glob("*.wav"))
-            )
-        negative_embeddings = []
-        if negative_dir and negative_dir.is_dir():
-            negative_embeddings.extend(encode_file(path) for path in sorted(negative_dir.glob("*.wav")))
+        positive_records = bank_audio_records(positive_dir)
+        negative_records = bank_audio_records(negative_dir)
+        human_positive_embeddings = [encode_file(path) for path, _ in positive_records]
+        negative_embeddings = [encode_file(path) for path, _ in negative_records]
         positive_embeddings = [reference_embedding, *human_positive_embeddings]
         positive_bank = torch.stack(positive_embeddings)
         negative_bank = torch.stack(negative_embeddings) if negative_embeddings else None
@@ -216,10 +283,24 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                     LogisticRegression(C=0.1, class_weight="balanced", max_iter=5000),
                 )
 
-            cv_probabilities = cross_val_predict(
-                new_gate(), cv_features, cv_labels, cv=LeaveOneOut(), method="predict_proba",
-            )[:, 1]
+            cv_groups = [source for _, source in positive_records + negative_records]
+            if len(bank_source_ids(positive_dir)) >= args.min_positive_episodes:
+                cv = StratifiedGroupKFold(
+                    n_splits=min(3, len(set(cv_groups))), shuffle=True, random_state=17,
+                )
+                cv_probabilities = cross_val_predict(
+                    new_gate(), cv_features, cv_labels, cv=cv, groups=cv_groups,
+                    method="predict_proba",
+                )[:, 1]
+                episode_disjoint = True
+            else:
+                cv_probabilities = cross_val_predict(
+                    new_gate(), cv_features, cv_labels, cv=LeaveOneOut(), method="predict_proba",
+                )[:, 1]
+                episode_disjoint = False
             gate_report = binary_metrics(cv_labels, cv_probabilities, args.min_probability)
+            gate_report["episode_disjoint"] = episode_disjoint
+            readiness = finalize_review_gate(readiness, gate_report)
             fit_features = torch.stack([
                 reference_embedding, *human_positive_embeddings, *negative_embeddings,
             ]).cpu().numpy()
@@ -273,7 +354,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
 
     if supervised_gate is not None:
         eligible = [span for span in spans
-                    if span["speaker_probability"] >= args.min_probability]
+                    if span["speaker_probability"] >= args.min_probability and
+                    span.get("identity_margin", -math.inf) >= args.min_review_margin]
         ranked = sorted(eligible, key=lambda item: item["speaker_probability"], reverse=True)[:args.top_k]
     elif negative_embeddings:
         eligible = [span for span in spans
@@ -320,8 +402,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                     "kind": "standardized_logistic_regression",
                     "minimum_probability": args.min_probability,
                     "validation": gate_report,
-                    "episode_disjoint": False,
+                    **readiness,
                 } if gate_report else None,
+                "review_ready": bool(gate_report and readiness["review_ready"]),
                 "quality": {"peak": span["peak"], "rms_dbfs": span["rms_dbfs"]},
                 "model": MODEL_ID,
                 "audio_sha256": sha256_file(wav_path),
@@ -339,6 +422,8 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             shutil.rmtree(staging)
     return {"source_id": args.source_id, "considered": len(spans),
             "candidates": len(ranked), "out_dir": str(out_dir),
+            "review_ready_candidates": len(ranked) if readiness["review_ready"] else 0,
+            "review_gate": readiness,
             "max_rank_score": max((item["rank_score"] for item in ranked), default=None),
             "margin_gate": [args.min_margin, args.max_margin] if negative_embeddings else None,
             "speaker_gate": gate_report}
@@ -365,13 +450,15 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--min-margin", type=float, default=0.0)
     result.add_argument("--max-margin", type=float, default=0.12)
     result.add_argument("--min-probability", type=float, default=0.70)
+    result.add_argument("--min-review-margin", type=float, default=0.03)
+    result.add_argument("--min-positive-episodes", type=int, default=3)
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
-    if args.top_k <= 0 or args.batch_size <= 0:
-        raise SystemExit("top-k and batch-size must be positive")
+    if args.top_k <= 0 or args.batch_size <= 0 or args.min_positive_episodes <= 0:
+        raise SystemExit("top-k, batch-size and min-positive-episodes must be positive")
     print(json.dumps(build(args), ensure_ascii=False, sort_keys=True))
     return 0
 

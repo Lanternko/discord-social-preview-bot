@@ -135,7 +135,9 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
   --min-probability 0.70
 ```
 
-工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；預設只有 `P(target) >= 0.70` 才進確認佇列。每輪會輸出 leave-one-out AUC、FPR 與 recall，但在正例跨集 holdout 建立前仍標記 `episode_disjoint=false`。
+工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；機率門檻預設為 `P(target) >= 0.70`，且正例相似度必須至少比 hard-negative 高 `0.03`。正例 bank 未涵蓋至少三集時，候選只會寫入本機隔離區並標記 `review_ready=false`，測評台不會顯示；禁止把單集 leave-one-out 分數冒充跨集 speaker gate。
+
+後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或完整的人工畫面預審 provenance（角色、觀察者與時間）；畫面預審只允許片段進入聲音人工確認，不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
 將既有人工標註建成 bank：
 

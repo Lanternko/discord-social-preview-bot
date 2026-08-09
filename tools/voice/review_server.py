@@ -25,6 +25,7 @@ AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 KINDS = {"identity", "generation"}
 IDENTITY_BATCH_SIZE = 5
 MAX_HIGH_CONFIDENCE_OTHERS = 3
+TARGET_SPEAKER = "西奈津美"
 
 
 class ReviewStore:
@@ -57,11 +58,36 @@ class ReviewStore:
         except (OSError, json.JSONDecodeError):
             return {}
 
+    @staticmethod
+    def _review_ready(sidecar: dict) -> bool:
+        if sidecar.get("review_ready") is not True:
+            return False
+        selection = sidecar.get("selection_evidence")
+        if isinstance(selection, dict):
+            visual_ready = (
+                selection.get("kind") == "visual_precheck" and
+                selection.get("character_on_screen") == TARGET_SPEAKER and
+                isinstance(selection.get("observer"), str) and
+                isinstance(selection.get("checked_at"), str)
+            )
+            if visual_ready:
+                return True
+        gate = sidecar.get("speaker_gate")
+        validation = gate.get("validation") if isinstance(gate, dict) else None
+        return bool(
+            isinstance(gate, dict) and gate.get("review_ready") is True and
+            gate.get("episode_disjoint") is True and isinstance(validation, dict) and
+            validation.get("episode_disjoint") is True and
+            validation.get("auc", 0.0) >= 0.85 and validation.get("fpr", 1.0) <= 0.05
+        )
+
     def _item(self, path: Path, kind: str, reference_id: str | None) -> dict:
         media_id = self._id(path)
         self.media[media_id] = path
         sidecar = self._sidecar(path)
         times = sidecar.get("times") if isinstance(sidecar.get("times"), dict) else {}
+        selection = (sidecar.get("selection_evidence")
+                     if isinstance(sidecar.get("selection_evidence"), dict) else {})
         return {
             "id": media_id,
             "kind": kind,
@@ -76,6 +102,8 @@ class ReviewStore:
                            sidecar.get("transcript_zh_subtitle") or sidecar.get("text")),
             "rank": sidecar.get("rank"),
             "speaker_probability": sidecar.get("speaker_probability"),
+            "review_ready": self._review_ready(sidecar),
+            "selection_kind": selection.get("kind"),
         }
 
     def load_reviews(self) -> dict:
@@ -93,7 +121,8 @@ class ReviewStore:
         reference_items = [self._item(path, "reference", None) for path in references]
         reference_id = reference_items[0]["id"] if reference_items else None
         identity_paths = self._scan_audio("candidates")
-        all_identity = [self._item(path, "identity", reference_id) for path in identity_paths]
+        scanned_identity = [self._item(path, "identity", reference_id) for path in identity_paths]
+        all_identity = [item for item in scanned_identity if item["review_ready"]]
         all_identity.sort(key=lambda item: (
             -(item["speaker_probability"] if isinstance(item.get("speaker_probability"), float) else -1),
             item["rank"] if isinstance(item.get("rank"), int) else 10**9,
@@ -132,6 +161,7 @@ class ReviewStore:
                 for kind, items in (("identity", identity), ("generation", generation))
             },
             "identity_available_total": len(all_identity),
+            "identity_quarantined_total": len(scanned_identity) - len(all_identity),
             "quality_hold": quality_hold,
             "quality_policy": {
                 "batch_size": IDENTITY_BATCH_SIZE,

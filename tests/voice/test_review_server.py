@@ -12,6 +12,17 @@ import review_server as rs  # noqa: E402
 
 
 class ReviewStoreTests(unittest.TestCase):
+    @staticmethod
+    def ready_sidecar(**values):
+        return {
+            "review_ready": True,
+            "selection_evidence": {
+                "kind": "visual_precheck", "character_on_screen": "西奈津美",
+                "observer": "fixture", "checked_at": "2026-08-10T00:00:00Z",
+            },
+            **values,
+        }
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -19,6 +30,9 @@ class ReviewStoreTests(unittest.TestCase):
         (self.root / "reference" / "gold.wav").write_bytes(b"RIFF fixture")
         (self.root / "candidates").mkdir()
         (self.root / "candidates" / "candidate.wav").write_bytes(b"RIFF candidate")
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(self.ready_sidecar()), encoding="utf-8",
+        )
         (self.root / "generations").mkdir()
         (self.root / "generations" / "generated.wav").write_bytes(b"RIFF generated")
         self.store = rs.ReviewStore(self.root, "reviewer-a")
@@ -35,11 +49,11 @@ class ReviewStoreTests(unittest.TestCase):
 
     def test_nested_cutter_sidecar_metadata_is_exposed(self):
         sidecar = self.root / "candidates" / "candidate.json"
-        sidecar.write_text(json.dumps({
+        sidecar.write_text(json.dumps(self.ready_sidecar(**{
             "source": "s1-ep05", "speaker": "pending",
             "times": {"start_s": 5.829, "end_s": 14.8},
             "transcript_zh_subtitle": "字幕台詞", "rank": 3,
-        }), encoding="utf-8")
+        })), encoding="utf-8")
         item = self.store.session()["queues"]["identity"][0]
         self.assertEqual(item["source_id"], "s1-ep05")
         self.assertEqual((item["start_s"], item["end_s"]), (5.829, 14.8))
@@ -50,10 +64,10 @@ class ReviewStoreTests(unittest.TestCase):
         second = self.root / "candidates" / "second.wav"
         second.write_bytes(b"RIFF second")
         (self.root / "candidates" / "candidate.json").write_text(
-            json.dumps({"rank": 2}), encoding="utf-8",
+            json.dumps(self.ready_sidecar(rank=2)), encoding="utf-8",
         )
         (self.root / "candidates" / "second.json").write_text(
-            json.dumps({"rank": 1}), encoding="utf-8",
+            json.dumps(self.ready_sidecar(rank=1)), encoding="utf-8",
         )
         items = self.store.session()["queues"]["identity"]
         self.assertEqual([item["rank"] for item in items], [1, 2])
@@ -89,9 +103,9 @@ class ReviewStoreTests(unittest.TestCase):
         for index in range(1, 7):
             path = self.root / "candidates" / f"extra-{index}.wav"
             path.write_bytes(f"RIFF {index}".encode())
-            path.with_suffix(".json").write_text(json.dumps({
-                "speaker_probability": 0.99 - index / 100,
-            }), encoding="utf-8")
+            path.with_suffix(".json").write_text(json.dumps(self.ready_sidecar(
+                speaker_probability=0.99 - index / 100,
+            )), encoding="utf-8")
         session = self.store.session()
         self.assertEqual(len(session["queues"]["identity"]), 5)
         for item in session["queues"]["identity"][:3]:
@@ -101,6 +115,20 @@ class ReviewStoreTests(unittest.TestCase):
         held = self.store.session()
         self.assertTrue(held["quality_hold"])
         self.assertEqual(len(held["queues"]["identity"]), 3)
+
+    def test_unvalidated_candidates_are_quarantined(self):
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps({"review_ready": False}), encoding="utf-8",
+        )
+        session = self.store.session()
+        self.assertEqual(session["queues"]["identity"], [])
+        self.assertEqual(session["identity_quarantined_total"], 1)
+
+    def test_bare_review_ready_flag_cannot_bypass_provenance_gate(self):
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps({"review_ready": True}), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
 
 
 if __name__ == "__main__":
