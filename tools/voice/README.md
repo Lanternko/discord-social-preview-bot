@@ -194,3 +194,14 @@ data/voice/.venv/bin/python tools/voice/build_review_bank.py \
 測評台採五段小批 canary。每批完成且品質正常才解鎖下一批；若同批出現三段高信心 `other`，後端立即設定 `quality_hold`，介面停止前進，必須先重建 speaker gate。候選目錄為空時不會用金標假裝成待評片段。
 
 `data/voice/xibao/transcripts/asr/*.json` 的日文 ASR 只能作草稿。測評台的「日文逐字稿」分頁只載入位於資料根目錄內且音檔 SHA 相符的草稿；人工可直接修正文句，再選擇採用或退回。只有 `accept` 且非空的 `transcript_ja_verified` 會連同 reviewer、時間與原始草稿 provenance 合併回 positive bank，並被 training readiness 計數。
+
+ASR runtime 固定在 `configs/voice/xibao.asr.json`，包含 faster-whisper/CTranslate2 版本、模型 revision、權重 SHA 與 decoding 參數。工具先驗 positive bank 與模型完整性；所有草稿在 staging 完成後才整批發布：
+
+```bash
+data/voice/.venv/bin/python tools/voice/transcribe_positive_bank.py \
+  --model-path /path/to/faster-whisper-large-v3-snapshot \
+  --bank-dir data/voice/xibao/calibration/review-bank \
+  --out-dir data/voice/xibao/transcripts/asr --dry-run
+
+# dry-run 完整通過後移除 --dry-run 產生草稿
+```

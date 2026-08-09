@@ -1,0 +1,24 @@
+{
+  "schema_version": "pilotfish.japanese_asr_runtime.v1",
+  "model": {
+    "repository": "Systran/faster-whisper-large-v3",
+    "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+    "model_sha256": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+    "tokenizer_sha256": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca"
+  },
+  "runtime": {
+    "faster_whisper": "1.2.1",
+    "ctranslate2": "4.8.1",
+    "device": "cuda",
+    "compute_type": "float16"
+  },
+  "decoding": {
+    "language": "ja",
+    "beam_size": 5,
+    "best_of": 5,
+    "temperature": 0.0,
+    "condition_on_previous_text": false,
+    "word_timestamps": true,
+    "vad_filter": false
+  }
+}
