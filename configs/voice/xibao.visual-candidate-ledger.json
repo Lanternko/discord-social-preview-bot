@@ -1,0 +1,89 @@
+{
+  "schema_version": "pilotfish.visual_candidate_ledger.v1",
+  "target_speaker": "西奈津美",
+  "policy": {
+    "metadata_only": true,
+    "machine_or_visual_evidence_is_not_identity_verdict": true,
+    "training_eligible_default": false
+  },
+  "candidates": [
+    {
+      "candidate_id": "s1-ep12__000711915-000713651",
+      "source_id": "s1-ep12",
+      "start_s": 711.915,
+      "end_s": 713.651,
+      "transcript_zh_subtitle": "難道只有我嗎",
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
+        "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true
+      },
+      "audio_status": "local_candidate_available",
+      "acoustic_status": "ambiguous_human_review",
+      "speaker_probability": 0.3711,
+      "identity_margin": 0.0187,
+      "human_identity_status": "pending",
+      "training_eligible": false,
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep12__001223220-001225910",
+      "source_id": "s1-ep12",
+      "start_s": 1223.22,
+      "end_s": 1225.91,
+      "transcript_zh_subtitle": "謝謝 然後呢",
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "mouth_motion_observed": true,
+        "speaker_change_after_end": true
+      },
+      "audio_status": "awaiting_authorized_local_media",
+      "acoustic_status": "not_scored",
+      "human_identity_status": "not_reviewable_without_audio",
+      "training_eligible": false,
+      "excluded_reasons": ["local_audio_missing", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep06__000640113-000642736",
+      "source_id": "s1-ep06",
+      "start_s": 640.113,
+      "end_s": 642.736,
+      "transcript_zh_subtitle": "要是每次都能像剛才那樣就好了",
+      "visual_status": "target_character_action_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "single_character_action": true,
+        "limitations": "Most of the line is shown from behind; possible internal monologue."
+      },
+      "audio_status": "awaiting_authorized_local_media",
+      "acoustic_status": "not_scored",
+      "human_identity_status": "not_reviewable_without_audio",
+      "training_eligible": false,
+      "excluded_reasons": ["local_audio_missing", "lipsync_not_fully_visible", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep06__000643911-000646914",
+      "source_id": "s1-ep06",
+      "start_s": 643.911,
+      "end_s": 646.914,
+      "transcript_zh_subtitle": "別太緊張 乾脆俐落一點",
+      "visual_status": "target_character_closeup_prechecked",
+      "audio_status": "local_candidate_available",
+      "acoustic_status": "quarantined_outside_ambiguity_boundary",
+      "speaker_probability": 0.219,
+      "human_identity_status": "not_presented",
+      "training_eligible": false,
+      "excluded_reasons": ["acoustic_negative_proximity", "shot_change_near_end", "source_training_rights_denied"]
+    }
+  ],
+  "visual_rejections": [
+    {"candidate_id": "s1-ep12__000439347-000442029", "reason": "different_long-haired_character"},
+    {"candidate_id": "s1-ep12__000766012-000767776", "reason": "target_on_screen_but_adjacent_male_is_speaking"},
+    {"candidate_id": "s1-ep07__000769459-000771675", "reason": "male_character_back_view_only"},
+    {"candidate_id": "s1-ep01__000671418-000674348", "reason": "pink_haired_character"}
+  ]
+}

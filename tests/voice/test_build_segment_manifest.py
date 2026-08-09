@@ -406,6 +406,14 @@ class ManifestTests(unittest.TestCase):
             source.get("rights", {}).get("research_extraction", "deny") == "deny"
             for source in sources["sources"] if source["season"] == 2
         ))
+        ledger = json.loads((
+            app_root / "configs/voice/xibao.visual-candidate-ledger.json"
+        ).read_text(encoding="utf-8"))
+        self.assertIs(ledger["policy"]["training_eligible_default"], False)
+        self.assertTrue(all(item["training_eligible"] is False
+                            for item in ledger["candidates"]))
+        self.assertTrue(all(item.get("human_identity_status") != "confirmed"
+                            for item in ledger["candidates"]))
 
 
 if __name__ == "__main__":

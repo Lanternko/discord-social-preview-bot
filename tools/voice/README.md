@@ -69,6 +69,8 @@ python3 tools/voice/cut_anchors.py \
 
 Overlay 只能補 `media_path` 與 `source_sha256`，不能放寬 rights。輸入 hash 不符、anchor 不確定、speaker 衝突或未明確允許 research extraction 都會 fail closed。
 
+連續畫面勘查的 metadata 保存在 `configs/voice/xibao.visual-candidate-ledger.json`。它只記錄時間、畫面／聲學狀態與缺漏原因；每筆固定 `training_eligible=false`，不能代替本機媒體、speaker review、逐字稿或 rights gate。重建候選池時應先讀 ledger 的 rejection 與 pending spans，避免重複送出已知錯角。
+
 目前 [xibao.anchors.json](../../configs/voice/xibao.anchors.json) 只有第一季第 5 話 `3.000..5.829` 的人工 seed，標為 `seed_only=true`，所以即使 verdict 是 accept 也不會進 training manifest。來源 inventory 的下載、訓練、再散布權限預設全部 deny。
 
 ## 下一階段校準條件
