@@ -1,0 +1,42 @@
+{
+  "schema_version": "pilotfish.irodori_runtime.v1",
+  "engine": {
+    "repository": "https://github.com/Aratako/Irodori-TTS",
+    "tested_commit": "eaf74d6a19138f743acb5b71a445fd25a57db987"
+  },
+  "checkpoint": {
+    "repository": "Aratako/Irodori-TTS-500M-v3",
+    "revision": "236c1e56591279fc24e3c1bf6609fc06e48dde28",
+    "filename": "model.safetensors",
+    "sha256": "c4b8e7e982697664f829b7fb6bea307a25bd7ee013ad0d6114efc3e326acbd54"
+  },
+  "codec": {
+    "repository": "Aratako/Semantic-DACVAE-Japanese-32dim",
+    "revision": "47376ee24834d7a05a48ebabfe3cde29b3c5e214",
+    "filename": "weights.pth",
+    "sha256": "db120339c5ee7eca1912cdf29bc612b947a0808e69c3cebfb4936b45a762c1d5"
+  },
+  "inference": {
+    "model_precision": "bf16",
+    "codec_precision": "bf16",
+    "num_steps": 12,
+    "seed": 17
+  },
+  "training": {
+    "mode": "speaker_inversion",
+    "base_config": "configs/train_500m_v3_speaker_inversion.yaml",
+    "speaker_inversion_tokens": 16,
+    "max_steps": 3000,
+    "batch_size": 16,
+    "precision": "bf16"
+  },
+  "structural_quality": {
+    "sample_rate": 48000,
+    "channels": 1,
+    "max_peak_dbfs": -1.0,
+    "max_clip_fraction": 0.001,
+    "min_rms_dbfs": -35.0,
+    "max_rms_dbfs": -12.0,
+    "max_near_silence_fraction": 0.35
+  }
+}

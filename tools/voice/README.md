@@ -165,6 +165,21 @@ python3 tools/voice/build_irodori_manifests.py \
 
 固定生成測試句收在 `configs/voice/xibao.eval.json`，涵蓋短／中／長句與 calm、shy、tender、surprised、excited，供 checkpoint 使用同一批輸入做相似度、自然度、爆音與人工盲測。
 
+Irodori runtime、base checkpoint 與 DACVAE codec 的固定 revision/SHA 收在 `configs/voice/xibao.irodori.json`。在資料集尚未 ready 前，只能執行 zero-shot runtime preflight；工具會驗證三者完整性並檢查輸出取樣率、聲道、peak、RMS、clip 與近靜音比例，但報告固定標記 `identity_verified=false`、`naturalness_verified=false`，不得當成訓練或最終品質通過：
+
+```bash
+python3 tools/voice/irodori_preflight.py \
+  --irodori-repo /path/to/Irodori-TTS \
+  --python /path/to/Irodori-TTS/.venv/bin/python \
+  --checkpoint /path/to/model.safetensors \
+  --codec-weights /path/to/weights.pth \
+  --reference data/voice/xibao/reference/s1-ep05__s1-ep05-seed-001.wav \
+  --text 'うん、今日はゆっくり話せそう。' \
+  --output-wav data/voice/xibao/_tmp/irodori-preflight/zero-shot.wav \
+  --report-out data/voice/xibao/reports/irodori-preflight.json \
+  --execute
+```
+
 將既有人工標註建成 bank：
 
 ```bash
