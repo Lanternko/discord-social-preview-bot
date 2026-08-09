@@ -4,6 +4,13 @@
 
 另外提供本機媒體的 anchor cutter。它只負責可追溯切檔，永遠不自行批准訓練；每份 sidecar 都會標示 `training_gate_required=true`。
 
+建立本機工具環境：
+
+```bash
+python3 -m venv data/voice/.venv
+data/voice/.venv/bin/pip install -r tools/voice/requirements.txt
+```
+
 ## 使用方式
 
 ```bash
@@ -112,3 +119,16 @@ ssh -N -L 8765:127.0.0.1:8765 <user>@<remote-host>
 ```
 
 本機瀏覽器開啟 `http://127.0.0.1:8765`。不建議將 `--host` 改為 `0.0.0.0`；工具也會拒絕非 localhost 綁定。
+
+候選不是手工固定切幾段。對合法取得的本機整集音訊，可用官方字幕單句時間軸加 ECAPA 金標相似度建立人工佇列：
+
+```bash
+data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
+  --inventory configs/voice/xibao.sources.json --source-id s1-ep05 \
+  --audio data/voice/xibao/_tmp/s1-ep05/source.wav \
+  --subtitles data/voice/xibao/_tmp/s1-ep05/source.zh-Hant.json3 \
+  --reference data/voice/xibao/reference/s1-ep05__s1-ep05-seed-001.wav \
+  --out-dir data/voice/xibao/candidates --top-k 30
+```
+
+工具會排除雙行字幕、過短／過長事件及金標本身，並只把 ECAPA 分數作為 `rank_score` 排序。輸出一律是 `pending_human_review`、`training_eligible=false`；未經校準的分數不能視為角色判定。

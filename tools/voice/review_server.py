@@ -70,7 +70,9 @@ class ReviewStore:
             "start_s": sidecar.get("start_s", times.get("start_s")),
             "end_s": sidecar.get("end_s", times.get("end_s")),
             "speaker": sidecar.get("speaker"),
-            "transcript": sidecar.get("transcript_ja_verified") or sidecar.get("text"),
+            "transcript": (sidecar.get("transcript_ja_verified") or
+                           sidecar.get("transcript_zh_subtitle") or sidecar.get("text")),
+            "rank": sidecar.get("rank"),
         }
 
     def load_reviews(self) -> dict:
@@ -91,6 +93,10 @@ class ReviewStore:
         if not identity_paths:
             identity_paths = references
         identity = [self._item(path, "identity", reference_id) for path in identity_paths]
+        identity.sort(key=lambda item: (
+            item["rank"] if isinstance(item.get("rank"), int) else 10**9,
+            item["name"],
+        ))
         generation = [self._item(path, "generation", reference_id)
                       for path in self._scan_audio("generations")]
         reviews = self.load_reviews()

@@ -38,10 +38,25 @@ class ReviewStoreTests(unittest.TestCase):
         sidecar.write_text(json.dumps({
             "source": "s1-ep05", "speaker": "pending",
             "times": {"start_s": 5.829, "end_s": 14.8},
+            "transcript_zh_subtitle": "字幕台詞", "rank": 3,
         }), encoding="utf-8")
         item = self.store.session()["queues"]["identity"][0]
         self.assertEqual(item["source_id"], "s1-ep05")
         self.assertEqual((item["start_s"], item["end_s"]), (5.829, 14.8))
+        self.assertEqual(item["transcript"], "字幕台詞")
+        self.assertEqual(item["rank"], 3)
+
+    def test_identity_queue_is_sorted_by_rank(self):
+        second = self.root / "candidates" / "second.wav"
+        second.write_bytes(b"RIFF second")
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps({"rank": 2}), encoding="utf-8",
+        )
+        (self.root / "candidates" / "second.json").write_text(
+            json.dumps({"rank": 1}), encoding="utf-8",
+        )
+        items = self.store.session()["queues"]["identity"]
+        self.assertEqual([item["rank"] for item in items], [1, 2])
 
     def test_identity_review_is_atomically_upserted(self):
         item = self.store.session()["queues"]["identity"][0]
