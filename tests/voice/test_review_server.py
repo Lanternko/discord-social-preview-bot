@@ -85,6 +85,23 @@ class ReviewStoreTests(unittest.TestCase):
                 "verdict": "target", "overlap": False, "confidence": 5, "surprise": True,
             }})
 
+    def test_identity_batches_unlock_five_and_pause_after_three_clear_others(self):
+        for index in range(1, 7):
+            path = self.root / "candidates" / f"extra-{index}.wav"
+            path.write_bytes(f"RIFF {index}".encode())
+            path.with_suffix(".json").write_text(json.dumps({
+                "speaker_probability": 0.99 - index / 100,
+            }), encoding="utf-8")
+        session = self.store.session()
+        self.assertEqual(len(session["queues"]["identity"]), 5)
+        for item in session["queues"]["identity"][:3]:
+            self.store.save({"kind": "identity", "item_id": item["id"], "answers": {
+                "verdict": "other", "overlap": False, "confidence": 5, "notes": "",
+            }})
+        held = self.store.session()
+        self.assertTrue(held["quality_hold"])
+        self.assertEqual(len(held["queues"]["identity"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -81,7 +81,8 @@ function render() {
   $(`#${state.kind}-count`).textContent = `${reviewed}/${items.length}`;
   $("#position").textContent = items.length ? `${state.index + 1} / ${items.length}` : "0 / 0";
   $("#progress-bar").style.width = items.length ? `${reviewed / items.length * 100}%` : "0";
-  $("#queue-status").textContent = reviewed === items.length && items.length ? "本輪完成" : "審核進行中";
+  $("#queue-status").textContent = state.session.quality_hold ? "品質閘門暫停" :
+    (reviewed === items.length && items.length ? "本輪完成" : "審核進行中");
   renderQueue();
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
@@ -100,9 +101,13 @@ function render() {
   hydrate($(state.kind === "identity" ? "#identity-form" : "#generation-form"), state.session.reviews[reviewKey(item)]);
   $("#previous").disabled = state.index === 0;
   $("#save-status").textContent = state.session.reviews[reviewKey(item)] ? "此段已有紀錄" : "";
+  if (state.session.quality_hold) {
+    $("#save-status").textContent = "連續出現 3 筆高信心其他角色，本批已自動暫停";
+  }
   $("#save").innerHTML = state.index < items.length - 1
     ? "儲存並前往下一段 <span>›</span>"
     : (state.session.reviews[reviewKey(item)] ? "更新本段" : "儲存本段");
+  $("#save").disabled = state.session.quality_hold;
 }
 
 function answers(form) {
@@ -119,9 +124,11 @@ $("#save").onclick = async () => {
   const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: state.kind, item_id: item.id, answers: answers(form) }) });
   const result = await response.json();
   if (!response.ok) { $("#save-status").textContent = result.error || "儲存失敗"; $("#save").disabled = false; return; }
-  state.session.reviews[reviewKey(item)] = result.review;
-  if (state.index < queue().length - 1) state.index += 1;
-  $("#save").disabled = false; render();
+  const previousId = item.id;
+  state.session = result.session;
+  const previousIndex = queue().findIndex((entry) => entry.id === previousId);
+  state.index = Math.min(Math.max(0, previousIndex + 1), Math.max(0, queue().length - 1));
+  render();
 };
 $("#previous").onclick = () => { if (state.index > 0) { state.index -= 1; render(); } };
 document.querySelectorAll(".tab").forEach((tab) => tab.onclick = () => {

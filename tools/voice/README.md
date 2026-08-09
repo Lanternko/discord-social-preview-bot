@@ -130,18 +130,22 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
   --reference data/voice/xibao/reference/s1-ep05__s1-ep05-seed-001.wav \
   --positive-dir data/voice/xibao/calibration/review-bank/positive \
   --negative-dir data/voice/xibao/calibration/review-bank/negative \
+  --reviewed-dir data/voice/xibao/calibration/review-bank/reviewed \
   --out-dir data/voice/xibao/candidates/s1-ep05 --top-k 8 \
-  --min-margin 0.0 --max-margin 0.12
+  --min-probability 0.70
 ```
 
-工具會排除雙行字幕、過短／過長事件、金標本身及已進 review bank 的片段。正例 bank 與同作品 hard-negative bank 共同計算 identity margin；人工頁面只接收 margin 窄區間內的模糊案例，明顯其他角色在此之前排除。
+工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；預設只有 `P(target) >= 0.70` 才進確認佇列。每輪會輸出 leave-one-out AUC、FPR 與 recall，但在正例跨集 holdout 建立前仍標記 `episode_disjoint=false`。
 
 將既有人工標註建成 bank：
 
 ```bash
 data/voice/.venv/bin/python tools/voice/build_review_bank.py \
   --reviews data/voice/xibao/review/reviews.json \
-  --out-dir data/voice/xibao/calibration/review-bank
+  --out-dir data/voice/xibao/calibration/review-bank \
+  --search-root data/voice/xibao/_tmp
 ```
 
-只有信心 >= 3、無串音的 `target` 會成為 positive；信心 >= 3、無串音的 `other` 會成為 hard negative。不確定、低信心與串音一律忽略。所有新候選仍是 `pending_human_review`、`training_eligible=false`；margin 尚未 episode-disjoint 校準，不能視為正式角色判定。
+只有信心 >= 3、無串音的 `target` 會成為 positive；信心 >= 3、無串音的 `other` 會成為 hard negative。不確定、低信心與串音不參與訓練，但仍寫入 reviewed-span ledger，確保不會再次出題。所有新候選仍是 `pending_human_review`、`training_eligible=false`。
+
+測評台採五段小批 canary。每批完成且品質正常才解鎖下一批；若同批出現三段高信心 `other`，後端立即設定 `quality_hold`，介面停止前進，必須先重建 speaker gate。候選目錄為空時不會用金標假裝成待評片段。

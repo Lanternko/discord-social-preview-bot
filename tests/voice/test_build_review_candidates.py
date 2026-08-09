@@ -2,6 +2,7 @@
 import sys
 import json
 import tempfile
+import numpy as np
 import unittest
 from pathlib import Path
 
@@ -44,6 +45,13 @@ class CandidateSpanTests(unittest.TestCase):
             self.assertEqual(
                 brc.bank_span_keys(root), {("s1-ep05", 1.234, 3.456)},
             )
+
+    def test_binary_metrics_report_conservative_gate(self):
+        metrics = brc.binary_metrics(
+            np.array([1, 1, 0, 0]), np.array([0.9, 0.6, 0.2, 0.1]), 0.7,
+        )
+        self.assertEqual(metrics["fpr"], 0.0)
+        self.assertEqual(metrics["recall"], 0.5)
 
 
 if __name__ == "__main__":

@@ -101,11 +101,39 @@ def bank_span_keys(*directories: Path) -> set[tuple[str, float, float]]:
     return keys
 
 
+def binary_metrics(labels, probabilities, threshold: float) -> dict[str, float]:
+    import numpy as np
+
+    labels = np.asarray(labels)
+    probabilities = np.asarray(probabilities)
+    predicted = probabilities >= threshold
+    positives = labels == 1
+    negatives = labels == 0
+    true_positives = int((predicted & positives).sum())
+    false_positives = int((predicted & negatives).sum())
+    positive_scores = probabilities[positives]
+    negative_scores = probabilities[negatives]
+    comparisons = positive_scores[:, None] - negative_scores[None, :]
+    auc = float((comparisons > 0).mean() + 0.5 * (comparisons == 0).mean())
+    return {
+        "auc": round(auc, 6),
+        "threshold": threshold,
+        "fpr": round(false_positives / max(1, int(negatives.sum())), 6),
+        "recall": round(true_positives / max(1, int(positives.sum())), 6),
+        "positives": int(positives.sum()),
+        "negatives": int(negatives.sum()),
+    }
+
+
 def build(args: argparse.Namespace) -> dict[str, Any]:
     import soundfile as sf
     import torch
     import torch.nn.functional as functional
     from scipy.signal import resample_poly
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import LeaveOneOut, cross_val_predict
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
     from speechbrain.inference.speaker import EncoderClassifier
 
     inventory_path = Path(args.inventory).resolve()
@@ -124,7 +152,10 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     spans = [span for span in subtitle_spans(
         subtitle_document, min_duration=args.min_duration, max_duration=args.max_duration,
     ) if not overlaps(span, args.exclude_start, args.exclude_end)]
-    reviewed_keys = bank_span_keys(*(path for path in (positive_dir, negative_dir) if path))
+    reviewed_dir = Path(args.reviewed_dir).resolve() if args.reviewed_dir else None
+    reviewed_keys = bank_span_keys(*(
+        path for path in (positive_dir, negative_dir, reviewed_dir) if path
+    ))
     spans = [span for span in spans if (
         args.source_id, span["start_s"], span["end_s"],
     ) not in reviewed_keys]
@@ -160,14 +191,41 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
     with torch.inference_mode():
         reference_embedding = classifier.encode_batch(reference.to(device)).squeeze()
         reference_embedding = functional.normalize(reference_embedding, dim=0)
-        positive_embeddings = [reference_embedding]
+        human_positive_embeddings = []
         if positive_dir and positive_dir.is_dir():
-            positive_embeddings.extend(encode_file(path) for path in sorted(positive_dir.glob("*.wav")))
+            human_positive_embeddings.extend(
+                encode_file(path) for path in sorted(positive_dir.glob("*.wav"))
+            )
         negative_embeddings = []
         if negative_dir and negative_dir.is_dir():
             negative_embeddings.extend(encode_file(path) for path in sorted(negative_dir.glob("*.wav")))
+        positive_embeddings = [reference_embedding, *human_positive_embeddings]
         positive_bank = torch.stack(positive_embeddings)
         negative_bank = torch.stack(negative_embeddings) if negative_embeddings else None
+        supervised_gate = None
+        gate_report = None
+        if human_positive_embeddings and negative_embeddings:
+            cv_features = torch.stack([
+                *human_positive_embeddings, *negative_embeddings,
+            ]).cpu().numpy()
+            cv_labels = [1] * len(human_positive_embeddings) + [0] * len(negative_embeddings)
+
+            def new_gate():
+                return make_pipeline(
+                    StandardScaler(),
+                    LogisticRegression(C=0.1, class_weight="balanced", max_iter=5000),
+                )
+
+            cv_probabilities = cross_val_predict(
+                new_gate(), cv_features, cv_labels, cv=LeaveOneOut(), method="predict_proba",
+            )[:, 1]
+            gate_report = binary_metrics(cv_labels, cv_probabilities, args.min_probability)
+            fit_features = torch.stack([
+                reference_embedding, *human_positive_embeddings, *negative_embeddings,
+            ]).cpu().numpy()
+            fit_labels = ([1] * (1 + len(human_positive_embeddings)) +
+                          [0] * len(negative_embeddings))
+            supervised_gate = new_gate().fit(fit_features, fit_labels)
         for offset in range(0, len(spans), args.batch_size):
             batch_spans = spans[offset:offset + args.batch_size]
             clips = []
@@ -189,6 +247,11 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             if negative_bank is not None:
                 negative_scores = embeddings @ negative_bank.T
                 negative_mean = negative_scores.topk(min(3, negative_bank.shape[0]), dim=1).values.mean(dim=1)
+            supervised_probabilities = None
+            if supervised_gate is not None:
+                supervised_probabilities = supervised_gate.predict_proba(
+                    embeddings.cpu().numpy(),
+                )[:, 1]
             for index, (span, clip, score) in enumerate(zip(
                 batch_spans, clips, scores.cpu().tolist(),
             )):
@@ -201,18 +264,24 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                     span["identity_margin"] = round(
                         span["positive_bank_score"] - span["negative_bank_score"], 6,
                     )
+                if supervised_probabilities is not None:
+                    span["speaker_probability"] = round(
+                        float(supervised_probabilities[index]), 6,
+                    )
                 span["peak"] = round(peak, 6)
                 span["rms_dbfs"] = round(20 * math.log10(max(rms, 1e-9)), 3)
 
-    if negative_embeddings:
+    if supervised_gate is not None:
+        eligible = [span for span in spans
+                    if span["speaker_probability"] >= args.min_probability]
+        ranked = sorted(eligible, key=lambda item: item["speaker_probability"], reverse=True)[:args.top_k]
+    elif negative_embeddings:
         eligible = [span for span in spans
                     if args.min_margin <= span["identity_margin"] <= args.max_margin]
         ranked = sorted(eligible, key=lambda item: (abs(item["identity_margin"]),
                                                     -item["positive_bank_score"]))[:args.top_k]
     else:
         ranked = sorted(spans, key=lambda item: item["rank_score"], reverse=True)[:args.top_k]
-    if not ranked:
-        raise ValueError("no candidates survived the identity margin gate")
     staging = Path(tempfile.mkdtemp(prefix=".candidates.", dir=out_dir.parent))
     try:
         source_hash = sha256_file(audio_path)
@@ -246,6 +315,13 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
                     "min": args.min_margin, "max": args.max_margin,
                     "purpose": "ambiguous_review_only",
                 },
+                "speaker_probability": span.get("speaker_probability"),
+                "speaker_gate": {
+                    "kind": "standardized_logistic_regression",
+                    "minimum_probability": args.min_probability,
+                    "validation": gate_report,
+                    "episode_disjoint": False,
+                } if gate_report else None,
                 "quality": {"peak": span["peak"], "rms_dbfs": span["rms_dbfs"]},
                 "model": MODEL_ID,
                 "audio_sha256": sha256_file(wav_path),
@@ -263,8 +339,9 @@ def build(args: argparse.Namespace) -> dict[str, Any]:
             shutil.rmtree(staging)
     return {"source_id": args.source_id, "considered": len(spans),
             "candidates": len(ranked), "out_dir": str(out_dir),
-            "max_rank_score": max(item["rank_score"] for item in ranked),
-            "margin_gate": [args.min_margin, args.max_margin] if negative_embeddings else None}
+            "max_rank_score": max((item["rank_score"] for item in ranked), default=None),
+            "margin_gate": [args.min_margin, args.max_margin] if negative_embeddings else None,
+            "speaker_gate": gate_report}
 
 
 def parser() -> argparse.ArgumentParser:
@@ -276,6 +353,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--reference", required=True)
     result.add_argument("--positive-dir")
     result.add_argument("--negative-dir")
+    result.add_argument("--reviewed-dir")
     result.add_argument("--out-dir", required=True)
     result.add_argument("--model-dir", default="data/voice/models/spkrec-ecapa-voxceleb")
     result.add_argument("--top-k", type=int, default=30)
@@ -286,6 +364,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--exclude-end", type=float, default=5.829)
     result.add_argument("--min-margin", type=float, default=0.0)
     result.add_argument("--max-margin", type=float, default=0.12)
+    result.add_argument("--min-probability", type=float, default=0.70)
     return result
 
 

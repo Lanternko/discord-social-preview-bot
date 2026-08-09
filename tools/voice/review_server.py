@@ -23,6 +23,8 @@ STATIC_ROOT = Path(__file__).with_name("review_ui")
 DEFAULT_DATA_ROOT = APP_ROOT / "data" / "voice" / "xibao"
 AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 KINDS = {"identity", "generation"}
+IDENTITY_BATCH_SIZE = 5
+MAX_HIGH_CONFIDENCE_OTHERS = 3
 
 
 class ReviewStore:
@@ -73,6 +75,7 @@ class ReviewStore:
             "transcript": (sidecar.get("transcript_ja_verified") or
                            sidecar.get("transcript_zh_subtitle") or sidecar.get("text")),
             "rank": sidecar.get("rank"),
+            "speaker_probability": sidecar.get("speaker_probability"),
         }
 
     def load_reviews(self) -> dict:
@@ -90,16 +93,34 @@ class ReviewStore:
         reference_items = [self._item(path, "reference", None) for path in references]
         reference_id = reference_items[0]["id"] if reference_items else None
         identity_paths = self._scan_audio("candidates")
-        if not identity_paths:
-            identity_paths = references
-        identity = [self._item(path, "identity", reference_id) for path in identity_paths]
-        identity.sort(key=lambda item: (
+        all_identity = [self._item(path, "identity", reference_id) for path in identity_paths]
+        all_identity.sort(key=lambda item: (
+            -(item["speaker_probability"] if isinstance(item.get("speaker_probability"), float) else -1),
             item["rank"] if isinstance(item.get("rank"), int) else 10**9,
             item["name"],
         ))
         generation = [self._item(path, "generation", reference_id)
                       for path in self._scan_audio("generations")]
         reviews = self.load_reviews()
+        quality_hold = False
+        unlocked = min(IDENTITY_BATCH_SIZE, len(all_identity))
+        for start in range(0, len(all_identity), IDENTITY_BATCH_SIZE):
+            batch = all_identity[start:start + IDENTITY_BATCH_SIZE]
+            records = [reviews.get(f"{self.reviewer}:identity:{item['id']}") for item in batch]
+            completed = [record for record in records if isinstance(record, dict)]
+            high_confidence_others = sum(
+                record.get("answers", {}).get("verdict") == "other" and
+                record.get("answers", {}).get("confidence", 0) >= 4
+                for record in completed
+            )
+            if high_confidence_others >= MAX_HIGH_CONFIDENCE_OTHERS:
+                quality_hold = True
+                unlocked = min(len(all_identity), start + len(completed))
+                break
+            unlocked = min(len(all_identity), start + IDENTITY_BATCH_SIZE)
+            if len(completed) < len(batch):
+                break
+        identity = all_identity[:unlocked]
         return {
             "reviewer": self.reviewer,
             "references": reference_items,
@@ -109,6 +130,12 @@ class ReviewStore:
                 kind: {"total": len(items),
                        "reviewed": sum(1 for item in items if f"{self.reviewer}:{kind}:{item['id']}" in reviews)}
                 for kind, items in (("identity", identity), ("generation", generation))
+            },
+            "identity_available_total": len(all_identity),
+            "quality_hold": quality_hold,
+            "quality_policy": {
+                "batch_size": IDENTITY_BATCH_SIZE,
+                "pause_after_high_confidence_others": MAX_HIGH_CONFIDENCE_OTHERS,
             },
         }
 
@@ -222,7 +249,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if length <= 0 or length > 64 * 1024:
                 raise ValueError("invalid request size")
             payload = json.loads(self.rfile.read(length))
-            self._json({"ok": True, "review": self.store.save(payload)})
+            record = self.store.save(payload)
+            self._json({"ok": True, "review": record, "session": self.store.session()})
         except (ValueError, json.JSONDecodeError) as error:
             self._json({"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
 
