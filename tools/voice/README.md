@@ -90,3 +90,25 @@ python3 tools/voice/validate_generation.py \
   --report data/voice/xibao/evaluations/sample.json \
   --decision-out data/voice/xibao/evaluations/sample.decision.json
 ```
+
+## 人工測評台
+
+候選素材放在 `data/voice/xibao/candidates/`，生成結果放在 `data/voice/xibao/generations/`。啟動本機介面：
+
+```bash
+python3 tools/voice/review_server.py --reviewer <固定審核者名稱> --open
+```
+
+伺服器只允許綁定 localhost，預設網址為 `http://127.0.0.1:8765`。身份與生成品質分開審核；結果會原子 upsert 至被 Git 忽略的 `data/voice/xibao/review/reviews.json`。第二位審核者應使用不同的 `--reviewer` 名稱，以符合雙人獨立確認門檻。
+
+透過 SSH 使用時，先在遠端啟動測評台，再於自己的電腦另開終端建立 tunnel：
+
+```bash
+# 遠端 SSH shell
+python3 tools/voice/review_server.py --reviewer <固定審核者名稱>
+
+# 自己的電腦（不要在遠端執行）
+ssh -N -L 8765:127.0.0.1:8765 <user>@<remote-host>
+```
+
+本機瀏覽器開啟 `http://127.0.0.1:8765`。不建議將 `--host` 改為 `0.0.0.0`；工具也會拒絕非 localhost 綁定。

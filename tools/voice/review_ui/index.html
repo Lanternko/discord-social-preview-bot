@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>西寶聲線測評</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">PILOTFISH REVIEW</p>
+      <h1>西寶聲線測評</h1>
+    </div>
+    <div class="reviewer"><span>審核者</span><strong id="reviewer">...</strong></div>
+  </header>
+
+  <nav class="tabs" aria-label="測評模式">
+    <button class="tab active" data-kind="identity">素材身份 <span id="identity-count">0/0</span></button>
+    <button class="tab" data-kind="generation">生成品質 <span id="generation-count">0/0</span></button>
+  </nav>
+
+  <main>
+    <section class="queue-panel">
+      <div class="queue-head">
+        <div>
+          <span class="status-dot"></span>
+          <span id="queue-status">等待資料</span>
+        </div>
+        <span id="position">0 / 0</span>
+      </div>
+      <div class="progress"><span id="progress-bar"></span></div>
+      <ol id="queue" class="queue"></ol>
+    </section>
+
+    <section class="review-stage">
+      <div id="empty" class="empty" hidden>
+        <strong>目前沒有待評音檔</strong>
+        <span id="empty-path"></span>
+      </div>
+
+      <div id="workspace">
+        <div class="clip-heading">
+          <div>
+            <span id="clip-kind" class="tag">素材</span>
+            <h2 id="clip-name">載入中</h2>
+          </div>
+          <div class="source-meta"><span id="source-id">-</span><span id="time-range">-</span></div>
+        </div>
+
+        <div class="comparison">
+          <article class="audio-block">
+            <header><span>金標參考</span><span class="tag reference">REFERENCE</span></header>
+            <canvas id="reference-wave" width="720" height="116"></canvas>
+            <audio id="reference-audio" controls preload="metadata"></audio>
+          </article>
+          <article class="audio-block">
+            <header><span id="candidate-label">待評片段</span><span class="tag candidate">CANDIDATE</span></header>
+            <canvas id="candidate-wave" width="720" height="116"></canvas>
+            <audio id="candidate-audio" controls preload="metadata"></audio>
+          </article>
+        </div>
+
+        <p id="transcript" class="transcript" hidden></p>
+
+        <form id="identity-form" class="form-grid">
+          <fieldset>
+            <legend>說話者</legend>
+            <div class="segmented three">
+              <label><input type="radio" name="verdict" value="target" required><span>西</span></label>
+              <label><input type="radio" name="verdict" value="other"><span>其他人</span></label>
+              <label><input type="radio" name="verdict" value="uncertain"><span>不確定</span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend>辨識信心</legend>
+            <div class="rating" data-name="confidence"></div>
+          </fieldset>
+          <label class="check-row"><input type="checkbox" name="overlap"><span>有其他角色串音或重疊說話</span></label>
+          <label class="notes"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        </form>
+
+        <form id="generation-form" class="form-grid" hidden>
+          <fieldset><legend>像西的程度</legend><div class="rating" data-name="likeness"></div></fieldset>
+          <fieldset><legend>自然度</legend><div class="rating" data-name="naturalness"></div></fieldset>
+          <fieldset class="wide"><legend>瑕疵</legend><div class="artifact-grid">
+            <label><input type="checkbox" name="artifacts" value="clipping"><span>爆音／削波</span></label>
+            <label><input type="checkbox" name="artifacts" value="metallic"><span>金屬音</span></label>
+            <label><input type="checkbox" name="artifacts" value="cutoff"><span>斷字／吞字</span></label>
+            <label><input type="checkbox" name="artifacts" value="noise"><span>底噪／雜音</span></label>
+          </div></fieldset>
+          <fieldset class="wide"><legend>結論</legend><div class="segmented two">
+            <label><input type="radio" name="verdict" value="accept" required><span>通過</span></label>
+            <label><input type="radio" name="verdict" value="reject"><span>退回</span></label>
+          </div></fieldset>
+          <label class="notes wide"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        </form>
+
+        <div class="actions">
+          <button id="previous" class="secondary" type="button" title="上一段" aria-label="上一段">‹</button>
+          <span id="save-status" role="status"></span>
+          <button id="save" class="primary" type="button">儲存並前往下一段 <span>›</span></button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
