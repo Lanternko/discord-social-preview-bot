@@ -23,6 +23,7 @@ python3 tools/voice/build_segment_manifest.py \
 - `confidence >= --min-confidence`（預設 `0.85`）
 - speaker 與 target 相同
 - `uncertain` 與 `seed_only` 都是 `false`
+- 至少兩位不同人工審核者確認是 target，且都確認沒有其他角色串音
 - inventory source 的 `rights.training` 是 `allow`
 - source 有非空 `media_path`
 - source 有格式正確的 `source_sha256`（64 位 hex）
@@ -72,3 +73,20 @@ Overlay 只能補 `media_path` 與 `source_sha256`，不能放寬 rights。輸�
 5. 以 held-out 的人工正／負樣本校準 threshold，確認 false-positive、短片段與串音風險，再將特定 source 的 `rights.training` 明確改成 allow。
 
 本工具不負責媒體擷取、字幕 OCR、聲音分離或訓練執行。
+
+## 合成音發布 QC
+
+訓練完成不代表輸出可以使用。每個合成候選都必須先由外部評測器產生 JSON report，再交給 `validate_generation.py`。它會同時檢查：
+
+- 聲紋模型已用 episode-disjoint 正／負例校準，AUC >= 0.85、FPR <= 5%，且候選分數達校準 threshold
+- peak <= -1 dBFS、clip fraction <= 0.001、RMS 在 -35..-12 dBFS、silence ratio <= 0.35
+- DNSMOS OVRL >= 2.5、SIG >= 3.0、BAK >= 3.0
+- 至少兩位不同人工審核者都確認像西、自然、無爆音／金屬音／斷字等 artifact
+
+任一數值缺漏、非 finite、評測未校準、審核衝突或音檔 hash 不符都會 fail closed。通過結果只代表本地 QC 合格，不會自動賦予發布或冒充真人的權利。
+
+```bash
+python3 tools/voice/validate_generation.py \
+  --report data/voice/xibao/evaluations/sample.json \
+  --decision-out data/voice/xibao/evaluations/sample.decision.json
+```

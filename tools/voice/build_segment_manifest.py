@@ -183,6 +183,36 @@ def normalize_anchors(raw: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
         evidence = item.get("evidence", {})
         if not isinstance(evidence, dict):
             raise ValidationError(f"anchors.anchors[{index}].evidence must be an object")
+        identity_confirmations = item.get("identity_confirmations", [])
+        if not isinstance(identity_confirmations, list):
+            raise ValidationError(
+                f"anchors.anchors[{index}].identity_confirmations must be an array"
+            )
+        normalized_confirmations = []
+        for confirmation_index, confirmation in enumerate(identity_confirmations):
+            confirmation = _as_mapping(
+                confirmation,
+                f"anchors.anchors[{index}].identity_confirmations[{confirmation_index}]",
+            )
+            normalized_confirmations.append({
+                "reviewer": _as_nonempty_string(
+                    confirmation.get("reviewer"),
+                    f"anchors.anchors[{index}].identity_confirmations[{confirmation_index}].reviewer",
+                ),
+                "verdict": _as_nonempty_string(
+                    confirmation.get("verdict"),
+                    f"anchors.anchors[{index}].identity_confirmations[{confirmation_index}].verdict",
+                ).lower(),
+                "overlap": confirmation.get("overlap"),
+                "reviewed_at": _as_nonempty_string(
+                    confirmation.get("reviewed_at"),
+                    f"anchors.anchors[{index}].identity_confirmations[{confirmation_index}].reviewed_at",
+                ),
+            })
+            if normalized_confirmations[-1]["verdict"] not in {"target", "other", "uncertain"}:
+                raise ValidationError("identity confirmation verdict must be target, other, or uncertain")
+            if not isinstance(normalized_confirmations[-1]["overlap"], bool):
+                raise ValidationError("identity confirmation overlap must be boolean")
         anchors.append({
             "anchor_id": anchor_id,
             "source_id": source_id,
@@ -199,6 +229,7 @@ def normalize_anchors(raw: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             "uncertain": uncertain,
             "seed_only": seed_only,
             "evidence": evidence,
+            "identity_confirmations": normalized_confirmations,
             "notes": item.get("notes"),
             "anchor_index": index,
         })
@@ -345,6 +376,17 @@ def build_manifests(
             reasons.append("speaker_mismatch")
         if anchor["uncertain"]:
             reasons.append("uncertain")
+        identity_confirmations = anchor["identity_confirmations"]
+        identity_reviewers = {
+            confirmation["reviewer"] for confirmation in identity_confirmations
+            if confirmation["verdict"] == "target" and not confirmation["overlap"]
+        }
+        if any(confirmation["verdict"] != "target" for confirmation in identity_confirmations):
+            reasons.append("identity_confirmation_conflict")
+        if any(confirmation["overlap"] for confirmation in identity_confirmations):
+            reasons.append("speaker_overlap")
+        if len(identity_reviewers) < 2:
+            reasons.append("identity_confirmations_insufficient")
         reviewer = anchor.get("reviewer")
         if not isinstance(reviewer, str) or not reviewer.strip():
             reasons.append("reviewer_missing")
@@ -376,6 +418,7 @@ def build_manifests(
             "reviewed_at": anchor["reviewed_at"],
             "uncertain": anchor["uncertain"],
             "seed_only": anchor["seed_only"],
+            "identity_confirmations": identity_confirmations,
             "eligible_for_training": not reasons,
             "excluded_reasons": reasons,
             "evidence": anchor["evidence"],
@@ -397,6 +440,7 @@ def build_manifests(
             "speaker == target_speaker",
             "uncertain == false",
             "seed_only == false",
+            "at least two distinct human identity confirmations are target with no overlap",
             "source.rights.training == allow",
             "source.media_path is non-empty",
             "source.source_sha256 matches 64 hex characters",
@@ -450,6 +494,7 @@ def build_manifests(
             "human_verdict": candidate["human_verdict"],
             "reviewer": candidate["reviewer"],
             "reviewed_at": candidate["reviewed_at"],
+            "identity_confirmations": candidate["identity_confirmations"],
             "provenance": candidate["provenance"],
         }))
     manifest = _drop_nulls({

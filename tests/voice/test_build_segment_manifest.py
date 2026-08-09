@@ -52,6 +52,12 @@ def anchor(**overrides):
         "emotion": "calm",
         "uncertain": False,
         "seed_only": False,
+        "identity_confirmations": [
+            {"reviewer": "identity-a", "verdict": "target", "overlap": False,
+             "reviewed_at": "2026-08-09T00:00:00+00:00"},
+            {"reviewer": "identity-b", "verdict": "target", "overlap": False,
+             "reviewed_at": "2026-08-09T00:01:00+00:00"},
+        ],
         "evidence": {"voice_sim": 0.71},
     }
     result.update(overrides)
@@ -113,6 +119,26 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse(item["eligible_for_training"])
         self.assertIn("seed_only", item["excluded_reasons"])
         self.assertEqual(manifest["segments"], [])
+
+    def test_two_independent_clean_identity_confirmations_are_required(self):
+        cases = [
+            ([], "identity_confirmations_insufficient"),
+            ([{"reviewer": "same", "verdict": "target", "overlap": False,
+               "reviewed_at": "now"}] * 2, "identity_confirmations_insufficient"),
+            ([{"reviewer": "a", "verdict": "target", "overlap": False, "reviewed_at": "now"},
+              {"reviewer": "b", "verdict": "other", "overlap": False, "reviewed_at": "now"}],
+             "identity_confirmation_conflict"),
+            ([{"reviewer": "a", "verdict": "target", "overlap": False, "reviewed_at": "now"},
+              {"reviewer": "b", "verdict": "target", "overlap": True, "reviewed_at": "now"}],
+             "speaker_overlap"),
+        ]
+        for confirmations, reason in cases:
+            with self.subTest(reason=reason):
+                candidates, manifest = self.build([
+                    anchor(identity_confirmations=confirmations)
+                ])
+                self.assertIn(reason, candidates["candidates"][0]["excluded_reasons"])
+                self.assertEqual(manifest["segments"], [])
 
     def test_default_deny_rights_blocks_training(self):
         _, sources = bsm.normalize_inventory({"sources": [{"source_id": "s1-ep05"}]})
