@@ -59,15 +59,16 @@ class ReviewStore:
         media_id = self._id(path)
         self.media[media_id] = path
         sidecar = self._sidecar(path)
+        times = sidecar.get("times") if isinstance(sidecar.get("times"), dict) else {}
         return {
             "id": media_id,
             "kind": kind,
             "name": path.stem,
             "media_url": f"/media/{media_id}",
             "reference_id": reference_id,
-            "source_id": sidecar.get("source_id"),
-            "start_s": sidecar.get("start_s"),
-            "end_s": sidecar.get("end_s"),
+            "source_id": sidecar.get("source_id") or sidecar.get("source"),
+            "start_s": sidecar.get("start_s", times.get("start_s")),
+            "end_s": sidecar.get("end_s", times.get("end_s")),
             "speaker": sidecar.get("speaker"),
             "transcript": sidecar.get("transcript_ja_verified") or sidecar.get("text"),
         }

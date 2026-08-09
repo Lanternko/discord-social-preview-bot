@@ -100,6 +100,9 @@ function render() {
   hydrate($(state.kind === "identity" ? "#identity-form" : "#generation-form"), state.session.reviews[reviewKey(item)]);
   $("#previous").disabled = state.index === 0;
   $("#save-status").textContent = state.session.reviews[reviewKey(item)] ? "此段已有紀錄" : "";
+  $("#save").innerHTML = state.index < items.length - 1
+    ? "儲存並前往下一段 <span>›</span>"
+    : (state.session.reviews[reviewKey(item)] ? "更新本段" : "儲存本段");
 }
 
 function answers(form) {
@@ -131,5 +134,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 fetch("/api/session").then((response) => response.json()).then((session) => {
-  state.session = session; $("#reviewer").textContent = session.reviewer; render();
+  state.session = session;
+  const firstUnreviewed = queue().findIndex((item) => !session.reviews[reviewKey(item)]);
+  state.index = firstUnreviewed >= 0 ? firstUnreviewed : Math.max(0, queue().length - 1);
+  $("#reviewer").textContent = session.reviewer; render();
 }).catch(() => { $("#queue-status").textContent = "無法連線"; });

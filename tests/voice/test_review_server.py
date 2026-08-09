@@ -33,6 +33,16 @@ class ReviewStoreTests(unittest.TestCase):
         self.assertEqual(len(session["queues"]["generation"]), 1)
         self.assertEqual(session["counts"]["identity"], {"total": 1, "reviewed": 0})
 
+    def test_nested_cutter_sidecar_metadata_is_exposed(self):
+        sidecar = self.root / "candidates" / "candidate.json"
+        sidecar.write_text(json.dumps({
+            "source": "s1-ep05", "speaker": "pending",
+            "times": {"start_s": 5.829, "end_s": 14.8},
+        }), encoding="utf-8")
+        item = self.store.session()["queues"]["identity"][0]
+        self.assertEqual(item["source_id"], "s1-ep05")
+        self.assertEqual((item["start_s"], item["end_s"]), (5.829, 14.8))
+
     def test_identity_review_is_atomically_upserted(self):
         item = self.store.session()["queues"]["identity"][0]
         record = self.store.save({"kind": "identity", "item_id": item["id"], "answers": {
