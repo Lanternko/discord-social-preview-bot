@@ -137,7 +137,7 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
 
 工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；機率門檻預設為 `P(target) >= 0.70`，且正例相似度必須至少比 hard-negative 高 `0.03`。正例 bank 未涵蓋至少三集時，候選只會寫入本機隔離區並標記 `review_ready=false`，測評台不會顯示；禁止把單集 leave-one-out 分數冒充跨集 speaker gate。
 
-後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或完整的人工畫面預審 provenance（角色、觀察者與時間）；畫面預審只允許片段進入聲音人工確認，不能代替 speaker verdict、串音檢查或訓練 rights gate。
+後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或同時具備完整的人工畫面預審 provenance（角色、觀察者與時間）及使用目前人工正負例銀行產生的 `acoustic_precheck`。畫面看到角色本身不能證明台詞由該角色說出；缺少或過期的聲學預審會直接隔離，也不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
 畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的五段 canary。
 

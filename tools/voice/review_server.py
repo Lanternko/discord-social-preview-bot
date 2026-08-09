@@ -62,8 +62,7 @@ class ReviewStore:
         except (OSError, json.JSONDecodeError):
             return {}
 
-    @staticmethod
-    def _review_ready(sidecar: dict) -> bool:
+    def _review_ready(self, sidecar: dict) -> bool:
         if sidecar.get("review_ready") is not True:
             return False
         selection = sidecar.get("selection_evidence")
@@ -74,7 +73,21 @@ class ReviewStore:
                 isinstance(selection.get("observer"), str) and
                 isinstance(selection.get("checked_at"), str)
             )
-            if visual_ready:
+            acoustic = sidecar.get("acoustic_precheck")
+            bank_manifest = self.data_root / "calibration" / "review-bank" / "manifest.json"
+            current_bank_sha256 = (
+                hashlib.sha256(bank_manifest.read_bytes()).hexdigest()
+                if bank_manifest.is_file() else None
+            )
+            acoustic_ready = (
+                isinstance(acoustic, dict) and acoustic.get("passed") is True and
+                acoustic.get("scorer_version") == "pilotfish.acoustic_precheck.v1" and
+                isinstance(acoustic.get("scored_at"), str) and
+                acoustic.get("bank_sha256") == current_bank_sha256 and
+                acoustic.get("positive_clips", 0) >= 8 and
+                acoustic.get("negative_clips", 0) >= 20
+            )
+            if visual_ready and acoustic_ready:
                 return True
         gate = sidecar.get("speaker_gate")
         validation = gate.get("validation") if isinstance(gate, dict) else None
@@ -223,6 +236,15 @@ class ReviewStore:
                 raise ValueError("naturalness must be 1..5")
             if not isinstance(answers.get("artifacts"), list):
                 raise ValueError("artifacts must be an array")
+        active_batch_ids: list[str] = []
+        if kind == "identity":
+            visible = self.session()["queues"]["identity"]
+            item_index = next((index for index, item in enumerate(visible)
+                               if item["id"] == item_id), -1)
+            if item_index >= 0:
+                batch_start = item_index // IDENTITY_BATCH_SIZE * IDENTITY_BATCH_SIZE
+                active_batch_ids = [item["id"] for item in
+                                    visible[batch_start:batch_start + IDENTITY_BATCH_SIZE]]
         key = f"{self.reviewer}:{kind}:{item_id}"
         record = {
             "reviewer": self.reviewer,
@@ -247,7 +269,18 @@ class ReviewStore:
             finally:
                 if os.path.exists(temporary):
                     os.unlink(temporary)
-            if kind == "identity":
+            batch_records = [reviews.get(f"{self.reviewer}:identity:{media_id}")
+                             for media_id in active_batch_ids]
+            completed_batch = bool(active_batch_ids) and all(
+                isinstance(value, dict) for value in batch_records
+            )
+            failed_canary = sum(
+                isinstance(value, dict) and
+                value.get("answers", {}).get("verdict") == "other" and
+                value.get("answers", {}).get("confidence", 0) >= 4
+                for value in batch_records
+            ) >= MAX_HIGH_CONFIDENCE_OTHERS
+            if kind == "identity" and (completed_batch or failed_canary):
                 try:
                     self._refresh_review_bank()
                 except (OSError, ValueError, json.JSONDecodeError) as error:

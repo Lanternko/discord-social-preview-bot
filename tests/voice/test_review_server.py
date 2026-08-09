@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import sys
 import tempfile
@@ -12,6 +13,8 @@ import review_server as rs  # noqa: E402
 
 
 class ReviewStoreTests(unittest.TestCase):
+    bank_manifest = b'{"positive":8,"negative":20}\n'
+
     @staticmethod
     def ready_sidecar(**values):
         return {
@@ -19,6 +22,14 @@ class ReviewStoreTests(unittest.TestCase):
             "selection_evidence": {
                 "kind": "visual_precheck", "character_on_screen": "西奈津美",
                 "observer": "fixture", "checked_at": "2026-08-10T00:00:00Z",
+            },
+            "acoustic_precheck": {
+                "passed": True,
+                "scorer_version": "pilotfish.acoustic_precheck.v1",
+                "scored_at": "2026-08-10T00:00:00Z",
+                "bank_sha256": hashlib.sha256(ReviewStoreTests.bank_manifest).hexdigest(),
+                "positive_clips": 8,
+                "negative_clips": 20,
             },
             **values,
         }
@@ -35,6 +46,9 @@ class ReviewStoreTests(unittest.TestCase):
         )
         (self.root / "generations").mkdir()
         (self.root / "generations" / "generated.wav").write_bytes(b"RIFF generated")
+        bank_dir = self.root / "calibration" / "review-bank"
+        bank_dir.mkdir(parents=True)
+        (bank_dir / "manifest.json").write_bytes(self.bank_manifest)
         self.store = rs.ReviewStore(self.root, "reviewer-a")
 
     def tearDown(self):
@@ -92,7 +106,6 @@ class ReviewStoreTests(unittest.TestCase):
         self.assertEqual(record["answers"]["verdict"], "target")
         document = json.loads(self.store.review_path.read_text(encoding="utf-8"))
         self.assertEqual(len(document["reviews"]), 1)
-        self.assertEqual(self.store.session()["counts"]["identity"]["reviewed"], 1)
         bank = json.loads((
             self.root / "calibration" / "review-bank" / "manifest.json"
         ).read_text(encoding="utf-8"))
@@ -128,9 +141,13 @@ class ReviewStoreTests(unittest.TestCase):
             self.store.save({"kind": "identity", "item_id": item["id"], "answers": {
                 "verdict": "other", "overlap": False, "confidence": 5, "notes": "",
             }})
+            if item != session["queues"]["identity"][2]:
+                self.assertEqual((
+                    self.root / "calibration" / "review-bank" / "manifest.json"
+                ).read_bytes(), self.bank_manifest)
         held = self.store.session()
-        self.assertTrue(held["quality_hold"])
-        self.assertEqual(len(held["queues"]["identity"]), 3)
+        self.assertEqual(held["queues"]["identity"], [])
+        self.assertEqual(held["identity_quarantined_total"], 7)
 
     def test_unvalidated_candidates_are_quarantined(self):
         (self.root / "candidates" / "candidate.json").write_text(
@@ -144,6 +161,27 @@ class ReviewStoreTests(unittest.TestCase):
         (self.root / "candidates" / "candidate.json").write_text(
             json.dumps({"review_ready": True}), encoding="utf-8",
         )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_visual_precheck_without_current_acoustic_precheck_is_quarantined(self):
+        sidecar = self.ready_sidecar()
+        sidecar.pop("acoustic_precheck")
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_acoustic_precheck_requires_sufficient_human_banks(self):
+        sidecar = self.ready_sidecar()
+        sidecar["acoustic_precheck"]["negative_clips"] = 19
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_acoustic_precheck_is_invalidated_when_bank_changes(self):
+        bank = self.root / "calibration" / "review-bank" / "manifest.json"
+        bank.write_bytes(self.bank_manifest + b" ")
         self.assertEqual(self.store.session()["queues"]["identity"], [])
 
 
