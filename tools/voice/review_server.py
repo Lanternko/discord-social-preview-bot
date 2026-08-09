@@ -17,10 +17,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import build_review_bank
+import training_readiness
+
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 STATIC_ROOT = Path(__file__).with_name("review_ui")
 DEFAULT_DATA_ROOT = APP_ROOT / "data" / "voice" / "xibao"
+DEFAULT_INVENTORY = APP_ROOT / "configs" / "voice" / "xibao.sources.json"
 AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 KINDS = {"identity", "generation"}
 IDENTITY_BATCH_SIZE = 5
@@ -104,6 +108,7 @@ class ReviewStore:
             "speaker_probability": sidecar.get("speaker_probability"),
             "review_ready": self._review_ready(sidecar),
             "selection_kind": selection.get("kind"),
+            "review_batch": sidecar.get("review_batch"),
         }
 
     def load_reviews(self) -> dict:
@@ -115,6 +120,27 @@ class ReviewStore:
         except (OSError, json.JSONDecodeError):
             return {}
 
+    def _refresh_review_bank(self) -> dict:
+        bank_dir = self.data_root / "calibration" / "review-bank"
+        bank_dir.parent.mkdir(parents=True, exist_ok=True)
+        return build_review_bank.build(
+            self.review_path,
+            bank_dir,
+            [self.data_root / "_tmp", self.data_root / "candidates"],
+        )
+
+    def _training_readiness(self) -> dict:
+        try:
+            report = training_readiness.assess(
+                self.data_root / "calibration" / "review-bank", DEFAULT_INVENTORY,
+            )
+            return {
+                "ready_for_training": report["ready_for_training"],
+                "failed_gates": report["failed_gates"],
+                "counts": report["counts"],
+            }
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            return {"ready_for_training": False, "error": str(error)}
     def session(self) -> dict:
         self.media = {}
         references = self._scan_audio("reference")
@@ -124,6 +150,7 @@ class ReviewStore:
         scanned_identity = [self._item(path, "identity", reference_id) for path in identity_paths]
         all_identity = [item for item in scanned_identity if item["review_ready"]]
         all_identity.sort(key=lambda item: (
+            item["review_batch"] if isinstance(item.get("review_batch"), int) else 10**9,
             -(item["speaker_probability"] if isinstance(item.get("speaker_probability"), float) else -1),
             item["rank"] if isinstance(item.get("rank"), int) else 10**9,
             item["name"],
@@ -167,6 +194,7 @@ class ReviewStore:
                 "batch_size": IDENTITY_BATCH_SIZE,
                 "pause_after_high_confidence_others": MAX_HIGH_CONFIDENCE_OTHERS,
             },
+            "training_readiness": self._training_readiness(),
         }
 
     def save(self, payload: dict) -> dict:
@@ -219,6 +247,11 @@ class ReviewStore:
             finally:
                 if os.path.exists(temporary):
                     os.unlink(temporary)
+            if kind == "identity":
+                try:
+                    self._refresh_review_bank()
+                except (OSError, ValueError, json.JSONDecodeError) as error:
+                    record = {**record, "bank_refresh_error": str(error)}
         return record
 
 

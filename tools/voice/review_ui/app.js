@@ -82,9 +82,13 @@ function render() {
   $("#position").textContent = items.length ? `${state.index + 1} / ${items.length}` : "0 / 0";
   $("#progress-bar").style.width = items.length ? `${reviewed / items.length * 100}%` : "0";
   const quarantined = state.kind === "identity" ? state.session.identity_quarantined_total : 0;
+  const corpus = state.session.training_readiness?.counts;
+  const corpusSuffix = state.kind === "identity" && corpus ?
+    ` · 素材 ${corpus.valid_unique_clips} 段 / ${corpus.source_episodes} 集` : "";
   $("#queue-status").textContent = state.session.quality_hold ? "品質閘門暫停" :
     (quarantined && !items.length ? `聲線未校準，隔離 ${quarantined} 段` :
-      (reviewed === items.length && items.length ? "本輪完成" : "審核進行中"));
+      (reviewed === items.length && items.length ? `本輪完成${corpusSuffix}` :
+        `審核進行中${corpusSuffix}`));
   renderQueue();
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;

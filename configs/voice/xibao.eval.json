@@ -1,0 +1,14 @@
+{
+  "schema_version": "pilotfish.voice_eval_corpus.v1",
+  "target_speaker": "西奈津美",
+  "sentences": [
+    {"id": "calm_short", "emotion": "calm", "text_ja": "うん、今日はゆっくり話せそう。"},
+    {"id": "shy_short", "emotion": "shy", "text_ja": "えっと、その……ちょっとだけ緊張してる。"},
+    {"id": "happy_short", "emotion": "tender", "text_ja": "来てくれて、すごくうれしい。"},
+    {"id": "surprised_short", "emotion": "surprised", "text_ja": "えっ、本当に？　知らなかった。"},
+    {"id": "calm_medium", "emotion": "calm", "text_ja": "帰り道で見つけた小さなお店、今度いっしょに行ってみない？"},
+    {"id": "shy_medium", "emotion": "shy", "text_ja": "ちゃんと言えるか分からないけど、ずっと伝えたいと思ってたの。"},
+    {"id": "excited_medium", "emotion": "excited", "text_ja": "すごい、こんなにきれいになるんだ！　もう一回やってみよう。"},
+    {"id": "calm_long", "emotion": "calm", "text_ja": "朝は少し曇っていたけど、放課後には晴れてきたから、遠回りして公園のほうを歩いて帰ったんだ。"}
+  ]
+}

@@ -72,6 +72,18 @@ class ReviewStoreTests(unittest.TestCase):
         items = self.store.session()["queues"]["identity"]
         self.assertEqual([item["rank"] for item in items], [1, 2])
 
+    def test_explicit_visual_review_batch_precedes_model_probability(self):
+        second = self.root / "candidates" / "second.wav"
+        second.write_bytes(b"RIFF second")
+        (self.root / "candidates" / "candidate.json").write_text(json.dumps(
+            self.ready_sidecar(review_batch=2, speaker_probability=0.99),
+        ), encoding="utf-8")
+        second.with_suffix(".json").write_text(json.dumps(
+            self.ready_sidecar(review_batch=1, speaker_probability=0.70),
+        ), encoding="utf-8")
+        items = self.store.session()["queues"]["identity"]
+        self.assertEqual([item["name"] for item in items], ["second", "candidate"])
+
     def test_identity_review_is_atomically_upserted(self):
         item = self.store.session()["queues"]["identity"][0]
         record = self.store.save({"kind": "identity", "item_id": item["id"], "answers": {
@@ -81,6 +93,10 @@ class ReviewStoreTests(unittest.TestCase):
         document = json.loads(self.store.review_path.read_text(encoding="utf-8"))
         self.assertEqual(len(document["reviews"]), 1)
         self.assertEqual(self.store.session()["counts"]["identity"]["reviewed"], 1)
+        bank = json.loads((
+            self.root / "calibration" / "review-bank" / "manifest.json"
+        ).read_text(encoding="utf-8"))
+        self.assertEqual(bank["positive"], 1)
 
     def test_generation_review_requires_complete_scores(self):
         item = self.store.session()["queues"]["generation"][0]

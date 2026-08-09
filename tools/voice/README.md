@@ -139,6 +139,32 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
 
 後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或完整的人工畫面預審 provenance（角色、觀察者與時間）；畫面預審只允許片段進入聲音人工確認，不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
+畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的五段 canary。
+
+## 訓練 readiness 與 Irodori manifest
+
+正式訓練採 fail-closed readiness：至少 20 段、跨兩集且 60 秒的訓練資料，另留整集至少 8 段作 episode-disjoint holdout；每段必須有人工確認、唯一且 hash 相符的 2–7 秒音檔與人工校正日文逐字稿，所有訓練來源也必須明確允許 research extraction 與 training。
+
+```bash
+python3 tools/voice/training_readiness.py \
+  --bank-dir data/voice/xibao/calibration/review-bank \
+  --inventory configs/voice/xibao.sources.json \
+  --report-out data/voice/xibao/reports/training-readiness.json
+```
+
+只有報告 `ready_for_training=true` 時才能輸出 Irodori-TTS 500M v3 Speaker Inversion 的 preprocessing manifest；否則指令以 exit code 2 拒絕，且不建立輸出資料集。
+
+```bash
+python3 tools/voice/build_irodori_manifests.py \
+  --bank-dir data/voice/xibao/calibration/review-bank \
+  --inventory configs/voice/xibao.sources.json \
+  --out-dir data/voice/xibao/dataset/irodori-si
+```
+
+每次資料內容對應一個 content-addressed generation 子目錄；三份 manifest 全部 staging 成功後才原子發布，`current.json` 指向目前 generation，重跑相同資料不會覆寫或產生半套 artifacts。
+
+固定生成測試句收在 `configs/voice/xibao.eval.json`，涵蓋短／中／長句與 calm、shy、tender、surprised、excited，供 checkpoint 使用同一批輸入做相似度、自然度、爆音與人工盲測。
+
 將既有人工標註建成 bank：
 
 ```bash
