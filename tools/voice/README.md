@@ -128,7 +128,20 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
   --audio data/voice/xibao/_tmp/s1-ep05/source.wav \
   --subtitles data/voice/xibao/_tmp/s1-ep05/source.zh-Hant.json3 \
   --reference data/voice/xibao/reference/s1-ep05__s1-ep05-seed-001.wav \
-  --out-dir data/voice/xibao/candidates --top-k 30
+  --positive-dir data/voice/xibao/calibration/review-bank/positive \
+  --negative-dir data/voice/xibao/calibration/review-bank/negative \
+  --out-dir data/voice/xibao/candidates/s1-ep05 --top-k 8 \
+  --min-margin 0.0 --max-margin 0.12
 ```
 
-工具會排除雙行字幕、過短／過長事件及金標本身，並只把 ECAPA 分數作為 `rank_score` 排序。輸出一律是 `pending_human_review`、`training_eligible=false`；未經校準的分數不能視為角色判定。
+工具會排除雙行字幕、過短／過長事件、金標本身及已進 review bank 的片段。正例 bank 與同作品 hard-negative bank 共同計算 identity margin；人工頁面只接收 margin 窄區間內的模糊案例，明顯其他角色在此之前排除。
+
+將既有人工標註建成 bank：
+
+```bash
+data/voice/.venv/bin/python tools/voice/build_review_bank.py \
+  --reviews data/voice/xibao/review/reviews.json \
+  --out-dir data/voice/xibao/calibration/review-bank
+```
+
+只有信心 >= 3、無串音的 `target` 會成為 positive；信心 >= 3、無串音的 `other` 會成為 hard negative。不確定、低信心與串音一律忽略。所有新候選仍是 `pending_human_review`、`training_eligible=false`；margin 尚未 episode-disjoint 校準，不能視為正式角色判定。

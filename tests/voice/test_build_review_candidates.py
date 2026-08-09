@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -32,6 +34,16 @@ class CandidateSpanTests(unittest.TestCase):
             brc._rights_allow({"sources": [{
                 "source_id": "s1-ep05", "rights": {"research_extraction": "deny"},
             }]}, "s1-ep05")
+
+    def test_reviewed_bank_spans_are_discoverable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "item.json").write_text(json.dumps({
+                "source_id": "s1-ep05", "start_s": 1.234, "end_s": 3.456,
+            }), encoding="utf-8")
+            self.assertEqual(
+                brc.bank_span_keys(root), {("s1-ep05", 1.234, 3.456)},
+            )
 
 
 if __name__ == "__main__":

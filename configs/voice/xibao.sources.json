@@ -9,7 +9,7 @@
       "training": "deny",
       "redistribution": "deny"
     },
-    "note": "Metadata-only inventory. Rights must be reviewed before any download or training use."
+    "note": "S1 official public sources are approved only for local research extraction requested by the user. Training and redistribution remain deny; S2 remains default-deny."
   },
   "sources": [
     {
@@ -19,7 +19,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=CnZl_mRhg14",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep02",
@@ -28,7 +28,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=WRE4LKIFsNk",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep03",
@@ -37,7 +37,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=5-s_FXR_VPY",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep04",
@@ -46,7 +46,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=7xDprxciG7k",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep05",
@@ -70,7 +70,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=GpdukzbVpmA",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep07",
@@ -79,7 +79,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=uUj5bTO7GNU",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep08",
@@ -88,7 +88,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=11G8oacoLfI",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep09",
@@ -97,7 +97,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=6t-czEseGSs",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep10",
@@ -106,7 +106,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=su9RocWbC_Y",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep11",
@@ -115,7 +115,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=prxv1IB3YP4",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep12",
@@ -124,7 +124,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=byAzVN6dkiM",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "deny", "redistribution": "deny"}
+      "rights": {"download": "deny", "research_extraction": "allow", "training": "deny", "redistribution": "deny"}
     },
     {
       "source_id": "s2-ep13",
