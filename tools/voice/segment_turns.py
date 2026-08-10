@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
-"""Split local episode audio into speaking turns and rank them against the review bank.
+"""Cut local episode audio into clips and rank them against the review bank.
 
-The unit is one continuous run of voiced speech bounded by real silence, capped
-at a few seconds — the previous batch was quarantined for gluing several turns
-together, so the segmenter is driven by VAD pauses rather than by ASR segment
-text, and any run longer than ``--max-duration`` is split at its deepest
-internal pause instead of being kept whole.
+Pass ``--sentences`` (from ``sentence_asr.py``) and the segmentation is driven by
+transcript sentences, because VAD alone cannot see every boundary: consecutive
+lines here are often delivered with no pause at all, so a silence-based splitter
+glues them together.  Sentences that *do* run together stay in one clip — the
+reviewer only objects to a merge when it spans a change of tone — and a clip ends
+at the first pause of ``--sentence-break-gap`` or longer.  Without
+``--sentences`` the older VAD-run segmentation is used.
+
+Edge placement is its own problem, and every rule in ``refine_edges`` comes from
+a clip that was rejected by ear.  Measured against the batch the reviewer
+accepted, a good clip carries ~0.09 s of lead-in and ~0.19 s of run-out and its
+edges sit near the noise floor; the rejected clips ended at 5.6x the floor,
+i.e. while the voice was still sounding.
 
 Intra-clip speaker-change detection by embedding drift was tried and dropped:
 on this material ECAPA sub-window similarity does not separate a genuine single
@@ -14,9 +22,15 @@ completely), so ``half_similarity`` is reported as weak evidence only and gates
 nothing.  Median F0 is reported alongside it because this episode is a two-hander
 with one female and one male voice, where pitch is the more honest signal.
 
-Speaker identity here is *retrieval evidence only*.  The bank centroids give a
-rank score and a cluster assignment; neither is a verdict, and nothing in the
-output sets a training or review gate.
+Speaker identity here is *retrieval evidence only*, and ECAPA cannot tell the
+target from another female character in the same scene — that has already
+produced a wrong-speaker clip that only the picture caught.  The bank centroids
+give a rank score and a cluster assignment; neither is a verdict, and nothing in
+the output sets a training or review gate.
+
+One check this tool does *not* do, and that is worth running afterwards: cut the
+clip, transcribe it on its own, and confirm the text is the sentence you meant
+and nothing more.  That round trip has caught head bleed the edge metrics passed.
 """
 
 from __future__ import annotations
@@ -125,59 +139,96 @@ def split_long_run(start: float, end: float, silences: list[tuple[float, float]]
                            max_duration=max_duration, min_duration=min_duration))
 
 
-def pad_into_silence(start: float, end: float, silences: list[tuple[float, float]], *,
-                     pad_s: float, duration_s: float) -> tuple[float, float]:
-    """Breathe a little room onto each edge without eating the neighbouring turn."""
-    before = [run for run in silences if run[1] <= start + 0.02]
-    after = [run for run in silences if run[0] >= end - 0.02]
-    if before:
-        start -= min(pad_s, (before[-1][1] - before[-1][0]) / 2)
-    if after:
-        end += min(pad_s, (after[0][1] - after[0][0]) / 2)
-    return round(max(0.0, start), 3), round(min(duration_s, end), 3)
+def rms_track(samples, *, frame_s: float = 0.03, hop_s: float = 0.01):
+    import numpy as np
+
+    frame, hop = int(frame_s * SAMPLE_RATE), int(hop_s * SAMPLE_RATE)
+    count = max(0, (len(samples) - frame) // hop + 1)
+    return np.array([np.sqrt((samples[i * hop:i * hop + frame] ** 2).mean() + 1e-12)
+                     for i in range(count)]), hop
+
+
+def refine_edges(track, hop: int, start: float, end: float, *,
+                 previous_end: float, next_start: float, duration_s: float,
+                 head_pad: float, tail_pad: float, quiet_run_s: float,
+                 max_tail_reach: float, floor_span_s: float) -> tuple[float, float, bool, bool]:
+    """Walk each edge out to real silence, bounded by the neighbours and by the words.
+
+    Four things this must not do, each of which produced a clip the reviewer rejected:
+
+    * stop at a local energy minimum — that minimum sits inside the final syllable's
+      decay, so the tail gets cut while the voice is still sounding;
+    * cross into a neighbouring utterance when this one has no silence beside it;
+    * judge a scene that has music under it against the whole episode's noise floor,
+      which sends the tail running seconds into dead air; or
+    * run far past the transcript looking for a silence that is not there.
+    """
+    import numpy as np
+
+    def frame_at(t):
+        return int(np.clip(round(t * SAMPLE_RATE / hop), 0, len(track) - 1))
+
+    middle = frame_at((start + end) / 2)
+    span = frame_at(floor_span_s)
+    floor = float(np.percentile(track[max(0, middle - span):middle + span + 1], 20))
+    threshold = floor * 1.8
+    run = max(1, frame_at(quiet_run_s))
+
+    index, limit = frame_at(start), frame_at(max(previous_end, start - 1.2))
+    silence = None
+    while index > limit:
+        if track[max(0, index - run):index].max() < threshold:
+            silence = index
+            break
+        index -= 1
+    if silence is None:
+        head, head_at_boundary = start, True
+    else:
+        onset = silence
+        while onset < len(track) - 1 and track[onset] < threshold:
+            onset += 1
+        head, head_at_boundary = max(0.0, onset * hop / SAMPLE_RATE - head_pad), False
+
+    index, limit = frame_at(end), frame_at(min(next_start, end + max_tail_reach))
+    silence = None
+    while index < limit:
+        if track[index:index + run].max() < threshold:
+            silence = index
+            break
+        index += 1
+    if silence is None:
+        tail, tail_at_boundary = min(end + head_pad, next_start), True
+    else:
+        offset = silence
+        while offset > frame_at(head) and track[offset] < threshold:
+            offset -= 1
+        tail, tail_at_boundary = (offset + 1) * hop / SAMPLE_RATE + tail_pad, False
+
+    return (round(max(0.0, head), 3), round(min(duration_s, tail), 3),
+            head_at_boundary, tail_at_boundary)
+
+
+def edge_report(track, hop: int, start: float, end: float, floor: float) -> dict[str, Any]:
+    """How much silence each edge carries, and how loud it still is there."""
+    import numpy as np
+
+    lo = int(np.clip(round(start * SAMPLE_RATE / hop), 0, len(track) - 1))
+    hi = int(np.clip(round(end * SAMPLE_RATE / hop), 0, len(track) - 1))
+    clip = track[lo:hi]
+    loud = clip > floor * 2.5
+    if not len(clip) or not loud.any():
+        return {}
+    head = float(np.argmax(loud) * hop / SAMPLE_RATE)
+    tail = len(clip) * hop / SAMPLE_RATE - (len(clip) - 1 - int(np.argmax(loud[::-1]))) * hop / SAMPLE_RATE
+    return {"head_silence_s": round(head, 3), "tail_silence_s": round(tail, 3),
+            "head_ratio": round(float(clip[:6].mean() / floor), 2),
+            "tail_ratio": round(float(clip[-6:].mean() / floor), 2)}
 
 
 def words_in_span(words: list[dict[str, Any]], start: float, end: float) -> str:
     """ASR text overlapping the span — positioning aid, never a verified transcript."""
     return "".join(word["text"] for word in words
                    if word["end"] > start + 0.05 and word["start"] < end - 0.05).strip()
-
-
-def merge_same_speaker(records: list[dict[str, Any]], samples, words, *, score,
-                       gap_s: float, max_duration: float,
-                       similarity_delta: float) -> list[dict[str, Any]]:
-    """Rejoin neighbouring spans that a breath pause split mid-sentence.
-
-    Two spans merge only when both already look like the *same* voice — their
-    similarity to the bank centroid agrees within ``similarity_delta`` — so a
-    pause that was actually a hand-over between the two characters is never
-    bridged.  Merging is repeated until nothing else qualifies.
-    """
-    changed = True
-    while changed:
-        changed = False
-        merged: list[dict[str, Any]] = []
-        index = 0
-        while index < len(records):
-            current = records[index]
-            following = records[index + 1] if index + 1 < len(records) else None
-            joinable = (
-                following is not None and
-                not current["exclusions"] and not following["exclusions"] and
-                "positive_similarity" in current and "positive_similarity" in following and
-                following["start_s"] - current["end_s"] < gap_s and
-                following["end_s"] - current["start_s"] <= max_duration and
-                abs(current["positive_similarity"] - following["positive_similarity"]) <= similarity_delta
-            )
-            if joinable:
-                merged.append(score(current["start_s"], following["end_s"]))
-                index += 2
-                changed = True
-            else:
-                merged.append(current)
-                index += 1
-        records = merged
-    return records
 
 
 def bank_embeddings(directory: Path, embed) -> list:
@@ -266,23 +317,57 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
     silences = mask_runs(mask, frame_ms, value=False)
     speech = merge_runs(mask_runs(mask, frame_ms, value=True), merge_gap_s=args.merge_gap_s)
     words = load_words(asr_path, max_no_speech=args.max_no_speech)
+    track, hop = rms_track(samples)
+    global_floor = float(np.percentile(track, 20))
 
-    spans: list[tuple[float, float]] = []
-    for start, end in speech:
-        if start >= args.analysis_end_s:
-            continue
-        end = min(end, args.analysis_end_s)
-        spans.extend(split_long_run(start, end, silences,
-                                    max_duration=args.max_duration,
-                                    min_duration=args.min_duration))
+    if args.sentences:
+        # Sentence boundaries see splits VAD cannot: consecutive lines are often
+        # delivered with no pause at all. Lines that *do* run together stay in one
+        # clip — the reviewer only objects when a merge spans a change of tone.
+        source = json.loads(Path(args.sentences).resolve().read_text(encoding="utf-8"))
+        sentences = [item for item in source["sentences"] if item["end"] <= args.analysis_end_s]
+        groups: list[list[dict[str, Any]]] = [[sentences[0]]] if sentences else []
+        for previous, sentence in zip(sentences, sentences[1:]):
+            span = sentence["end"] - groups[-1][0]["start"]
+            if sentence["start"] - previous["end"] >= args.sentence_break_gap or span > args.max_duration:
+                groups.append([sentence])
+            else:
+                groups[-1].append(sentence)
+        starts = [group[0]["start"] for group in groups]
+        ends = [group[-1]["end"] for group in groups]
+        spans = []
+        for index, group in enumerate(groups):
+            previous_end = ends[index - 1] if index else 0.0
+            next_start = starts[index + 1] if index + 1 < len(groups) else duration_s
+            head, tail, head_boundary, tail_boundary = refine_edges(
+                track, hop, group[0]["start"], group[-1]["end"],
+                previous_end=previous_end, next_start=next_start, duration_s=duration_s,
+                head_pad=args.head_pad_s, tail_pad=args.tail_pad_s,
+                quiet_run_s=args.quiet_run_s, max_tail_reach=args.max_tail_reach_s,
+                floor_span_s=args.floor_span_s)
+            spans.append((head, tail, [item["text"] for item in group],
+                          head_boundary, tail_boundary))
+    else:
+        spans = []
+        for start, end in speech:
+            if start >= args.analysis_end_s:
+                continue
+            end = min(end, args.analysis_end_s)
+            for piece_start, piece_end in split_long_run(
+                    start, end, silences,
+                    max_duration=args.max_duration, min_duration=args.min_duration):
+                spans.append((piece_start, piece_end, None, False, False))
 
-    def score_span(start_s: float, end_s: float) -> dict[str, Any]:
+    def score_span(start_s: float, end_s: float, texts=None) -> dict[str, Any]:
         record: dict[str, Any] = {
             "start_s": round(start_s, 3),
             "end_s": round(end_s, 3),
             "duration_s": round(end_s - start_s, 3),
-            "transcript_ja_asr": words_in_span(words, start_s, end_s),
+            "transcript_ja_asr": ("".join(texts) if texts is not None
+                                  else words_in_span(words, start_s, end_s)),
+            "sentences": texts,
             "within_visual_coverage": end_s <= args.visual_coverage_s,
+            "edges": edge_report(track, hop, start_s, end_s, global_floor),
             "exclusions": [],
         }
         chunk = samples[int(start_s * SAMPLE_RATE):int(end_s * SAMPLE_RATE)]
@@ -303,24 +388,33 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
         return record
 
     records = []
-    for start, end in spans:
-        start_s, end_s = pad_into_silence(start, end, silences, pad_s=args.pad_s, duration_s=duration_s)
+    for start_s, end_s, texts, head_boundary, tail_boundary in spans:
         if end_s - start_s < args.min_duration or end_s - start_s > args.max_duration:
             records.append({
                 "start_s": round(start_s, 3), "end_s": round(end_s, 3),
                 "duration_s": round(end_s - start_s, 3),
-                "transcript_ja_asr": words_in_span(words, start_s, end_s),
+                "transcript_ja_asr": ("".join(texts) if texts is not None
+                                      else words_in_span(words, start_s, end_s)),
                 "within_visual_coverage": end_s <= args.visual_coverage_s,
                 "exclusions": ["duration_out_of_range"],
             })
             continue
-        records.append(score_span(start_s, end_s))
-
-    if args.sentence_gap_s > 0:
-        records = merge_same_speaker(records, samples, words, score=score_span,
-                                     gap_s=args.sentence_gap_s,
-                                     max_duration=args.max_merged_duration,
-                                     similarity_delta=args.merge_similarity_delta)
+        record = score_span(start_s, end_s, texts)
+        record["head_at_sentence_boundary"] = head_boundary
+        record["tail_at_sentence_boundary"] = tail_boundary
+        edges = record["edges"]
+        if edges:
+            # thresholds read off the batch the reviewer accepted: ~0.09 s of lead-in,
+            # ~0.19 s of run-out, and edge energy near the noise floor rather than 5x it
+            if edges["tail_ratio"] > args.max_edge_ratio or (
+                    edges["tail_silence_s"] < args.min_tail_silence_s and not tail_boundary):
+                record["exclusions"].append("tail_cut_while_still_sounding")
+            if edges["head_ratio"] > args.max_edge_ratio or (
+                    edges["head_silence_s"] < args.min_head_silence_s and not head_boundary):
+                record["exclusions"].append("head_clipped")
+            if edges["head_silence_s"] > args.max_head_silence_s:
+                record["exclusions"].append("enters_too_early")
+        records.append(record)
 
     scorable = [record for record in records if "embedding" in record and not record["exclusions"]]
     if len(scorable) >= args.clusters:
@@ -354,11 +448,16 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
         "asr_path": str(asr_path),
         "duration_s": round(duration_s, 3),
         "parameters": {
-            "merge_gap_s": args.merge_gap_s, "pad_s": args.pad_s,
+            "merge_gap_s": args.merge_gap_s,
             "min_duration": args.min_duration, "max_duration": args.max_duration,
-            "sentence_gap_s": args.sentence_gap_s,
-            "max_merged_duration": args.max_merged_duration,
-            "merge_similarity_delta": args.merge_similarity_delta,
+            "sentences": args.sentences,
+            "sentence_break_gap": args.sentence_break_gap,
+            "head_pad_s": args.head_pad_s, "tail_pad_s": args.tail_pad_s,
+            "max_tail_reach_s": args.max_tail_reach_s, "floor_span_s": args.floor_span_s,
+            "min_head_silence_s": args.min_head_silence_s,
+            "max_head_silence_s": args.max_head_silence_s,
+            "min_tail_silence_s": args.min_tail_silence_s,
+            "max_edge_ratio": args.max_edge_ratio,
             "vad_aggressiveness": args.vad_aggressiveness,
             "min_speech_ms": args.min_speech_ms, "min_silence_ms": args.min_silence_ms,
             "analysis_end_s": args.analysis_end_s, "visual_coverage_s": args.visual_coverage_s,
@@ -378,14 +477,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True)
     parser.add_argument("--merge-gap-s", type=float, default=0.16,
                         help="Rejoin speech runs closer than this; above it, treat as a hand-over")
-    parser.add_argument("--pad-s", type=float, default=0.08)
     parser.add_argument("--min-duration", type=float, default=1.8)
-    parser.add_argument("--max-duration", type=float, default=5.0)
-    parser.add_argument("--sentence-gap-s", type=float, default=0.45,
-                        help="Rejoin same-voice neighbours closer than this; 0 disables the pass")
-    parser.add_argument("--max-merged-duration", type=float, default=7.0)
-    parser.add_argument("--merge-similarity-delta", type=float, default=0.18,
-                        help="Max gap in bank similarity for two spans to count as one voice")
+    parser.add_argument("--max-duration", type=float, default=7.0)
+    parser.add_argument("--sentences", help="sentence_asr.py output; drives segmentation when given")
+    parser.add_argument("--sentence-break-gap", type=float, default=0.35,
+                        help="A pause at least this long is a place a clip may end")
+    parser.add_argument("--head-pad-s", type=float, default=0.08)
+    parser.add_argument("--tail-pad-s", type=float, default=0.16)
+    parser.add_argument("--quiet-run-s", type=float, default=0.08)
+    parser.add_argument("--max-tail-reach-s", type=float, default=0.45,
+                        help="How far past the transcript the tail may hunt for silence")
+    parser.add_argument("--floor-span-s", type=float, default=5.0,
+                        help="Half-width of the window the local noise floor is taken from")
+    parser.add_argument("--min-head-silence-s", type=float, default=0.05)
+    parser.add_argument("--max-head-silence-s", type=float, default=0.30)
+    parser.add_argument("--min-tail-silence-s", type=float, default=0.12)
+    parser.add_argument("--max-edge-ratio", type=float, default=2.2)
     parser.add_argument("--vad-aggressiveness", type=int, default=2)
     parser.add_argument("--min-speech-ms", type=int, default=200)
     parser.add_argument("--min-silence-ms", type=int, default=180)
