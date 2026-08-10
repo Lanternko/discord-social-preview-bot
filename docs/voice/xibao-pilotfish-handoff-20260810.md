@@ -112,3 +112,54 @@ ssh -N -L 18765:127.0.0.1:8765 kojiek@140.122.184.29
 - `0d4cee6 policy: record user training authorization`
 
 目前沒有需要為這次失敗候選建立的新 code commit；交接重點是資料隔離與重新切分，不是繼續擴大候選數量。
+
+---
+
+## 更新 2026-08-10（EP17 重切完成）
+
+分支 `feat/xibao-voice-pipeline`，commit `901de07`（已推）。新工具：`tools/voice/segment_turns.py`。
+產出目錄 `data/voice/xibao/_tmp/ep17-recut/`，候選 sidecar 在 `data/voice/xibao/candidates/s2-ep17/`。
+
+### 上面「EP17 本機素材」一節已過時，更正如下
+
+- **`part-a` 容器內部 A/V 不同步，不可用。** 音訊起始 pts 是 1.354 s 且中間有掉包；
+  同一個 `-ss/-to` 切出來的 mp4 裡，t≈94 s 的燒錄字幕寫「他想跟我講話這件事」，
+  它自己的音軌卻是「どうしようまたとっさに拒否しちゃった」。t≈14 s 還對得上，
+  代表是漸進飄移。part-a 只有 2 段候選，直接整個排除。
+- **`part-b` 的 A/V 是準的**，已用「切出含音軌的 mp4 → 對該 mp4 自己的音軌跑 ASR →
+  再讀該 mp4 的畫格」端到端驗證過。影像仍只到 294.27 s。
+- 抽畫格務必把 `-ss`/`-to` 放在 `-i` **之前**。放在後面（或只放 `-ss` 在前）都會
+  取到錯的時間點，先前判讀出的「offset」全是這個造成的假象。
+- `part-a.json3` / `part-b.json3` **不是字幕**，是前一輪的滑動視窗佔位檔
+  （內容全是 `[local window; transcript pending]`），別再當時間軸用。
+  真正的中文字幕是**燒錄在畫面裡**的，抽畫格就讀得到，可同時交叉驗證內容與時間。
+
+### 兩個推翻既有假設的發現
+
+1. **「這集幾乎只有兩種聲音」不成立。** 287.76–294.58 s 是西的女性朋友（本ちゃん）
+   在講「季節限定的可愛商品很快就會賣光」，ECAPA 給了 0.648 的正向相似度，
+   落在西的分數帶裡。**聲紋分數分不出西和同性別的配角**，只有畫面抓得到。
+   B 組（無畫面）因此一律要人工聽過，不能只靠分數。
+2. **本集西的台詞大多是內心獨白，嘴巴是閉著的。** 驗收標準「口型、聲音與時間邊界
+   三者一致」在本集大部分素材上做不到。`review_server.py` 的
+   `retrieval_human_review` gate 硬性要求 `mouth_motion_observed=true`，
+   要嘛說謊要嘛全被擋掉 —— 前一輪會造假很可能就是被這個 gate 逼的。
+   這輪改走獨立驗證頁，sidecar 一律 `review_ready: false`，
+   `visual_evidence.state` 誠實記錄 `on_screen_mouth_moving` /
+   `on_screen_mouth_closed` / `voice_over_not_on_screen` / `no_video`。
+
+### 被試過而放棄的做法
+
+用 ECAPA 子視窗漂移偵測「一刀切到兩個人」：拿 review bank 校準後，
+單人片段與人工拼接的雙人片段分佈幾乎完全重疊（中位數 0.42 vs 0.32），
+無鑑別力，已從 gate 拿掉，只留 `half_similarity` 當弱證據。改用基頻中位數，
+本集西 250–420 Hz、山田 92–240 Hz，分得很開。
+
+### 批次 2 隔離已補完
+
+前一份文件只說要隔離，但 `review-bank` 是由 `reviews.json` 重建的，
+光搬檔案下次重啟就會被還原。已把 6 筆 EP17 identity verdict 從
+`review/reviews.json` 移出，存檔在
+`_tmp/quarantine/retrieval-review-s2-ep17-batch2/archived-reviews.json`，
+原檔備份 `review/reviews.json.bak-20260810-prebatch2-quarantine`。
+`review-bank` 內已無任何 `s2-ep17` 檔案。
