@@ -197,25 +197,34 @@ review bank：positive 52 / negative 32。工具 commit `1d09dd2`、`1205471`。
 驗證頁只收身份判定，這兩欄由這個預設補上，記在
 `review/ep17-verdicts-*.json` 的 `fields_not_collected`。
 
-### 目前 readiness 卡在哪
+### readiness（2026-08-11 全數通過）
 
-| source | 段 | 秒 |
-|---|---|---|
-| s1-ep05 | 8 | 20.8 |
-| s1-ep07 | 4 | 13.2 |
-| s1-ep10 | 1 | 3.4 |
-| s1-ep11 | 5 | 16.1 |
-| s1-ep12 | 2 | 5.9 |
-| s2-ep17-local-b | 30 | 101.0 |
-| **合計** | **50** | **160.5** |
+`failed_gates: []`，train 54 段 / 181.3 秒 / 6 集，holdout 抽 s1-ep05（8 段 / 20.8 秒）。
+一路上卡過的四關與各自的解法：
 
-三關未過：
+- `artifact_integrity` — `s1-ep07__000918804`、`s1-ep12__000711915` 不到 2 秒，撤回
+  verdict 後通過。**2 秒是硬下限**：後來 ep06 重切出的 `s1-ep06__000574840`（1.77 秒）
+  即使人工確認是西，也只能放進 `effects/s1-ep06-short/`，不能入庫。
+- `training_duration` — 根因是 `choose_episode_holdout` 原本挑片段**最多**的那一集
+  當 holdout，EP17 那 30 段全被抽去驗證。改成挑最少的（`d540b47`）後解決。
+- `source_rights` — 權威來源是 `configs/voice/xibao.sources.json`，不是
+  `data/voice/xibao/local-seed.inventory.json`。拿後者跑 readiness 會看到整片 deny，
+  那是假的失敗。
+- `verified_japanese_transcripts` — 人工校正頁收集。**ep06 那批的教訓是校正頁要有畫面**：
+  純音訊的卡片，使用者校 4 段就抓出 2 段尾巴混進別人的台詞，光聽是看不出來的。
 
-- `artifact_integrity` — `s1-ep07__000918804`、`s1-ep12__000711915` 不到 2 秒。
-  要清掉得撤回這兩筆人工 verdict，尚未執行。
-- `training_duration` — 59.5 秒。**根因是 `choose_episode_holdout` 挑片段最多的
-  那一集當 holdout**，EP17 那 30 段全被抽去驗證。夠格當 holdout（≥8 段）的只有
-  ep05 和 EP17；改抽 ep05 的話 train 會是 139.7 秒，直接過關。這會改動
-  fail-closed gate 的行為，未經同意不要改。
-- `verified_japanese_transcripts` — 日文稿人工校正。EP17 有 30 段草稿品質不錯，
-  其中畫面涵蓋範圍內的還有燒錄中文字幕可以對照。
+### 情緒分桶：方向對，但這個資料量還撐不住
+
+各訓一顆 speaker embedding，用 holdout（三顆都沒看過）的同一句、同 seed、同步數比：
+
+| embedding | 段 / 秒 | 最終 loss | 人耳結論 |
+|---|---|---|---|
+| 全量 | 54 / 181.3 | 0.977 | **最穩，選它上線** |
+| 獨白 | 19 / 62.2 | 0.958 | 確實比較直率 |
+| 害羞 | 16 / 55.3 | 0.898 | 確實比較害羞 |
+
+分桶**有效**——聽得出害羞更害羞、獨白更直率——但兩顆分桶的聲線偶爾顫抖、不穩，
+全量明顯穩定。所以先用全量，分桶留著等素材長大再回來。
+
+**不要拿 loss 跨資料集比。** 害羞 loss 最低但聲音最不穩：素材少、同質性高本來就好擬合，
+這個數字跟品質無關。這是第二次踩到同一個坑（第一次是拿 11 段的 0.845 當成「純度勝過數量」）。
