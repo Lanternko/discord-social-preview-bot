@@ -283,7 +283,7 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
     from speechbrain.inference.speaker import EncoderClassifier
 
     audio_path = Path(args.audio).resolve()
-    asr_path = Path(args.asr).resolve()
+    asr_path = Path(args.asr).resolve() if args.asr else None
     bank_dir = Path(args.bank_dir).resolve()
     samples, rate = sf.read(audio_path, dtype="float32", always_2d=False)
     if samples.ndim > 1:
@@ -316,7 +316,7 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
                        min_silence_ms=args.min_silence_ms)
     silences = mask_runs(mask, frame_ms, value=False)
     speech = merge_runs(mask_runs(mask, frame_ms, value=True), merge_gap_s=args.merge_gap_s)
-    words = load_words(asr_path, max_no_speech=args.max_no_speech)
+    words = load_words(asr_path, max_no_speech=args.max_no_speech) if asr_path else []
     track, hop = rms_track(samples)
     global_floor = float(np.percentile(track, 20))
 
@@ -445,7 +445,7 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema_version": SCORER_VERSION,
         "audio_path": str(audio_path),
-        "asr_path": str(asr_path),
+        "asr_path": str(asr_path) if asr_path else None,
         "duration_s": round(duration_s, 3),
         "parameters": {
             "merge_gap_s": args.merge_gap_s,
@@ -471,7 +471,7 @@ def analyse(args: argparse.Namespace) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--audio", required=True, help="16 kHz mono WAV on the container timeline")
-    parser.add_argument("--asr", required=True, help="ASR JSON with word timestamps")
+    parser.add_argument("--asr", help="ASR JSON with word timestamps; not needed with --sentences")
     parser.add_argument("--bank-dir", required=True)
     parser.add_argument("--model-dir", required=True)
     parser.add_argument("--out", required=True)
