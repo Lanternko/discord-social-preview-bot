@@ -67,8 +67,9 @@ class ReviewStore:
             return False
         selection = sidecar.get("selection_evidence")
         if isinstance(selection, dict):
+            selection_kind = selection.get("kind")
             visual_ready = (
-                selection.get("kind") == "visual_lipsync_precheck" and
+                selection_kind in {"visual_lipsync_precheck", "visual_lipsync_disagreement"} and
                 selection.get("character_on_screen") == TARGET_SPEAKER and
                 isinstance(selection.get("observer"), str) and
                 isinstance(selection.get("checked_at"), str) and
@@ -83,18 +84,30 @@ class ReviewStore:
                 hashlib.sha256(bank_manifest.read_bytes()).hexdigest()
                 if bank_manifest.is_file() else None
             )
-            acoustic_ready = (
+            acoustic_common = (
                 isinstance(acoustic, dict) and acoustic.get("review_eligible") is True and
                 acoustic.get("scorer_version") == "pilotfish.acoustic_precheck.v1" and
-                acoustic.get("decision") == "ambiguous_human_review" and
                 isinstance(acoustic.get("scored_at"), str) and
                 acoustic.get("bank_sha256") == current_bank_sha256 and
                 acoustic.get("positive_clips", 0) >= 8 and
                 acoustic.get("negative_clips", 0) >= 20 and
                 isinstance(acoustic.get("speaker_probability"), (int, float)) and
+                isinstance(acoustic.get("identity_margin"), (int, float))
+            )
+            ambiguous_ready = (
+                acoustic_common and acoustic.get("decision") == "ambiguous_human_review" and
                 0.25 <= acoustic["speaker_probability"] <= 0.70 and
-                isinstance(acoustic.get("identity_margin"), (int, float)) and
                 abs(acoustic["identity_margin"]) <= 0.05
+            )
+            disagreement_ready = (
+                acoustic_common and acoustic.get("decision") == "visual_acoustic_disagreement" and
+                acoustic["speaker_probability"] < 0.25 and acoustic["identity_margin"] < -0.03 and
+                isinstance(selection.get("keyword_trigger"), dict)
+            )
+            acoustic_ready = (
+                selection_kind == "visual_lipsync_precheck" and ambiguous_ready
+            ) or (
+                selection_kind == "visual_lipsync_disagreement" and disagreement_ready
             )
             if visual_ready and acoustic_ready:
                 return True

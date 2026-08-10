@@ -25,9 +25,9 @@
       "acoustic_status": "ambiguous_human_review",
       "speaker_probability": 0.3711,
       "identity_margin": 0.0187,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_3_no_overlap",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["clip_shorter_than_training_minimum", "source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep12__001223220-001225910",
@@ -38,14 +38,45 @@
       "visual_status": "continuous_lipsync_prechecked",
       "visual_evidence": {
         "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
         "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true,
         "speaker_change_after_end": true
       },
-      "audio_status": "awaiting_authorized_local_media",
-      "acoustic_status": "not_scored",
-      "human_identity_status": "not_reviewable_without_audio",
+      "audio_status": "local_research_candidate_available",
+      "acoustic_status": "visual_acoustic_disagreement",
+      "speaker_probability": 0.061795,
+      "identity_margin": -0.053146,
+      "human_identity_status": "pending",
       "training_eligible": false,
-      "excluded_reasons": ["local_audio_missing", "source_training_rights_denied"]
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep10__000170445-000173852",
+      "source_id": "s1-ep10",
+      "start_s": 170.445,
+      "end_s": 173.852,
+      "transcript_zh_subtitle": "沒關係啦 我還滿喜歡這種機械式作業的",
+      "retrieval_trigger": {
+        "start_s": 168.25,
+        "text": "抱歉 西 要妳幫忙"
+      },
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
+        "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true
+      },
+      "audio_status": "local_research_candidate_available",
+      "acoustic_status": "ambiguous_human_review",
+      "speaker_probability": 0.399278,
+      "identity_margin": 0.021867,
+      "human_identity_status": "pending",
+      "training_eligible": false,
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep06__000640113-000642736",
@@ -84,6 +115,8 @@
     {"candidate_id": "s1-ep12__000439347-000442029", "reason": "different_long-haired_character"},
     {"candidate_id": "s1-ep12__000766012-000767776", "reason": "target_on_screen_but_adjacent_male_is_speaking"},
     {"candidate_id": "s1-ep07__000769459-000771675", "reason": "male_character_back_view_only"},
-    {"candidate_id": "s1-ep01__000671418-000674348", "reason": "pink_haired_character"}
+    {"candidate_id": "s1-ep01__000671418-000674348", "reason": "pink_haired_character"},
+    {"candidate_id": "s1-ep11__000396791-000399311", "reason": "different_purple_haired_character_has_continuous_lipsync"},
+    {"candidate_id": "s1-ep12__000413259-000415622", "reason": "phone_reply_has_no_visible_target_lipsync_and_acoustic_score_is_clear_negative"}
   ]
 }

@@ -246,6 +246,35 @@ class ReviewStoreTests(unittest.TestCase):
         )
         self.assertEqual(self.store.session()["queues"]["identity"], [])
 
+    def test_strong_lipsync_can_surface_visual_acoustic_disagreement(self):
+        sidecar = self.ready_sidecar()
+        sidecar["selection_evidence"]["kind"] = "visual_lipsync_disagreement"
+        sidecar["selection_evidence"]["keyword_trigger"] = {
+            "addressed_text": "西同學", "reply_text": "ありがとう",
+        }
+        sidecar["acoustic_precheck"].update({
+            "decision": "visual_acoustic_disagreement",
+            "speaker_probability": 0.06,
+            "identity_margin": -0.053,
+        })
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        item = self.store.session()["queues"]["identity"][0]
+        self.assertEqual(item["selection_kind"], "visual_lipsync_disagreement")
+
+    def test_low_acoustic_score_without_disagreement_provenance_stays_hidden(self):
+        sidecar = self.ready_sidecar()
+        sidecar["acoustic_precheck"].update({
+            "decision": "visual_acoustic_disagreement",
+            "speaker_probability": 0.06,
+            "identity_margin": -0.053,
+        })
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
     def test_static_character_frame_is_not_lipsync_evidence(self):
         sidecar = self.ready_sidecar()
         sidecar["selection_evidence"]["mouth_motion_observed"] = False
