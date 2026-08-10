@@ -49,6 +49,27 @@ class ReviewBankTests(unittest.TestCase):
             self.assertEqual((counts["positive"], counts["negative"]), (1, 1))
             self.assertTrue((bank / "positive" / "old.wav").is_file())
 
+    def test_updated_overlap_verdict_retracts_existing_positive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bank = root / "bank"
+            (bank / "positive").mkdir(parents=True)
+            (bank / "positive" / "clip.wav").write_bytes(b"old positive")
+            (bank / "positive" / "clip.json").write_text("{}", encoding="utf-8")
+            media = root / "clip.wav"
+            media.write_bytes(b"current candidate")
+            reviews = root / "reviews.json"
+            reviews.write_text(json.dumps({"reviews": {"identity": {
+                "kind": "identity", "media_path": str(media),
+                "answers": {"verdict": "target", "overlap": True, "confidence": 5},
+            }}}), encoding="utf-8")
+
+            counts = brb.build(reviews, bank)
+
+            self.assertEqual(counts["positive"], 0)
+            self.assertFalse((bank / "positive" / "clip.wav").exists())
+            self.assertFalse((bank / "positive" / "clip.json").exists())
+
     def test_missing_media_can_restore_reviewed_span_from_archive_sidecar(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

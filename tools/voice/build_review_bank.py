@@ -35,6 +35,19 @@ def _resolve_sidecar(media_path: Path, search_roots: list[Path]) -> Path | None:
     return None
 
 
+def _remove_existing_label(staging: Path, slug: str, counts: dict) -> None:
+    """Retract a prior export before applying the current human verdict."""
+    for label in ("positive", "negative"):
+        destination = staging / label
+        wav_path = destination / f"{slug}.wav"
+        json_path = destination / f"{slug}.json"
+        existed = wav_path.is_file()
+        wav_path.unlink(missing_ok=True)
+        json_path.unlink(missing_ok=True)
+        if existed:
+            counts[label] -= 1
+
+
 def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = None) -> dict:
     document = json.loads(reviews_path.read_text(encoding="utf-8"))
     reviews = document.get("reviews")
@@ -79,6 +92,12 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
             if media_path is None:
                 counts["ignored"] += 1
                 continue
+            slug = media_path.stem
+            # A disqualifying re-review must retract an old export even after
+            # candidate cleanup. A still-clean review without source media may
+            # only preserve the previously hash-bound bank artifact.
+            if label is None or media_path.is_file():
+                _remove_existing_label(staging, slug, counts)
             sidecar_path = _resolve_sidecar(media_path, search_roots)
             sidecar = {}
             if sidecar_path is not None:
@@ -104,7 +123,6 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
                 continue
             destination = staging / label
             destination.mkdir(parents=True, exist_ok=True)
-            slug = media_path.stem
             is_new = not (destination / f"{slug}.wav").exists()
             shutil.copy2(media_path, destination / f"{slug}.wav")
             exported = {
