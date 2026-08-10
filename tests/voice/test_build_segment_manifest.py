@@ -414,10 +414,15 @@ class ManifestTests(unittest.TestCase):
             source["rights"]["research_extraction"] == "allow"
             for source in sources["sources"] if source["season"] == 1
         ))
-        self.assertTrue(all(
-            source.get("rights", {}).get("research_extraction", "deny") == "deny"
-            for source in sources["sources"] if source["season"] == 2
-        ))
+        # Season 2 stays deny by default. s2-ep17 is the one attested exception:
+        # the user supplied their own recording of it and authorised extraction on
+        # 2026-08-10, which is what put 30 clips of it into the training set.
+        self.assertEqual(
+            {source["source_id"] for source in sources["sources"]
+             if source["season"] == 2
+             and source.get("rights", {}).get("research_extraction", "deny") == "allow"},
+            {"s2-ep17"},
+        )
         ledger = json.loads((
             app_root / "configs/voice/xibao.visual-candidate-ledger.json"
         ).read_text(encoding="utf-8"))

@@ -32,7 +32,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=CnZl_mRhg14",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep02",
@@ -41,7 +46,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=WRE4LKIFsNk",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep03",
@@ -50,7 +60,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=5-s_FXR_VPY",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep04",
@@ -59,7 +74,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=7xDprxciG7k",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep05",
@@ -83,7 +103,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=GpdukzbVpmA",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep07",
@@ -92,7 +117,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=uUj5bTO7GNU",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep08",
@@ -101,7 +131,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=11G8oacoLfI",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep09",
@@ -110,7 +145,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=6t-czEseGSs",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep10",
@@ -119,7 +159,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=su9RocWbC_Y",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep11",
@@ -128,7 +173,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=prxv1IB3YP4",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s1-ep12",
@@ -137,7 +187,12 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=byAzVN6dkiM",
       "locator_status": "known",
-      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "allow",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep13",
@@ -146,7 +201,11 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49896",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep14",
@@ -155,7 +214,11 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49897",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep15",
@@ -164,7 +227,11 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=49898",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep16",
@@ -173,7 +240,11 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50320",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep17",
@@ -182,7 +253,12 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50321",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "research_extraction": "allow",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     },
     {
       "source_id": "s2-ep18",
@@ -191,7 +267,11 @@
       "platform": "ani-gamer",
       "url": "https://ani.gamer.com.tw/animeVideo.php?sn=50322",
       "locator_status": "known",
-      "rights": {"download": "deny", "training": "allow", "redistribution": "deny"}
+      "rights": {
+        "download": "deny",
+        "training": "allow",
+        "redistribution": "deny"
+      }
     }
   ]
 }
