@@ -141,6 +141,20 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
 
 後端不單獨信任 `review_ready` 布林值。校準題還必須附有達標的 episode-disjoint 驗證報告，或同時具備連續口型預審 provenance 與目前人工正負例銀行產生的 `acoustic_precheck`。未校準排序題使用 `retrieval_human_review`，只保存 `rank_score`/批次順位，不保存聲學身份機率；連續畫面必須確認西的嘴部有變化、單一可見說話者、無切鏡且至少 8 fps。單張畫面看到角色、明顯負例、缺少或過期的聲學預審都會直接隔離，也不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
+若跨集校準失敗，先把候選輸出放在 ignored 的暫存目錄，再以人工建立的視覺證據清單逐段晉升到測評台：
+
+```bash
+python3 tools/voice/prepare_retrieval_review.py \
+  --source-root data/voice/xibao/_tmp/retrieval-ranked \
+  --output-root data/voice/xibao/candidates \
+  --evidence configs/voice/xibao.retrieval-review.batch1.json \
+  --bank-manifest data/voice/xibao/calibration/review-bank/manifest.json \
+  --batch-id s1-retrieval-20260810-01 \
+  --checked-at 2026-08-10T08:00:00Z
+```
+
+`prepare_retrieval_review.py` 只接受清單中明確列出的時間段，檢查候選的 source/span/hash，並以 `retrieval_human_review` 及 rank-only acoustic provenance 寫入新批次；它拒絕覆寫既有人工紀錄，也不會寫入 speaker prediction 或 training eligibility。
+
 畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的十段 canary。
 
 ## 訓練 readiness 與 Irodori manifest

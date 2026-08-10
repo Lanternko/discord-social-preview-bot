@@ -1,0 +1,18 @@
+{
+  "schema_version": "pilotfish.retrieval_review_batch.v1",
+  "batch_id": "s1-retrieval-20260810-01",
+  "purpose": "human_identity_review_only",
+  "calibration_state": "uncalibrated_retrieval",
+  "candidates": [
+    {"source_id": "s1-ep06", "start_s": 1339.845, "end_s": 1342.675, "evidence_note": "black-haired target alone across continuous shot"},
+    {"source_id": "s1-ep07", "start_s": 918.804, "end_s": 920.65, "evidence_note": "target close-up alone across continuous shot"},
+    {"source_id": "s1-ep07", "start_s": 1102.638, "end_s": 1105.475, "evidence_note": "target alone in continuous close-up"},
+    {"source_id": "s1-ep07", "start_s": 612.915, "end_s": 615.83, "evidence_note": "target close-up alone across continuous shot"},
+    {"source_id": "s1-ep07", "start_s": 1160.512, "end_s": 1163.1, "evidence_note": "target close-up alone; adjacent overlapping span excluded"},
+    {"source_id": "s1-ep11", "start_s": 456.022, "end_s": 458.809, "evidence_note": "target close-up alone across continuous shot"},
+    {"source_id": "s1-ep11", "start_s": 421.367, "end_s": 425.492, "evidence_note": "target alone by plant across continuous shot"},
+    {"source_id": "s1-ep11", "start_s": 35.914, "end_s": 38.636, "evidence_note": "target close-up alone across continuous shot"},
+    {"source_id": "s1-ep12", "start_s": 429.543, "end_s": 431.766, "evidence_note": "target side profile alone across continuous shot"},
+    {"source_id": "s1-ep12", "start_s": 391.083, "end_s": 394.799, "evidence_note": "target alone reading phone across continuous shot"}
+  ]
+}
