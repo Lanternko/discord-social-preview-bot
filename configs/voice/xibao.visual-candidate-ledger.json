@@ -48,9 +48,12 @@
       "acoustic_status": "visual_acoustic_disagreement",
       "speaker_probability": 0.061795,
       "identity_margin": -0.053146,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_4_no_overlap",
+      "human_review_notes": "User confirmed Nishi. This is alternating two-person dialogue, not overlapping speech. Background noise is high; require RoFormer A/B approval before downstream use.",
+      "noise_status": "background_noise_high",
+      "separation_gate": "roformer_ab_review_required",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["separation_review_pending", "source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep10__000170445-000173852",
@@ -74,9 +77,10 @@
       "acoustic_status": "ambiguous_human_review",
       "speaker_probability": 0.399278,
       "identity_margin": 0.021867,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_5_no_overlap",
+      "human_review_notes": "User confirmed Nishi.",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep06__000640113-000642736",
