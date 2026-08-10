@@ -6,6 +6,21 @@
     "machine_or_visual_evidence_is_not_identity_verdict": true,
     "training_eligible_default": false
   },
+  "second_season_scan": {
+    "scanned_at": "2026-08-10T06:20:00+08:00",
+    "method": "public_player_visual_coarse_scan",
+    "media_retained": false,
+    "identity_verdict": false,
+    "notes": "每集只保存五個粗略畫面時間點；它們是後續細看索引，不是西的聲音候選。需有授權本機媒體後，才能做口型、逐字稿、聲紋與 RoFormer 審核。",
+    "episodes": [
+      {"source_id": "s2-ep13", "duration_s": 1446.988, "frame_times_s": [0, 289, 579, 868, 1158]},
+      {"source_id": "s2-ep14", "duration_s": 1446.946, "frame_times_s": [0, 289, 579, 868, 1158]},
+      {"source_id": "s2-ep15", "duration_s": 1446.988, "frame_times_s": [0, 289, 579, 868, 1158]},
+      {"source_id": "s2-ep16", "duration_s": 1446.988, "frame_times_s": [0, 289, 579, 868, 1158]},
+      {"source_id": "s2-ep17", "duration_s": 1446.988, "frame_times_s": [0, 289, 579, 868, 1158]},
+      {"source_id": "s2-ep18", "duration_s": 1446.946, "frame_times_s": [0, 289, 579, 868, 1158]}
+    ]
+  },
   "candidates": [
     {
       "candidate_id": "s1-ep12__000711915-000713651",
