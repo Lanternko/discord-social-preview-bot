@@ -27,7 +27,7 @@ DEFAULT_DATA_ROOT = APP_ROOT / "data" / "voice" / "xibao"
 DEFAULT_INVENTORY = APP_ROOT / "configs" / "voice" / "xibao.sources.json"
 AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
 KINDS = {"identity", "transcript", "separation", "generation"}
-IDENTITY_BATCH_SIZE = 5
+IDENTITY_BATCH_SIZE = 10
 MAX_HIGH_CONFIDENCE_OTHERS = 3
 TARGET_SPEAKER = "西奈津美"
 

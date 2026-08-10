@@ -132,9 +132,10 @@
       "acoustic_status": "visual_acoustic_disagreement",
       "speaker_probability": 0.032464,
       "identity_margin": -0.062657,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_5_no_overlap",
+      "human_review_notes": "User confirmed Nishi.",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep11__000294493-000298446",
@@ -154,9 +155,10 @@
       "acoustic_status": "ambiguous_human_review",
       "speaker_probability": 0.260844,
       "identity_margin": -0.040579,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_5_no_overlap",
+      "human_review_notes": "User confirmed Nishi.",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["source_training_rights_denied"]
     },
     {
       "candidate_id": "s1-ep11__000354495-000356995",
@@ -176,9 +178,10 @@
       "acoustic_status": "ambiguous_human_review",
       "speaker_probability": 0.578278,
       "identity_margin": 0.009212,
-      "human_identity_status": "pending",
+      "human_identity_status": "target_confidence_5_no_overlap",
+      "human_review_notes": "User confirmed Nishi.",
       "training_eligible": false,
-      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+      "excluded_reasons": ["source_training_rights_denied"]
     }
   ],
   "visual_rejections": [

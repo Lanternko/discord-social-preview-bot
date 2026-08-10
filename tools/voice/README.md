@@ -141,7 +141,7 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
 
 後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或同時具備連續口型預審 provenance 與使用目前人工正負例銀行產生的 `acoustic_precheck`。未校準階段只允許聲學機率 `0.25–0.70`、正負 bank margin 絕對值不超過 `0.05` 的真正分歧題；連續畫面還必須確認西的嘴部有變化、單一可見說話者、無切鏡且至少 8 fps。單張畫面看到角色、明顯負例、缺少或過期的聲學預審都會直接隔離，也不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
-畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的五段 canary。
+畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的十段 canary。
 
 ## 訓練 readiness 與 Irodori manifest
 
@@ -193,7 +193,7 @@ data/voice/.venv/bin/python tools/voice/build_review_bank.py \
 
 只有信心 >= 3、無串音的 `target` 會成為 positive；信心 >= 3、無串音的 `other` 會成為 hard negative。不確定、低信心與串音不參與訓練，但仍寫入 reviewed-span ledger，確保不會再次出題。所有新候選仍是 `pending_human_review`、`training_eligible=false`。
 
-測評台採五段小批 canary。每批完成且品質正常才解鎖下一批；若同批出現三段高信心 `other`，後端立即設定 `quality_hold`，介面停止前進，必須先重建 speaker gate。候選目錄為空時不會用金標假裝成待評片段。
+測評台採十段小批 canary。每批完成且品質正常才解鎖下一批；若同批出現三段高信心 `other`，後端立即設定 `quality_hold`，介面停止前進，必須先重建 speaker gate。候選目錄為空時不會用金標假裝成待評片段。
 
 `data/voice/xibao/transcripts/asr/*.json` 的日文 ASR 只能作草稿。測評台的「日文逐字稿」分頁只載入位於資料根目錄內且音檔 SHA 相符的草稿；人工可直接修正文句，再選擇採用或退回。只有 `accept` 且非空的 `transcript_ja_verified` 會連同 reviewer、時間與原始草稿 provenance 合併回 positive bank，並被 training readiness 計數。
 

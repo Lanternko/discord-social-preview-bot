@@ -187,15 +187,15 @@ class ReviewStoreTests(unittest.TestCase):
                 "verdict": "target", "overlap": False, "confidence": 5, "surprise": True,
             }})
 
-    def test_identity_batches_unlock_five_and_pause_after_three_clear_others(self):
-        for index in range(1, 7):
+    def test_identity_batches_unlock_ten_and_pause_after_three_clear_others(self):
+        for index in range(1, 12):
             path = self.root / "candidates" / f"extra-{index}.wav"
             path.write_bytes(f"RIFF {index}".encode())
             path.with_suffix(".json").write_text(json.dumps(self.ready_sidecar(
                 speaker_probability=0.99 - index / 100,
             )), encoding="utf-8")
         session = self.store.session()
-        self.assertEqual(len(session["queues"]["identity"]), 5)
+        self.assertEqual(len(session["queues"]["identity"]), 10)
         for item in session["queues"]["identity"][:3]:
             self.store.save({"kind": "identity", "item_id": item["id"], "answers": {
                 "verdict": "other", "overlap": False, "confidence": 5, "notes": "",
@@ -206,7 +206,7 @@ class ReviewStoreTests(unittest.TestCase):
                 ).read_bytes(), self.bank_manifest)
         held = self.store.session()
         self.assertEqual(held["queues"]["identity"], [])
-        self.assertEqual(held["identity_quarantined_total"], 7)
+        self.assertEqual(held["identity_quarantined_total"], 12)
 
     def test_unvalidated_candidates_are_quarantined(self):
         (self.root / "candidates" / "candidate.json").write_text(
