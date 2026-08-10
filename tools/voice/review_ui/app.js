@@ -143,9 +143,19 @@ function render() {
   renderQueue();
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
-  if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" :
-    (state.kind === "transcript" ? "data/voice/xibao/transcripts/asr" :
-      (state.kind === "separation" ? "data/voice/xibao/separation" : "data/voice/xibao/generations")); return; }
+  if (!item) {
+    if (state.kind === "identity" && state.session.identity_available_total === 0) {
+      $("#empty").querySelector("strong").textContent = "目前沒有可供身份審核的本機音檔";
+      $("#empty-path").textContent = state.session.identity_quarantined_total ?
+        `已有 ${state.session.identity_quarantined_total} 段被隔離；第二季目前只有畫面索引，尚未匯入音檔` :
+        "等待匯入授權本機候選音檔";
+    } else {
+      $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" :
+        (state.kind === "transcript" ? "data/voice/xibao/transcripts/asr" :
+          (state.kind === "separation" ? "data/voice/xibao/separation" : "data/voice/xibao/generations"));
+    }
+    return;
+  }
   $("#clip-kind").textContent = state.kind === "identity" ?
     (item.selection_kind === "visual_lipsync_disagreement" ? "素材身份 · 口型／聲紋衝突題" :
       (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份")) :
