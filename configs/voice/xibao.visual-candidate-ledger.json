@@ -113,6 +113,72 @@
       "human_identity_status": "not_presented",
       "training_eligible": false,
       "excluded_reasons": ["acoustic_negative_proximity", "shot_change_near_end", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep07__000632772-000637680",
+      "source_id": "s1-ep07",
+      "start_s": 632.772,
+      "end_s": 637.68,
+      "transcript_zh_subtitle": "老實說 我不知道是對山田同學心跳加速 還是對情況心跳加速",
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
+        "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true
+      },
+      "audio_status": "local_research_candidate_available",
+      "acoustic_status": "visual_acoustic_disagreement",
+      "speaker_probability": 0.032464,
+      "identity_margin": -0.062657,
+      "human_identity_status": "pending",
+      "training_eligible": false,
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep11__000294493-000298446",
+      "source_id": "s1-ep11",
+      "start_s": 294.493,
+      "end_s": 298.446,
+      "transcript_zh_subtitle": "那個 對不起這麼突然 因為我剛好看到你",
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
+        "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true
+      },
+      "audio_status": "local_research_candidate_available",
+      "acoustic_status": "ambiguous_human_review",
+      "speaker_probability": 0.260844,
+      "identity_margin": -0.040579,
+      "human_identity_status": "pending",
+      "training_eligible": false,
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
+    },
+    {
+      "candidate_id": "s1-ep11__000354495-000356995",
+      "source_id": "s1-ep11",
+      "start_s": 354.495,
+      "end_s": 356.995,
+      "transcript_zh_subtitle": "旁邊那麼多人 我做不到啦",
+      "visual_status": "continuous_lipsync_prechecked",
+      "visual_evidence": {
+        "character_on_screen": "西奈津美",
+        "frames_per_second": 8,
+        "mouth_motion_observed": true,
+        "single_visible_speaker": true,
+        "no_shot_change": true
+      },
+      "audio_status": "local_research_candidate_available",
+      "acoustic_status": "ambiguous_human_review",
+      "speaker_probability": 0.578278,
+      "identity_margin": 0.009212,
+      "human_identity_status": "pending",
+      "training_eligible": false,
+      "excluded_reasons": ["human_identity_pending", "source_training_rights_denied"]
     }
   ],
   "visual_rejections": [
@@ -121,6 +187,7 @@
     {"candidate_id": "s1-ep07__000769459-000771675", "reason": "male_character_back_view_only"},
     {"candidate_id": "s1-ep01__000671418-000674348", "reason": "pink_haired_character"},
     {"candidate_id": "s1-ep11__000396791-000399311", "reason": "different_purple_haired_character_has_continuous_lipsync"},
-    {"candidate_id": "s1-ep12__000413259-000415622", "reason": "phone_reply_has_no_visible_target_lipsync_and_acoustic_score_is_clear_negative"}
+    {"candidate_id": "s1-ep12__000413259-000415622", "reason": "phone_reply_has_no_visible_target_lipsync_and_acoustic_score_is_clear_negative"},
+    {"candidate_id": "s1-ep10__000212356-000217827", "reason": "camera_stays_on_other_character_then_target_covers_mouth; no_continuous_visible_lipsync"}
   ]
 }

@@ -263,6 +263,32 @@ class ReviewStoreTests(unittest.TestCase):
         item = self.store.session()["queues"]["identity"][0]
         self.assertEqual(item["selection_kind"], "visual_lipsync_disagreement")
 
+    def test_visual_and_acoustic_agreement_is_still_human_reviewed(self):
+        sidecar = self.ready_sidecar()
+        sidecar["selection_evidence"]["kind"] = "visual_lipsync_confirmed"
+        sidecar["acoustic_precheck"].update({
+            "decision": "high_confidence_human_review",
+            "speaker_probability": 0.91,
+            "identity_margin": 0.08,
+        })
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        item = self.store.session()["queues"]["identity"][0]
+        self.assertEqual(item["selection_kind"], "visual_lipsync_confirmed")
+
+    def test_high_acoustic_score_without_confirmed_lipsync_stays_hidden(self):
+        sidecar = self.ready_sidecar()
+        sidecar["acoustic_precheck"].update({
+            "decision": "high_confidence_human_review",
+            "speaker_probability": 0.91,
+            "identity_margin": 0.08,
+        })
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
     def test_low_acoustic_score_without_disagreement_provenance_stays_hidden(self):
         sidecar = self.ready_sidecar()
         sidecar["acoustic_precheck"].update({

@@ -69,7 +69,10 @@ class ReviewStore:
         if isinstance(selection, dict):
             selection_kind = selection.get("kind")
             visual_ready = (
-                selection_kind in {"visual_lipsync_precheck", "visual_lipsync_disagreement"} and
+                selection_kind in {
+                    "visual_lipsync_precheck", "visual_lipsync_confirmed",
+                    "visual_lipsync_disagreement",
+                } and
                 selection.get("character_on_screen") == TARGET_SPEAKER and
                 isinstance(selection.get("observer"), str) and
                 isinstance(selection.get("checked_at"), str) and
@@ -104,8 +107,16 @@ class ReviewStore:
                 acoustic["speaker_probability"] < 0.25 and acoustic["identity_margin"] < -0.03 and
                 isinstance(selection.get("keyword_trigger"), dict)
             )
+            confirmed_ready = (
+                acoustic_common and
+                acoustic.get("decision") == "high_confidence_human_review" and
+                acoustic["speaker_probability"] >= 0.70 and
+                acoustic["identity_margin"] >= 0.03
+            )
             acoustic_ready = (
                 selection_kind == "visual_lipsync_precheck" and ambiguous_ready
+            ) or (
+                selection_kind == "visual_lipsync_confirmed" and confirmed_ready
             ) or (
                 selection_kind == "visual_lipsync_disagreement" and disagreement_ready
             )
