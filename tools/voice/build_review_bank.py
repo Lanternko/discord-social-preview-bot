@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -50,7 +51,14 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
         verified = answers.get("transcript_ja_verified")
         if (review.get("kind") == "transcript" and answers.get("verdict") == "accept" and
                 isinstance(media_value, str) and isinstance(verified, str) and verified.strip()):
-            transcript_reviews[Path(media_value).stem] = review
+            media_path = Path(media_value)
+            transcript_reviews[media_path.stem] = {
+                "review": review,
+                "audio_sha256": (
+                    hashlib.sha256(media_path.read_bytes()).hexdigest()
+                    if media_path.is_file() else None
+                ),
+            }
     counts = {"positive": 0, "negative": 0, "ignored": 0, "reviewed_spans": 0}
     try:
         for label in ("positive", "negative"):
@@ -99,9 +107,6 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
             slug = media_path.stem
             is_new = not (destination / f"{slug}.wav").exists()
             shutil.copy2(media_path, destination / f"{slug}.wav")
-            transcript_review = transcript_reviews.get(slug) if label == "positive" else None
-            verified = (transcript_review.get("answers", {}).get("transcript_ja_verified", "").strip()
-                        if transcript_review else None)
             exported = {
                 "schema_version": "pilotfish.review_bank.v1",
                 "label": label,
@@ -112,15 +117,31 @@ def build(reviews_path: Path, out_dir: Path, search_roots: list[Path] | None = N
                 "review": review,
                 "candidate": sidecar,
             }
-            if verified:
-                exported["transcript_ja_verified"] = verified
-                exported["transcript_review"] = transcript_review
             (destination / f"{slug}.json").write_text(
                 json.dumps(exported, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
             if is_new:
                 counts[label] += 1
+        for slug, transcript_entry in transcript_reviews.items():
+            audio_path = staging / "positive" / f"{slug}.wav"
+            sidecar_path = staging / "positive" / f"{slug}.json"
+            expected_hash = transcript_entry["audio_sha256"]
+            if not expected_hash or not audio_path.is_file() or not sidecar_path.is_file():
+                continue
+            actual_hash = hashlib.sha256(audio_path.read_bytes()).hexdigest()
+            if actual_hash != expected_hash:
+                continue
+            transcript_review = transcript_entry["review"]
+            verified = transcript_review["answers"]["transcript_ja_verified"].strip()
+            exported = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            exported["transcript_ja_verified"] = verified
+            exported["transcript_review"] = transcript_review
+            exported["transcript_audio_sha256"] = actual_hash
+            sidecar_path.write_text(
+                json.dumps(exported, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
         counts["reviewed_spans"] = len(list((staging / "reviewed").glob("*.json"))) if (staging / "reviewed").is_dir() else 0
         (staging / "manifest.json").write_text(
             json.dumps({"schema_version": "pilotfish.review_bank_manifest.v1", **counts},

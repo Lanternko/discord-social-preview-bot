@@ -26,7 +26,7 @@ STATIC_ROOT = Path(__file__).with_name("review_ui")
 DEFAULT_DATA_ROOT = APP_ROOT / "data" / "voice" / "xibao"
 DEFAULT_INVENTORY = APP_ROOT / "configs" / "voice" / "xibao.sources.json"
 AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".ogg"}
-KINDS = {"identity", "transcript", "generation"}
+KINDS = {"identity", "transcript", "separation", "generation"}
 IDENTITY_BATCH_SIZE = 5
 MAX_HIGH_CONFIDENCE_OTHERS = 3
 TARGET_SPEAKER = "西奈津美"
@@ -165,6 +165,41 @@ class ReviewStore:
             })
         return result
 
+    def _separation_items(self) -> list[dict]:
+        current = self.data_root / "separation" / "current.json"
+        try:
+            generation_id = json.loads(current.read_text(encoding="utf-8"))["generation_id"]
+            root = (self.data_root / "separation" / generation_id).resolve()
+        except (OSError, KeyError, TypeError, json.JSONDecodeError):
+            return []
+        if self.data_root not in root.parents or not root.is_dir():
+            return []
+        result = []
+        for vocal in sorted(root.glob("*.wav")):
+            sidecar = self._sidecar(vocal)
+            try:
+                raw = Path(sidecar["raw_audio_path"]).resolve()
+            except (KeyError, TypeError):
+                continue
+            if (sidecar.get("review_ready") is not True or self.data_root not in raw.parents or
+                    not raw.is_file() or
+                    sidecar.get("raw_audio_sha256") != hashlib.sha256(raw.read_bytes()).hexdigest() or
+                    sidecar.get("vocal_audio_sha256") != hashlib.sha256(vocal.read_bytes()).hexdigest()):
+                continue
+            raw_id = self._id(raw)
+            vocal_id = self._id(vocal)
+            self.media[raw_id] = raw
+            self.media[vocal_id] = vocal
+            result.append({
+                "id": vocal_id, "kind": "separation", "name": vocal.stem,
+                "media_url": f"/media/{vocal_id}", "reference_media_url": f"/media/{raw_id}",
+                "reference_id": None, "source_id": sidecar.get("source_id"),
+                "start_s": sidecar.get("start_s"), "end_s": sidecar.get("end_s"),
+                "transcript": sidecar.get("transcript_ja_verified"),
+                "vocal_energy_ratio": sidecar.get("metrics", {}).get("vocal_energy_ratio"),
+            })
+        return result
+
     def load_reviews(self) -> dict:
         if not self.review_path.is_file():
             return {}
@@ -212,6 +247,7 @@ class ReviewStore:
         generation = [self._item(path, "generation", reference_id)
                       for path in self._scan_audio("generations")]
         transcripts = self._transcript_items(reference_id)
+        separation = self._separation_items()
         reviews = self.load_reviews()
         quality_hold = False
         unlocked = min(IDENTITY_BATCH_SIZE, len(all_identity))
@@ -236,12 +272,14 @@ class ReviewStore:
             "reviewer": self.reviewer,
             "references": reference_items,
             "queues": {"identity": identity, "transcript": transcripts,
+                       "separation": separation,
                        "generation": generation},
             "reviews": reviews,
             "counts": {
                 kind: {"total": len(items),
                        "reviewed": sum(1 for item in items if f"{self.reviewer}:{kind}:{item['id']}" in reviews)}
                 for kind, items in (("identity", identity), ("transcript", transcripts),
+                                    ("separation", separation),
                                     ("generation", generation))
             },
             "identity_available_total": len(all_identity),
@@ -262,6 +300,7 @@ class ReviewStore:
         allowed_by_kind = {
             "identity": {"verdict", "overlap", "confidence", "notes"},
             "transcript": {"verdict", "transcript_ja_verified", "notes"},
+            "separation": {"verdict", "voice_intact", "cleanup", "artifacts", "notes"},
             "generation": {"verdict", "likeness", "naturalness", "artifacts", "notes"},
         }
         allowed = allowed_by_kind[kind]
@@ -284,6 +323,15 @@ class ReviewStore:
                 raise ValueError("accepted transcript_ja_verified must be non-empty")
             if verified is not None and not isinstance(verified, str):
                 raise ValueError("transcript_ja_verified must be a string")
+        elif kind == "separation":
+            if answers.get("verdict") not in {"accept", "reject"}:
+                raise ValueError("separation verdict is required")
+            if answers.get("voice_intact") not in {1, 2, 3, 4, 5}:
+                raise ValueError("voice_intact must be 1..5")
+            if answers.get("cleanup") not in {1, 2, 3, 4, 5}:
+                raise ValueError("cleanup must be 1..5")
+            if not isinstance(answers.get("artifacts"), list):
+                raise ValueError("artifacts must be an array")
         else:
             if answers.get("verdict") not in {"accept", "reject"}:
                 raise ValueError("generation verdict is required")

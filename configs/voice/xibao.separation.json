@@ -1,0 +1,19 @@
+{
+  "schema_version": "pilotfish.voice_separation_config.v1",
+  "runtime": {
+    "package": "audio-separator",
+    "version": "0.44.2"
+  },
+  "model": {
+    "filename": "vocals_mel_band_roformer.ckpt",
+    "sha256": "87201f4d31afb5bc79993230fc49446918425574db48c01c405e44f365c7559e"
+  },
+  "processing": {
+    "minimum_input_seconds": 2.7,
+    "padded_seconds": 3.2,
+    "output_sample_rate": 48000,
+    "loudness_lufs": -23,
+    "true_peak_db": -2,
+    "minimum_vocal_energy_ratio": 0.05
+  }
+}

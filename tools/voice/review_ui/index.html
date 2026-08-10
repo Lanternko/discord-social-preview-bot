@@ -18,6 +18,7 @@
   <nav class="tabs" aria-label="測評模式">
     <button class="tab active" data-kind="identity">素材身份 <span id="identity-count">0/0</span></button>
     <button class="tab" data-kind="transcript">日文逐字稿 <span id="transcript-count">0/0</span></button>
+    <button class="tab" data-kind="separation">去伴奏 A/B <span id="separation-count">0/0</span></button>
     <button class="tab" data-kind="generation">生成品質 <span id="generation-count">0/0</span></button>
   </nav>
 
@@ -51,7 +52,7 @@
 
         <div class="comparison">
           <article class="audio-block">
-            <header><span>金標參考</span><span class="tag reference">REFERENCE</span></header>
+            <header><span id="reference-label">金標參考</span><span class="tag reference">REFERENCE</span></header>
             <canvas id="reference-wave" width="720" height="116"></canvas>
             <audio id="reference-audio" controls preload="metadata"></audio>
           </article>
@@ -82,10 +83,27 @@
         </form>
 
         <form id="transcript-form" class="form-grid" hidden>
-          <label class="notes wide"><span>日文校正版</span><textarea name="transcript_ja_verified" rows="3" maxlength="500" required></textarea></label>
+          <div class="draft wide"><span>機器辨識草稿（唯讀）</span><output id="transcript-ja-draft" lang="ja"></output></div>
+          <label class="notes wide"><span>人工確認稿（可編輯）</span><textarea name="transcript_ja_verified" lang="ja" rows="3" maxlength="500" required></textarea></label>
           <fieldset class="wide"><legend>結論</legend><div class="segmented two">
-            <label><input type="radio" name="verdict" value="accept" required><span>採用校正版</span></label>
-            <label><input type="radio" name="verdict" value="reject"><span>退回草稿</span></label>
+            <label><input type="radio" name="verdict" value="accept" required><span>確認目前日文</span></label>
+            <label><input type="radio" name="verdict" value="reject"><span>無法確認／退回</span></label>
+          </div></fieldset>
+          <label class="notes wide"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        </form>
+
+        <form id="separation-form" class="form-grid" hidden>
+          <fieldset><legend>人聲完整度</legend><div class="rating" data-name="voice_intact"></div></fieldset>
+          <fieldset><legend>背景清除效果</legend><div class="rating" data-name="cleanup"></div></fieldset>
+          <fieldset class="wide"><legend>分離瑕疵</legend><div class="artifact-grid">
+            <label><input type="checkbox" name="artifacts" value="metallic"><span>金屬音</span></label>
+            <label><input type="checkbox" name="artifacts" value="cutoff"><span>斷字／齒音受損</span></label>
+            <label><input type="checkbox" name="artifacts" value="residual"><span>背景殘留</span></label>
+            <label><input type="checkbox" name="artifacts" value="noise"><span>新增雜音</span></label>
+          </div></fieldset>
+          <fieldset class="wide"><legend>結論</legend><div class="segmented two">
+            <label><input type="radio" name="verdict" value="accept" required><span>採用 Vocal Stem</span></label>
+            <label><input type="radio" name="verdict" value="reject"><span>保留原音</span></label>
           </div></fieldset>
           <label class="notes wide"><span>備註</span><textarea name="notes" rows="2" maxlength="500"></textarea></label>
         </form>

@@ -89,6 +89,43 @@ class ReviewBankTests(unittest.TestCase):
             self.assertEqual(exported["transcript_ja_verified"], "谷くんです。")
             self.assertEqual(exported["transcript_review"]["reviewer"], "linguist")
 
+    def test_transcript_survives_rebuild_after_original_candidate_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / "candidate.wav"
+            media.write_bytes(b"RIFF reviewed voice")
+            media.with_suffix(".json").write_text(json.dumps({
+                "source_id": "s1-ep05", "start_s": 1.0, "end_s": 3.0,
+                "audio_sha256": hashlib.sha256(media.read_bytes()).hexdigest(),
+            }), encoding="utf-8")
+            reviews = root / "reviews.json"
+            reviews.write_text(json.dumps({"reviews": {
+                "identity": {
+                    "kind": "identity", "media_path": str(media),
+                    "answers": {"verdict": "target", "overlap": False, "confidence": 5},
+                },
+            }}), encoding="utf-8")
+            bank = root / "bank"
+            brb.build(reviews, bank)
+            media.unlink()
+            media.with_suffix(".json").unlink()
+            bank_audio = bank / "positive" / "candidate.wav"
+            document = json.loads(reviews.read_text(encoding="utf-8"))
+            document["reviews"]["transcript"] = {
+                "kind": "transcript", "media_path": str(bank_audio), "reviewer": "linguist",
+                "answers": {"verdict": "accept", "transcript_ja_verified": "確認済みです"},
+            }
+            reviews.write_text(json.dumps(document), encoding="utf-8")
+
+            brb.build(reviews, bank)
+
+            exported = json.loads((bank / "positive" / "candidate.json").read_text())
+            self.assertEqual(exported["transcript_ja_verified"], "確認済みです")
+            self.assertEqual(
+                exported["transcript_audio_sha256"],
+                hashlib.sha256(bank_audio.read_bytes()).hexdigest(),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

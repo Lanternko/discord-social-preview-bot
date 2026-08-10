@@ -52,6 +52,9 @@ main { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: c
 canvas { display: block; width: 100%; height: 116px; background: #121617; }
 audio { display: block; width: calc(100% - 24px); height: 42px; margin: 10px 12px; }
 .transcript { margin: 14px 0 0; padding: 12px 14px; border-left: 2px solid var(--cyan); background: var(--panel); }
+.draft { display: grid; gap: 8px; }
+.draft > span { color: var(--muted); font-size: 13px; }
+.draft output { display: block; min-height: 44px; padding: 12px 14px; border-left: 2px solid var(--yellow); background: var(--panel); color: var(--text); white-space: pre-wrap; }
 .form-grid { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px; }
 fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
 legend, .notes > span { margin-bottom: 8px; color: var(--muted); font-size: 12px; }

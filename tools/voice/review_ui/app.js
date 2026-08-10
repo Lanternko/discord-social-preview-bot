@@ -1,3 +1,4 @@
+const KINDS = ["identity", "transcript", "separation", "generation"];
 const state = { session: null, kind: "identity", index: 0 };
 const $ = (selector) => document.querySelector(selector);
 
@@ -14,6 +15,33 @@ function reviewKey(item) { return `${state.session.reviewer}:${state.kind}:${ite
 function queue() { return state.session.queues[state.kind]; }
 function current() { return queue()[state.index]; }
 function currentForm() { return $(`#${state.kind}-form`); }
+
+function reviewedCount(kind) {
+  return state.session.queues[kind].filter((item) =>
+    state.session.reviews[`${state.session.reviewer}:${kind}:${item.id}`]
+  ).length;
+}
+
+function updateTabCounts() {
+  KINDS.forEach((kind) => {
+    const items = state.session.queues[kind];
+    $(`#${kind}-count`).textContent = `${reviewedCount(kind)}/${items.length}`;
+  });
+}
+
+function selectKind(kind) {
+  state.kind = kind;
+  state.index = 0;
+  document.querySelectorAll(".tab").forEach((node) =>
+    node.classList.toggle("active", node.dataset.kind === kind)
+  );
+}
+
+function nextPendingKind() {
+  return KINDS.find((kind) => state.session.queues[kind].some((item) =>
+    !state.session.reviews[`${state.session.reviewer}:${kind}:${item.id}`]
+  ));
+}
 
 async function waveform(audio, canvas) {
   const context = new AudioContext();
@@ -79,7 +107,7 @@ function renderQueue() {
 function render() {
   const items = queue();
   const reviewed = items.filter((item) => state.session.reviews[reviewKey(item)]).length;
-  $(`#${state.kind}-count`).textContent = `${reviewed}/${items.length}`;
+  updateTabCounts();
   $("#position").textContent = items.length ? `${state.index + 1} / ${items.length}` : "0 / 0";
   $("#progress-bar").style.width = items.length ? `${reviewed / items.length * 100}%` : "0";
   const quarantined = state.kind === "identity" ? state.session.identity_quarantined_total : 0;
@@ -94,23 +122,31 @@ function render() {
   const item = current();
   $("#empty").hidden = Boolean(item); $("#workspace").hidden = !item;
   if (!item) { $("#empty-path").textContent = state.kind === "identity" ? "data/voice/xibao/candidates" :
-    (state.kind === "transcript" ? "data/voice/xibao/transcripts/asr" : "data/voice/xibao/generations"); return; }
+    (state.kind === "transcript" ? "data/voice/xibao/transcripts/asr" :
+      (state.kind === "separation" ? "data/voice/xibao/separation" : "data/voice/xibao/generations")); return; }
   $("#clip-kind").textContent = state.kind === "identity" ?
     (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份") :
-    (state.kind === "transcript" ? "日文逐字稿" : "生成品質");
+    (state.kind === "transcript" ? "日文逐字稿" :
+      (state.kind === "separation" ? "去伴奏 A/B" : "生成品質"));
   $("#clip-name").textContent = item.name;
   $("#source-id").textContent = item.source_id || "LOCAL";
   $("#time-range").textContent = item.start_s != null ? `${item.start_s}s – ${item.end_s}s` : "完整片段";
-  $("#candidate-label").textContent = state.kind === "generation" ? "生成結果" : "原始片段";
+  $("#reference-label").textContent = state.kind === "separation" ? "原始片段" : "金標參考";
+  $("#candidate-label").textContent = state.kind === "generation" ? "生成結果" :
+    (state.kind === "separation" ? "RoFormer Vocal Stem" : "原始片段");
   const reference = state.session.references.find((entry) => entry.id === item.reference_id) || state.session.references[0];
-  setAudio("#reference-audio", reference?.media_url);
+  setAudio("#reference-audio", item.reference_media_url || reference?.media_url);
   setAudio("#candidate-audio", item.media_url);
   $("#transcript").hidden = !item.transcript; $("#transcript").textContent =
     state.kind === "transcript" ? `中文提示：${item.transcript || "（無）"}` : (item.transcript || "");
   $("#identity-form").hidden = state.kind !== "identity";
   $("#transcript-form").hidden = state.kind !== "transcript";
+  $("#separation-form").hidden = state.kind !== "separation";
   $("#generation-form").hidden = state.kind !== "generation";
   hydrate(currentForm(), state.session.reviews[reviewKey(item)]);
+  if (state.kind === "transcript") {
+    $("#transcript-ja-draft").textContent = item.transcript_ja_asr || "（無草稿）";
+  }
   if (state.kind === "transcript" && !state.session.reviews[reviewKey(item)]) {
     currentForm().elements.transcript_ja_verified.value = item.transcript_ja_asr || "";
   }
@@ -130,6 +166,7 @@ function answers(form) {
   const base = { notes: String(data.get("notes") || "").trim() };
   if (state.kind === "identity") return { ...base, verdict: data.get("verdict"), overlap: data.get("overlap") === "on", confidence: Number(data.get("confidence")) };
   if (state.kind === "transcript") return { ...base, verdict: data.get("verdict"), transcript_ja_verified: String(data.get("transcript_ja_verified") || "").trim() };
+  if (state.kind === "separation") return { ...base, verdict: data.get("verdict"), voice_intact: Number(data.get("voice_intact")), cleanup: Number(data.get("cleanup")), artifacts: data.getAll("artifacts") };
   return { ...base, verdict: data.get("verdict"), likeness: Number(data.get("likeness")), naturalness: Number(data.get("naturalness")), artifacts: data.getAll("artifacts") };
 }
 
@@ -142,14 +179,19 @@ $("#save").onclick = async () => {
   if (!response.ok) { $("#save-status").textContent = result.error || "儲存失敗"; $("#save").disabled = false; return; }
   const previousId = item.id;
   state.session = result.session;
+  const nextKind = nextPendingKind();
+  if (!queue().some((entry) => !state.session.reviews[reviewKey(entry)]) && nextKind) {
+    selectKind(nextKind);
+    render();
+    return;
+  }
   const previousIndex = queue().findIndex((entry) => entry.id === previousId);
   state.index = Math.min(Math.max(0, previousIndex + 1), Math.max(0, queue().length - 1));
   render();
 };
 $("#previous").onclick = () => { if (state.index > 0) { state.index -= 1; render(); } };
 document.querySelectorAll(".tab").forEach((tab) => tab.onclick = () => {
-  state.kind = tab.dataset.kind; state.index = 0;
-  document.querySelectorAll(".tab").forEach((node) => node.classList.toggle("active", node === tab)); render();
+  selectKind(tab.dataset.kind); render();
 });
 document.addEventListener("keydown", (event) => {
   if (event.target.matches("textarea, input")) return;
@@ -158,6 +200,8 @@ document.addEventListener("keydown", (event) => {
 
 fetch("/api/session").then((response) => response.json()).then((session) => {
   state.session = session;
+  const pendingKind = nextPendingKind();
+  if (pendingKind) selectKind(pendingKind);
   const firstUnreviewed = queue().findIndex((item) => !session.reviews[reviewKey(item)]);
   state.index = firstUnreviewed >= 0 ? firstUnreviewed : Math.max(0, queue().length - 1);
   $("#reviewer").textContent = session.reviewer; render();

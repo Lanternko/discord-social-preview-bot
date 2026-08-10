@@ -123,6 +123,31 @@ class ReviewStoreTests(unittest.TestCase):
                 "verdict": "accept", "naturalness": 5, "artifacts": [], "notes": "",
             }})
 
+    def test_separation_queue_binds_raw_and_vocal_hashes(self):
+        raw = self.root / "calibration" / "review-bank" / "positive" / "clip.wav"
+        raw.parent.mkdir(parents=True)
+        raw.write_bytes(b"RIFF raw")
+        generation = self.root / "separation" / "generation-a"
+        generation.mkdir(parents=True)
+        vocal = generation / "clip.wav"
+        vocal.write_bytes(b"RIFF vocal")
+        vocal.with_suffix(".json").write_text(json.dumps({
+            "review_ready": True, "raw_audio_path": str(raw),
+            "raw_audio_sha256": hashlib.sha256(raw.read_bytes()).hexdigest(),
+            "vocal_audio_sha256": hashlib.sha256(vocal.read_bytes()).hexdigest(),
+            "source_id": "s1-ep05", "transcript_ja_verified": "確認済み",
+        }), encoding="utf-8")
+        (self.root / "separation" / "current.json").write_text(
+            json.dumps({"generation_id": "generation-a"}), encoding="utf-8",
+        )
+        item = self.store.session()["queues"]["separation"][0]
+        self.assertTrue(item["reference_media_url"].startswith("/media/"))
+        record = self.store.save({"kind": "separation", "item_id": item["id"], "answers": {
+            "verdict": "accept", "voice_intact": 5, "cleanup": 4,
+            "artifacts": [], "notes": "clean",
+        }})
+        self.assertEqual(record["answers"]["voice_intact"], 5)
+
     def test_transcript_queue_requires_hash_and_nonempty_accepted_text(self):
         audio = self.root / "candidates" / "candidate.wav"
         drafts = self.root / "transcripts" / "asr"
