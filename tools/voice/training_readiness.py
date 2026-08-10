@@ -109,6 +109,14 @@ def inventory_sources(inventory_path: Path) -> dict[str, dict[str, Any]]:
 
 def choose_episode_holdout(records: list[dict[str, Any]], *, min_train_clips: int,
                            min_holdout_clips: int, min_train_episodes: int) -> str | None:
+    """Hold out the *smallest* episode that still satisfies the minimum.
+
+    This used to take the largest, which quietly spent the best source on
+    validation: once EP17 contributed 30 of the 50 clips it became the holdout,
+    and the training set stayed at the 59.5 s it had before that episode was cut
+    at all. Holding out the least that qualifies leaves everything else to train
+    on, without relaxing either minimum.
+    """
     by_source: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for record in records:
         if record["valid"] and record["source_id"]:
@@ -120,7 +128,7 @@ def choose_episode_holdout(records: list[dict[str, Any]], *, min_train_clips: in
         train_count = sum(len(items) for key, items in by_source.items() if key != source_id)
         if (len(holdout) >= min_holdout_clips and train_count >= min_train_clips and
                 len(train_sources) >= min_train_episodes):
-            choices.append((-len(holdout), source_id))
+            choices.append((len(holdout), source_id))
     return min(choices)[1] if choices else None
 
 
