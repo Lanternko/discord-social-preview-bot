@@ -78,8 +78,30 @@ function setAudio(selector, url) {
   if (url) waveform(audio, canvas).catch(() => {});
 }
 
-function hydrate(form, saved) {
+function identityDefaults(item) {
+  const probability = Number(item?.speaker_probability);
+  if (!Number.isFinite(probability)) return { verdict: "target", confidence: 5 };
+  if (probability >= 0.7) {
+    return { verdict: "target", confidence: probability >= 0.85 ? 5 : 4 };
+  }
+  if (probability < 0.25) {
+    return { verdict: "other", confidence: probability <= 0.15 ? 5 : 4 };
+  }
+  return { verdict: "uncertain", confidence: 3 };
+}
+
+function setDefaults(form, item) {
+  if (state.kind !== "identity") return;
+  const defaults = identityDefaults(item);
+  const verdict = form.querySelector(`input[name="verdict"][value="${defaults.verdict}"]`);
+  const confidence = form.querySelector(`input[name="confidence"][value="${defaults.confidence}"]`);
+  if (verdict) verdict.checked = true;
+  if (confidence) confidence.checked = true;
+}
+
+function hydrate(form, item, saved) {
   form.reset();
+  setDefaults(form, item);
   if (!saved) return;
   Object.entries(saved.answers).forEach(([name, value]) => {
     if (Array.isArray(value)) {
@@ -144,7 +166,10 @@ function render() {
   $("#transcript-form").hidden = state.kind !== "transcript";
   $("#separation-form").hidden = state.kind !== "separation";
   $("#generation-form").hidden = state.kind !== "generation";
-  hydrate(currentForm(), state.session.reviews[reviewKey(item)]);
+  hydrate(currentForm(), item, state.session.reviews[reviewKey(item)]);
+  const focusTarget = currentForm().querySelector('input[name="verdict"]:checked') ||
+    currentForm().querySelector('input:not([type="hidden"])');
+  if (focusTarget) focusTarget.focus();
   if (state.kind === "transcript") {
     $("#transcript-ja-draft").textContent = item.transcript_ja_asr || "（無草稿）";
   }
@@ -171,8 +196,9 @@ function answers(form) {
   return { ...base, verdict: data.get("verdict"), likeness: Number(data.get("likeness")), naturalness: Number(data.get("naturalness")), artifacts: data.getAll("artifacts") };
 }
 
-$("#save").onclick = async () => {
+async function saveCurrent() {
   const item = current(); const form = currentForm();
+  if (!item || !form) return;
   if (!form.reportValidity()) return;
   $("#save").disabled = true; $("#save-status").textContent = "儲存中…";
   const response = await fetch("/api/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: state.kind, item_id: item.id, answers: answers(form) }) });
@@ -189,14 +215,55 @@ $("#save").onclick = async () => {
   const previousIndex = queue().findIndex((entry) => entry.id === previousId);
   state.index = Math.min(Math.max(0, previousIndex + 1), Math.max(0, queue().length - 1));
   render();
-};
+}
+$("#save").onclick = saveCurrent;
 $("#previous").onclick = () => { if (state.index > 0) { state.index -= 1; render(); } };
 document.querySelectorAll(".tab").forEach((tab) => tab.onclick = () => {
   selectKind(tab.dataset.kind); render();
 });
+function cycleRadio(name, delta) {
+  const selector = 'input[type="radio"][name="' + name + '"]';
+  const inputs = [...currentForm().querySelectorAll(selector)].filter((input) => !input.disabled);
+  if (!inputs.length) return;
+  const currentIndex = Math.max(0, inputs.findIndex((input) => input.checked));
+  const next = inputs[(currentIndex + delta + inputs.length) % inputs.length];
+  next.checked = true;
+  next.focus();
+}
+
 document.addEventListener("keydown", (event) => {
-  if (event.target.matches("textarea, input")) return;
-  if (event.code === "Space") { event.preventDefault(); const audio = $("#candidate-audio"); audio.paused ? audio.play() : audio.pause(); }
+  if (!state.session || !current()) return;
+  const textInput = event.target.matches("textarea, input[type='text'], input[type='search']");
+  if (textInput) {
+    if (event.code === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      saveCurrent();
+    }
+    return;
+  }
+  if (event.code === "Space" && !event.target.matches("input, button, audio")) {
+    event.preventDefault();
+    const audio = $("#candidate-audio");
+    audio.paused ? audio.play() : audio.pause();
+    return;
+  }
+  if (state.kind !== "identity") {
+    if (event.code === "Enter" && !event.target.matches("button, audio")) {
+      event.preventDefault();
+      saveCurrent();
+    }
+    return;
+  }
+  if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+    event.preventDefault();
+    cycleRadio("verdict", event.code === "ArrowRight" ? 1 : -1);
+  } else if (event.code === "ArrowUp" || event.code === "ArrowDown") {
+    event.preventDefault();
+    cycleRadio("confidence", event.code === "ArrowDown" ? 1 : -1);
+  } else if (event.code === "Enter" && !event.target.matches("button, audio")) {
+    event.preventDefault();
+    saveCurrent();
+  }
 });
 
 fetch("/api/session").then((response) => response.json()).then((session) => {
