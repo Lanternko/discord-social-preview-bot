@@ -15,7 +15,14 @@
       "scope": "s1-ep01..s2-ep18",
       "redistribution": "deny"
     },
-    "note": "User has explicitly authorized local model training for the listed S1/S2 sources. This does not grant download permission, permit protected-stream extraction, or permit redistribution. New sources remain default-deny."
+    "download_authorization": {
+      "status": "user_attested",
+      "recorded_at": "2026-08-10",
+      "scope": "s1-ep01..s1-ep12",
+      "purpose": "private_local_voice_training_project",
+      "redistribution": "deny"
+    },
+    "note": "User has explicitly authorized local download and model training for the listed S1 YouTube sources, with no redistribution. S2 AniGamer remains protected-stream deny. New sources remain default-deny."
   },
   "sources": [
     {
@@ -25,7 +32,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=CnZl_mRhg14",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep02",
@@ -34,7 +41,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=WRE4LKIFsNk",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep03",
@@ -43,7 +50,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=5-s_FXR_VPY",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep04",
@@ -52,7 +59,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=7xDprxciG7k",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep05",
@@ -63,7 +70,7 @@
       "locator_status": "known",
       "note": "目前唯一登記人工 seed anchor 的來源。",
       "rights": {
-        "download": "deny",
+        "download": "allow",
         "research_extraction": "allow",
         "training": "allow",
         "redistribution": "deny"
@@ -76,7 +83,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=GpdukzbVpmA",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep07",
@@ -85,7 +92,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=uUj5bTO7GNU",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep08",
@@ -94,7 +101,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=11G8oacoLfI",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep09",
@@ -103,7 +110,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=6t-czEseGSs",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep10",
@@ -112,7 +119,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=su9RocWbC_Y",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep11",
@@ -121,7 +128,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=prxv1IB3YP4",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s1-ep12",
@@ -130,7 +137,7 @@
       "platform": "youtube",
       "url": "https://www.youtube.com/watch?v=byAzVN6dkiM",
       "locator_status": "known",
-      "rights": {"download": "deny", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
+      "rights": {"download": "allow", "research_extraction": "allow", "training": "allow", "redistribution": "deny"}
     },
     {
       "source_id": "s2-ep13",

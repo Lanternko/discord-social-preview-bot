@@ -400,6 +400,16 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(ep5["rights"]["training"], "allow")
         self.assertEqual(sources["policy"]["training_authorization"]["status"], "user_attested")
         self.assertEqual(sources["policy"]["training_authorization"]["redistribution"], "deny")
+        self.assertEqual(sources["policy"]["download_authorization"]["status"], "user_attested")
+        self.assertEqual(sources["policy"]["download_authorization"]["redistribution"], "deny")
+        self.assertTrue(all(
+            source["rights"]["download"] == "allow"
+            for source in sources["sources"] if source["season"] == 1
+        ))
+        self.assertTrue(all(
+            source.get("rights", {}).get("download", "deny") == "deny"
+            for source in sources["sources"] if source["season"] == 2
+        ))
         self.assertTrue(all(
             source["rights"]["research_extraction"] == "allow"
             for source in sources["sources"] if source["season"] == 1

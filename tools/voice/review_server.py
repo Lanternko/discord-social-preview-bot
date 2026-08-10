@@ -71,7 +71,7 @@ class ReviewStore:
             visual_ready = (
                 selection_kind in {
                     "visual_lipsync_precheck", "visual_lipsync_confirmed",
-                    "visual_lipsync_disagreement",
+                    "visual_lipsync_disagreement", "retrieval_human_review",
                 } and
                 selection.get("character_on_screen") == TARGET_SPEAKER and
                 isinstance(selection.get("observer"), str) and
@@ -97,6 +97,20 @@ class ReviewStore:
                 isinstance(acoustic.get("speaker_probability"), (int, float)) and
                 isinstance(acoustic.get("identity_margin"), (int, float))
             )
+            retrieval_common = (
+                isinstance(acoustic, dict) and acoustic.get("review_eligible") is True and
+                acoustic.get("scorer_version") == "pilotfish.retrieval_rank.v1" and
+                acoustic.get("decision") == "uncalibrated_retrieval" and
+                isinstance(acoustic.get("scored_at"), str) and
+                acoustic.get("bank_sha256") == current_bank_sha256 and
+                acoustic.get("positive_clips", 0) >= 8 and
+                acoustic.get("negative_clips", 0) >= 20 and
+                isinstance(acoustic.get("rank_score"), (int, float)) and
+                isinstance(acoustic.get("selection_rank"), int) and
+                acoustic.get("selection_rank", 0) > 0 and
+                "speaker_probability" not in acoustic and
+                "prediction" not in acoustic
+            )
             ambiguous_ready = (
                 acoustic_common and acoustic.get("decision") == "ambiguous_human_review" and
                 0.25 <= acoustic["speaker_probability"] <= 0.70 and
@@ -119,6 +133,8 @@ class ReviewStore:
                 selection_kind == "visual_lipsync_confirmed" and confirmed_ready
             ) or (
                 selection_kind == "visual_lipsync_disagreement" and disagreement_ready
+            ) or (
+                selection_kind == "retrieval_human_review" and retrieval_common
             )
             if visual_ready and acoustic_ready:
                 return True
@@ -151,6 +167,7 @@ class ReviewStore:
             "transcript": (sidecar.get("transcript_ja_verified") or
                            sidecar.get("transcript_zh_subtitle") or sidecar.get("text")),
             "rank": sidecar.get("rank"),
+            "retrieval_rank_score": (sidecar.get("acoustic_precheck") or {}).get("rank_score"),
             "speaker_probability": sidecar.get("speaker_probability"),
             "review_ready": self._review_ready(sidecar),
             "selection_kind": selection.get("kind"),

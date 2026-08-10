@@ -314,6 +314,53 @@ class ReviewStoreTests(unittest.TestCase):
         bank.write_bytes(self.bank_manifest + b" ")
         self.assertEqual(self.store.session()["queues"]["identity"], [])
 
+    def test_uncalibrated_retrieval_rank_requires_visual_evidence_and_no_prediction(self):
+        sidecar = self.ready_sidecar()
+        sidecar["selection_evidence"]["kind"] = "retrieval_human_review"
+        sidecar["acoustic_precheck"] = {
+            "review_eligible": True,
+            "scorer_version": "pilotfish.retrieval_rank.v1",
+            "decision": "uncalibrated_retrieval",
+            "scored_at": "2026-08-10T00:00:00Z",
+            "bank_sha256": hashlib.sha256(self.bank_manifest).hexdigest(),
+            "positive_clips": 13,
+            "negative_clips": 31,
+            "rank_score": 0.41,
+            "selection_rank": 1,
+        }
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        item = self.store.session()["queues"]["identity"][0]
+        self.assertEqual(item["selection_kind"], "retrieval_human_review")
+        self.assertEqual(item["retrieval_rank_score"], 0.41)
+
+        sidecar["acoustic_precheck"]["speaker_probability"] = 0.99
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
+    def test_uncalibrated_retrieval_rank_needs_continuous_visual_provenance(self):
+        sidecar = self.ready_sidecar()
+        sidecar["selection_evidence"]["kind"] = "retrieval_human_review"
+        sidecar["selection_evidence"]["single_visible_speaker"] = False
+        sidecar["acoustic_precheck"] = {
+            "review_eligible": True,
+            "scorer_version": "pilotfish.retrieval_rank.v1",
+            "decision": "uncalibrated_retrieval",
+            "scored_at": "2026-08-10T00:00:00Z",
+            "bank_sha256": hashlib.sha256(self.bank_manifest).hexdigest(),
+            "positive_clips": 13,
+            "negative_clips": 31,
+            "rank_score": 0.41,
+            "selection_rank": 1,
+        }
+        (self.root / "candidates" / "candidate.json").write_text(
+            json.dumps(sidecar), encoding="utf-8",
+        )
+        self.assertEqual(self.store.session()["queues"]["identity"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

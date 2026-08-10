@@ -157,8 +157,9 @@ function render() {
     return;
   }
   $("#clip-kind").textContent = state.kind === "identity" ?
-    (item.selection_kind === "visual_lipsync_disagreement" ? "素材身份 · 口型／聲紋衝突題" :
-      (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份")) :
+    (item.selection_kind === "retrieval_human_review" ? "素材身份 · 未校準排序題" :
+      (item.selection_kind === "visual_lipsync_disagreement" ? "素材身份 · 口型／聲紋衝突題" :
+      (item.selection_kind === "visual_lipsync_precheck" ? "素材身份 · 口型分歧題" : "素材身份"))) :
     (state.kind === "transcript" ? "日文逐字稿" :
       (state.kind === "separation" ? "去伴奏 A/B" : "生成品質"));
   $("#clip-name").textContent = item.name;

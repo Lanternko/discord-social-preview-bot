@@ -71,7 +71,7 @@ Overlay 只能補 `media_path` 與 `source_sha256`，不能放寬 rights。輸�
 
 連續畫面勘查的 metadata 保存在 `configs/voice/xibao.visual-candidate-ledger.json`。它只記錄時間、畫面／聲學狀態與缺漏原因；每筆固定 `training_eligible=false`，不能代替本機媒體、speaker review、逐字稿或 rights gate。重建候選池時應先讀 ledger 的 rejection 與 pending spans，避免重複送出已知錯角。
 
-目前 [xibao.anchors.json](../../configs/voice/xibao.anchors.json) 只有第一季第 5 話 `3.000..5.829` 的人工 seed，標為 `seed_only=true`，所以即使 verdict 是 accept 也不會進 training manifest。來源 inventory 仍禁止下載與再散布；目前 S1/S2 條目依使用者明確註記允許本機訓練，新來源仍維持 default-deny。
+目前 [xibao.anchors.json](../../configs/voice/xibao.anchors.json) 只有第一季第 5 話 `3.000..5.829` 的人工 seed，標為 `seed_only=true`，所以即使 verdict 是 accept 也不會進 training manifest。使用者已明確授權 S1 YouTube 條目下載、研究擷取與本機訓練；S1 仍禁止再散布，S2 AniGamer 受保護串流仍禁止下載，新來源維持 default-deny。授權紀錄在 inventory 的 `policy.download_authorization`。
 
 ## 下一階段校準條件
 
@@ -137,9 +137,9 @@ data/voice/.venv/bin/python tools/voice/build_review_candidates.py \
   --min-probability 0.70
 ```
 
-工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；機率門檻預設為 `P(target) >= 0.70`，且正例相似度必須至少比 hard-negative 高 `0.03`。正例 bank 未涵蓋至少三集時，候選只會寫入本機隔離區並標記 `review_ready=false`，測評台不會顯示；禁止把單集 leave-one-out 分數冒充跨集 speaker gate。
+工具會排除雙行字幕、過短／過長事件、金標本身及所有已人工審核的片段。ECAPA embedding 會由正例 bank 與同作品 hard-negative bank 訓練標準化 Logistic Regression；機率門檻預設為 `P(target) >= 0.70`，且正例相似度必須至少比 hard-negative 高 `0.03`。正例 bank 未涵蓋至少三集或跨集校準未達 AUC/FPR 門檻時，候選只能寫成 `uncalibrated_retrieval` 排序題；它必須另附連續口型證據才會進測評台，且不提供 `speaker_probability`，不得當成西的預測。
 
-後端不單獨信任 `review_ready` 布林值。候選還必須附有達標的 episode-disjoint 驗證報告，或同時具備連續口型預審 provenance 與使用目前人工正負例銀行產生的 `acoustic_precheck`。未校準階段只允許聲學機率 `0.25–0.70`、正負 bank margin 絕對值不超過 `0.05` 的真正分歧題；連續畫面還必須確認西的嘴部有變化、單一可見說話者、無切鏡且至少 8 fps。單張畫面看到角色、明顯負例、缺少或過期的聲學預審都會直接隔離，也不能代替 speaker verdict、串音檢查或訓練 rights gate。
+後端不單獨信任 `review_ready` 布林值。校準題還必須附有達標的 episode-disjoint 驗證報告，或同時具備連續口型預審 provenance 與目前人工正負例銀行產生的 `acoustic_precheck`。未校準排序題使用 `retrieval_human_review`，只保存 `rank_score`/批次順位，不保存聲學身份機率；連續畫面必須確認西的嘴部有變化、單一可見說話者、無切鏡且至少 8 fps。單張畫面看到角色、明顯負例、缺少或過期的聲學預審都會直接隔離，也不能代替 speaker verdict、串音檢查或訓練 rights gate。
 
 畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的十段 canary。
 
