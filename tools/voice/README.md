@@ -71,11 +71,11 @@ Overlay 只能補 `media_path` 與 `source_sha256`，不能放寬 rights。輸�
 
 連續畫面勘查的 metadata 保存在 `configs/voice/xibao.visual-candidate-ledger.json`。它只記錄時間、畫面／聲學狀態與缺漏原因；每筆固定 `training_eligible=false`，不能代替本機媒體、speaker review、逐字稿或 rights gate。重建候選池時應先讀 ledger 的 rejection 與 pending spans，避免重複送出已知錯角。
 
-目前 [xibao.anchors.json](../../configs/voice/xibao.anchors.json) 只有第一季第 5 話 `3.000..5.829` 的人工 seed，標為 `seed_only=true`，所以即使 verdict 是 accept 也不會進 training manifest。來源 inventory 的下載、訓練、再散布權限預設全部 deny。
+目前 [xibao.anchors.json](../../configs/voice/xibao.anchors.json) 只有第一季第 5 話 `3.000..5.829` 的人工 seed，標為 `seed_only=true`，所以即使 verdict 是 accept 也不會進 training manifest。來源 inventory 仍禁止下載與再散布；目前 S1/S2 條目依使用者明確註記允許本機訓練，新來源仍維持 default-deny。
 
 ## 下一階段校準條件
 
-1. 先由人工確認來源的觀看／下載／訓練權利；沒有明確允許前維持 deny。
+1. 先由人工確認來源的觀看／下載／訓練權利；沒有明確允許前維持 deny。即使訓練已獲明確允許，也不等於可以擷取受保護串流或再散布音檔。
 2. 取得合法的本地媒體與 checksum，補入 inventory 的 `media_path`、`duration_s`、`source_sha256`。
 3. 補齊人工 anchor：speaker、時間範圍、verdict、reviewer、`reviewed_at`、confidence、canonical `transcript_ja_verified`、`uncertain` 與明確情緒標籤。
 4. 用 seed 建立 voice reference 後，對第二季各集做 voice score；機器分數只作 evidence，仍需人工覆核。

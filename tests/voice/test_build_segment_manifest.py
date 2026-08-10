@@ -397,7 +397,9 @@ class ManifestTests(unittest.TestCase):
         self.assertTrue(seed["seed_only"])
         ep5 = next(s for s in sources["sources"] if s["source_id"] == "s1-ep05")
         self.assertEqual(ep5["rights"]["research_extraction"], "allow")
-        self.assertEqual(ep5["rights"]["training"], "deny")
+        self.assertEqual(ep5["rights"]["training"], "allow")
+        self.assertEqual(sources["policy"]["training_authorization"]["status"], "user_attested")
+        self.assertEqual(sources["policy"]["training_authorization"]["redistribution"], "deny")
         self.assertTrue(all(
             source["rights"]["research_extraction"] == "allow"
             for source in sources["sources"] if source["season"] == 1
