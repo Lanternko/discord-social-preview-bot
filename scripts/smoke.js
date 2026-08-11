@@ -79,7 +79,11 @@ const {
   buildEmojiPromptBlock,
 } = require("../src/ai/emoji-resolver");
 
-const { buildPermissionDebugMessage } = require("../src/commands");
+const {
+  HELP_COMMAND,
+  buildHelpMessage,
+  buildPermissionDebugMessage,
+} = require("../src/commands");
 const { getMissingChannelPermissions } = require("../src/discord-io");
 const { isTrashEmoji } = require("../src/reaction-delete");
 const {
@@ -134,6 +138,22 @@ function withStoreFile(store, fn) {
     restoreFile(bakPath, bakSnapshot);
   }
 }
+
+console.log("help command");
+it("registers /help with a discoverable description", () => {
+  assert.equal(HELP_COMMAND.name, "help");
+  assert.match(HELP_COMMAND.description, /功能|指令/);
+});
+it("explains features, commands, setup, and preview opt-out", () => {
+  const help = buildHelpMessage();
+  assert.match(help, /主要功能/);
+  assert.match(help, /可用指令/);
+  assert.match(help, /伺服器設定/);
+  assert.match(help, /\/ai-key set/);
+  assert.match(help, /\/debug-perms/);
+  assert.match(help, /nopreview/);
+  assert.ok(help.length <= 2000, `help message is ${help.length} characters`);
+});
 
 console.log("normalizeUrl");
 it("strips fbclid", () => {

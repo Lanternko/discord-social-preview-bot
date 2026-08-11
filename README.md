@@ -316,7 +316,7 @@ docker run -d \
 - **群友熟悉度**：每個伺服器自動累積每個成員的發言次數，分 5 級（剛認識 1+ / 認識 5+ / 熟人 20+ / 老朋友 100+ / 摯友 500+），餵給西寶讓她對熟人較自然、對新人略生疏。資料存在 `data/familiarity.json`（gitignored）。**只計算重啟後的訊息**，不會回填過去聊天記錄
 - **群組脈絡**（標準 / 精細方案）：被 @ 時西寶會看到頻道最近 15 條訊息（含貼圖名稱），能理解貼圖梗、跨人對話、誰回應誰
 - **忽略標記**：訊息含 `nopreview` / `previewignore` / `fxignore` 任一字串 → bot 直接跳過
-- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）
+- **Slash 指令**：`/help`（功能、指令與設定說明）、`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）、`/memory`（管理記憶）、`/schedule`（管理定時任務）、`/voice`（語音回答）
 
 ---
 

@@ -49,6 +49,11 @@ const SERVER_COUNT_COMMAND = {
   description: "顯示目前機器人加入的伺服器數量",
 };
 
+const HELP_COMMAND = {
+  name: "help",
+  description: "認識西寶的功能、指令與伺服器設定方式",
+};
+
 const DEBUG_PERMS_COMMAND = {
   name: "debug-perms",
   description: "檢查目前頻道裡機器人的權限",
@@ -242,6 +247,7 @@ function commandSpecMatches(existing, expected) {
 
 async function ensureApplicationCommands(client) {
   const expectedCommands = [
+    HELP_COMMAND,
     SERVER_COUNT_COMMAND,
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
@@ -274,6 +280,36 @@ async function ensureApplicationCommands(client) {
       console.log(`[commands] deleted stale /${cmd.name}`);
     }
   }
+}
+
+function buildHelpMessage() {
+  return [
+    "## 西寶使用說明",
+    "把支援的社群連結貼到頻道，我會自動回覆比較完整的預覽；也可以 `@西寶` 跟我聊天。",
+    "",
+    "**主要功能**",
+    "- 支援 Threads、X、Instagram、Reddit、Pixiv、Bluesky、Bilibili、Facebook、巴哈姆特與 PTT",
+    "- 自動移除常見追蹤參數、避免短時間內重複預覽",
+    "- 對西寶的訊息按 🗑️，或右鍵選「Apps → 刪除西寶訊息」即可請我刪除",
+    "",
+    "**可用指令**",
+    "- `/help`：顯示這份說明",
+    "- `/voice`：讓西寶用語音回答",
+    "- `/memory show`、`forget-me`、`guild`：查看或管理記憶；管理員可用 `forget-user` 刪除指定使用者的記憶",
+    "- `/ai-tier`：查看 AI 方案；管理員可切換方案",
+    "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
+    "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
+    "- `/debug-perms`：檢查目前頻道的機器人權限",
+    "- `/servers`：查看西寶加入的伺服器數量",
+    "",
+    "**伺服器設定**",
+    "1. 邀請時啟用 `bot` 與 `applications.commands` scopes。",
+    "2. 授予查看頻道、傳送訊息、讀取歷史訊息與嵌入連結權限。",
+    "3. 建議加上「管理訊息」，讓我能收起原始連結預覽。",
+    "4. 想使用進階 AI：管理員先執行 `/ai-key set`，再用 `/ai-tier` 選擇方案。",
+    "",
+    "小技巧：訊息包含 `nopreview`、`previewignore` 或 `fxignore`，我就不會產生預覽。",
+  ].join("\n");
 }
 
 function buildPermissionDebugMessage(interaction) {
@@ -873,6 +909,14 @@ async function handleInteraction(interaction, client) {
 
   if (!interaction.isChatInputCommand()) return;
 
+  if (interaction.commandName === HELP_COMMAND.name) {
+    await interaction.reply({
+      content: buildHelpMessage(),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   if (interaction.commandName === SERVER_COUNT_COMMAND.name) {
     await interaction.reply({
       content: `目前已加入 ${client.guilds.cache.size} 個伺服器。`,
@@ -915,6 +959,7 @@ async function handleInteraction(interaction, client) {
 }
 
 module.exports = {
+  HELP_COMMAND,
   SERVER_COUNT_COMMAND,
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
@@ -925,6 +970,7 @@ module.exports = {
   handleDeleteMessageContext,
   VOICE_COMMAND,
   ensureApplicationCommands,
+  buildHelpMessage,
   buildPermissionDebugMessage,
   handleTierCommand,
   handleScheduleCommand,
