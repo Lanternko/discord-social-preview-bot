@@ -12,6 +12,8 @@ const {
   parseVoicePayload,
   interactionAsMessage,
   voiceGenerationOptions,
+  formatVoiceQuestion,
+  publishVoiceQuestion,
   publishVoiceTranscript,
   handleVoiceCommand,
 } = require("../src/voice-reply");
@@ -39,6 +41,7 @@ async function it(name, fn) {
 function makeInteraction(text = "今天過得怎麼樣？") {
   const edits = [];
   const deferred = [];
+  const replies = [];
   const followUps = [];
   return {
     id: "interaction-1",
@@ -51,10 +54,12 @@ function makeInteraction(text = "今天過得怎麼樣？") {
     createdTimestamp: 1234,
     options: { getString: () => text },
     deferReply: async (payload) => deferred.push(payload),
+    reply: async (payload) => replies.push(payload),
     editReply: async (payload) => edits.push(payload),
     followUp: async (payload) => followUps.push(payload),
     edits,
     deferred,
+    replies,
     followUps,
   };
 }
@@ -66,10 +71,10 @@ async function main() {
     assert.match(VOICE_PERSONA, /西奈津美/);
     assert.match(VOICE_PERSONA, /質問そのものに直接答えて/);
     assert.match(VOICE_PERSONA, /相手の記憶、親しさ、グループの記憶、最近の会話/);
-    assert.match(VOICE_PERSONA, /JSON の display/);
-    assert.match(VOICE_PERSONA, /JSON の speech/);
+    assert.match(VOICE_PERSONA, /「表示：」と「読み：」/);
+    assert.match(VOICE_PERSONA, /正しいカタカナ読みに直し/);
     assert.doesNotMatch(VOICE_PERSONA, /繁體中文/);
-    assert.match(VOICE_REPAIR_PERSONA, /日本語音声台本の校正者/);
+    assert.match(VOICE_REPAIR_PERSONA, /日本語音声台本の読み方を整える校正者/);
   });
   await it("keeps voice generation out of text history and memory", () => {
     const options = voiceGenerationOptions(VOICE_PERSONA);
@@ -96,6 +101,11 @@ async function main() {
     assert.equal(parsed.displayText, "ROSELIAも好きだけど、摳捷くんが特別かも。");
     assert.equal(parsed.speechText, "ロゼリアも好きだけど、コジェックくんが特別かも。");
     assert.equal(normalizeSpeechPronunciation("RoseliaとKojek"), "ロゼリアとコジェック");
+    const labelled = parseVoicePayload(
+      "表示：ROSELIAと摳捷くん、どっちも大切だよ。\n読み：ロゼリアとコジェックくん、どっちも大切だよ。",
+    );
+    assert.equal(labelled.displayText, "ROSELIAと摳捷くん、どっちも大切だよ。");
+    assert.equal(labelled.speechText, "ロゼリアとコジェックくん、どっちも大切だよ。");
   });
 
   console.log("slash command flow");
@@ -121,11 +131,9 @@ async function main() {
     const result = await handleVoiceCommand(interaction, client, {
       warmup: () => {},
       generateAIReply: async (_message, _text, options) => {
+        events.push("generate");
         aiOptions = options;
-        return JSON.stringify({
-          display: "うん、今日はちょっと嬉しかった。",
-          speech: "うん、今日はちょっと嬉しかった。",
-        });
+        return "表示：うん、今日はちょっと嬉しかった。\n読み：うん、今日はちょっと嬉しかった。";
       },
       synthesize: async (text) => {
         events.push("tts");
@@ -135,6 +143,11 @@ async function main() {
       publishVoiceTranscript: async (target, text) => {
         events.push(`text:${text}`);
         await target.editReply({ content: text, allowedMentions: { parse: [] } });
+        return true;
+      },
+      publishVoiceQuestion: async (target, text) => {
+        events.push(`question:${text}`);
+        await target.reply({ content: formatVoiceQuestion(target, text) });
         return true;
       },
       sendVoiceMessage: async () => {
@@ -149,13 +162,16 @@ async function main() {
     assert.equal(aiOptions.includeEmojiPrompt, false);
     assert.equal(ttsText, "うん、今日はちょっと嬉しかった。");
     assert.deepEqual(events, [
+      "question:今天過得怎麼樣？",
+      "generate",
       "text:うん、今日はちょっと嬉しかった。",
       "tts",
       "voice",
     ]);
-    assert.deepEqual(interaction.deferred, [undefined]);
+    assert.equal(interaction.deferred.length, 0);
+    assert.equal(interaction.replies.length, 1);
+    assert.equal(interaction.replies[0].content, "> **小測：** 今天過得怎麼樣？");
     assert.equal(interaction.edits.length, 1);
-    assert.equal(interaction.edits[0].content, "うん、今日はちょっと嬉しかった。");
     assert.equal(interaction.followUps.length, 0);
   });
   await it("falls back to the transcript when TTS is unavailable", async () => {
@@ -176,7 +192,7 @@ async function main() {
     assert.match(interaction.followUps[0].content, /語音服務暫時不可用/);
     assert.match(interaction.followUps[0].content, /文字台詞已經送出/);
   });
-  await it("repairs Chinese output once before sending it to TTS", async () => {
+  await it("creates a separate katakana speech script when the first output is plain", async () => {
     const interaction = makeInteraction();
     const calls = [];
     let ttsText = "";
@@ -185,11 +201,8 @@ async function main() {
       generateAIReply: async (_message, text, options) => {
         calls.push({ text, options });
         return calls.length === 1
-          ? "今天很好。"
-          : JSON.stringify({
-            display: "今日はちょっと嬉しかったよ。",
-            speech: "今日はちょっと嬉しかったよ。",
-          });
+          ? "ROSELIAも好きだけど、摳捷くんが特別かも。"
+          : "ロゼリアも好きだけど、コジェックくんが特別かも。";
       },
       synthesize: async (text) => {
         ttsText = text;
@@ -200,12 +213,12 @@ async function main() {
     });
     assert.equal(result, true);
     assert.equal(calls.length, 2);
-    assert.match(calls[1].text, /今天很好/);
+    assert.match(calls[1].text, /ROSELIA/);
     assert.equal(calls[1].options.personaOverride, VOICE_REPAIR_PERSONA);
     assert.equal(calls[1].options.includeContext, false);
-    assert.equal(ttsText, "今日はちょっと嬉しかったよ。");
+    assert.equal(ttsText, "ロゼリアも好きだけど、コジェックくんが特別かも。");
   });
-  await it("does not send output that remains Chinese after one repair", async () => {
+  await it("does not send Chinese output to the speech converter or TTS", async () => {
     const interaction = makeInteraction();
     let called = false;
     let generations = 0;
@@ -219,15 +232,26 @@ async function main() {
         called = true;
       },
     });
-    assert.equal(generations, 2);
+    assert.equal(generations, 1);
     assert.equal(called, false);
-    assert.equal(interaction.edits[0], "語音台詞生成失敗了，請再試一次。");
+    assert.match(interaction.followUps[0].content, /語音台詞生成失敗/);
+  });
+
+  await it("publishes the slash-command question for the whole channel", async () => {
+    const interaction = makeInteraction("@everyone\nROSELIA怎麼念？");
+    assert.equal(
+      formatVoiceQuestion(interaction, "@everyone\nROSELIA怎麼念？"),
+      "> **小測：** @everyone\n> ROSELIA怎麼念？",
+    );
+    const ok = await publishVoiceQuestion(interaction, "@everyone\nROSELIA怎麼念？");
+    assert.equal(ok, true);
+    assert.deepEqual(interaction.replies[0].allowedMentions, { parse: [] });
   });
 
   await it("publishes the interaction transcript without allowing mentions", async () => {
     let payload;
     const ok = await publishVoiceTranscript(
-      { editReply: async (value) => { payload = value; } },
+      { followUp: async (value) => { payload = value; } },
       "今日は大丈夫だよ。",
     );
     assert.equal(ok, true);
