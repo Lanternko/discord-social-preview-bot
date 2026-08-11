@@ -12,19 +12,21 @@ The chain is wrapped by a circuit breaker so a known-broken provider gets skippe
 
 ## Per-guild chain
 
-DeepSeek is selected per guild, then the shared fallback chain is appended:
+DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback chain are appended:
 
 1. 入門 (`brief`) — `deepseek:<DEEPSEEK_MODEL_FREE>` using the owner `DEEPSEEK_API_KEY`, limited by `AI_FREE_DAILY_LIMIT` for guilds without `/ai-key` or whitelist.
 2. 標準 / 精細 (`standard` / `detailed`) — `deepseek:<DEEPSEEK_MODEL>` using the guild `/ai-key`, or the owner key for `DEEPSEEK_PREMIUM_GUILD_IDS`.
-3. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
-4. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
-5. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
+3. `kimi:<KIMI_MODEL>` — second-choice provider; removed entirely when `KIMI_ENABLED=false`.
+4. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
+5. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
+6. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
 
 If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
 
 ## Call shape
 
 - All providers use `withAbortTimeout()` for timeout + error handling.
+- DeepSeek V4 defaults to thinking mode. `/voice` explicitly disables thinking and reasoning headroom because it only needs a short spoken reply; daily recaps explicitly keep thinking enabled.
 - DeepSeek + Groq share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
 - Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../src/ai/providers.js).

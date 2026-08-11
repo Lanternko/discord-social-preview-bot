@@ -9,6 +9,7 @@ const assert = require("node:assert/strict");
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
 process.env.KIMI_API_KEY = process.env.KIMI_API_KEY || "sk-kimi-smoke-dummy";
+process.env.KIMI_ENABLED = "true";
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
 process.env.RECAP_KIMI_TIMEOUT_MS = "45000";
 process.env.RECAP_DEEPSEEK_TIMEOUT_MS = "90000";
@@ -118,17 +119,17 @@ async function main() {
   });
 
   console.log("daily recap provider policy");
-  it("uses Kimi → DeepSeek → Gemini and excludes Groq/Llama", () => {
+  it("uses DeepSeek → Kimi → Gemini and excludes Groq/Llama", () => {
     assert.deepEqual(
       RECAP_PROVIDER_CHAIN.map((provider) => provider.label.split(":")[0]),
-      ["kimi", "deepseek", "gemini"],
+      ["deepseek", "kimi", "gemini"],
     );
     assert.ok(RECAP_PROVIDER_CHAIN.every((provider) => !/groq|llama/i.test(provider.label)));
-    assert.equal(RECAP_PROVIDER_CHAIN[0].options.timeoutMs, 45000);
-    assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
+    assert.equal(RECAP_PROVIDER_CHAIN[0].options.timeoutMs, 90000);
+    assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 45000);
     assert.equal(RECAP_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
-    assert.deepEqual(RECAP_PROVIDER_CHAIN[1].options.thinking, { type: "enabled" });
-    assert.equal(RECAP_PROVIDER_CHAIN[1].options.reasoningEffort, "high");
+    assert.deepEqual(RECAP_PROVIDER_CHAIN[0].options.thinking, { type: "enabled" });
+    assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningEffort, "high");
   });
 
   await itAsync("sends DeepSeek recap with thinking enabled and reasoning headroom", async () => {
@@ -510,6 +511,8 @@ async function main() {
     assert.ok(dsEntry, "should have a DeepSeek entry");
     assert.ok(dsEntry.label.includes(":guild"), `expected :guild suffix, got ${dsEntry.label}`);
     assert.ok(!dsEntry.label.includes("flash"), `expected pro model, got ${dsEntry.label}`);
+    assert.equal(chain[0], dsEntry);
+    assert.equal(chain[1].label.split(":")[0], "kimi");
   });
   it("guild with own key on brief tier gets flash model", () => {
     resetKeyCache();
@@ -519,6 +522,38 @@ async function main() {
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry);
     assert.ok(dsEntry.label.includes("flash"), `expected flash model, got ${dsEntry.label}`);
+  });
+  await itAsync("passes voice-specific non-thinking options to keyed DeepSeek", async () => {
+    resetKeyCache();
+    setGuildApiKey("voice-guild", "sk-voice-test");
+    let requestBody;
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "表示：うん。\n読み：うん。" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 12 },
+        }),
+      };
+    };
+    try {
+      const { chain } = buildGuildChain("voice-guild", standardTier, {
+        deepSeek: { thinking: { type: "disabled" }, reasoningHeadroom: 0 },
+      });
+      const result = await chain[0].call(
+        [{ role: "user", content: "こんにちは" }],
+        "persona",
+        100,
+      );
+      assert.equal(result.ok, true);
+      assert.deepEqual(requestBody.thinking, { type: "disabled" });
+      assert.equal(requestBody.max_tokens, 100);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   // cleanup

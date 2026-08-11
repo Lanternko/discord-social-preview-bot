@@ -8,6 +8,7 @@ const {
   GROQ_API_KEY,
   GROQ_MODELS,
   KIMI_API_KEY,
+  KIMI_ENABLED,
   KIMI_MODEL,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
@@ -103,11 +104,11 @@ const FALLBACK_CHAIN = buildFallbackChain();
 function buildAIProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
-  if (KIMI_API_KEY && (!only || only === "kimi")) {
-    chain.push({ label: `kimi:${KIMI_MODEL}`, call: callKimi });
-  }
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
+  }
+  if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {
+    chain.push({ label: `kimi:${KIMI_MODEL}`, call: callKimi });
   }
   return [...chain, ...FALLBACK_CHAIN];
 }
@@ -118,19 +119,10 @@ const AI_PROVIDER_CHAIN = buildAIProviderChain();
 // Daily recaps have a task-specific latency budget because generation starts
 // one minute before publication. Keep Groq/Llama completely out of this chain:
 // a recap should wait for the higher-quality providers instead of silently
-// changing voice. Interactive replies continue to use the default chain above.
+// changing voice. DeepSeek remains first and Kimi is second when enabled.
 function buildRecapProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
-  if (KIMI_API_KEY && (!only || only === "kimi")) {
-    const options = { timeoutMs: RECAP_KIMI_TIMEOUT_MS };
-    chain.push({
-      label: `kimi:${KIMI_MODEL}`,
-      options,
-      call: (turns, persona, maxTokens) =>
-        callKimi(turns, persona, maxTokens, options),
-    });
-  }
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     const options = {
       timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
@@ -143,6 +135,15 @@ function buildRecapProviderChain() {
       options,
       call: (turns, persona, maxTokens) =>
         callDeepSeek(turns, persona, maxTokens, options),
+    });
+  }
+  if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {
+    const options = { timeoutMs: RECAP_KIMI_TIMEOUT_MS };
+    chain.push({
+      label: `kimi:${KIMI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callKimi(turns, persona, maxTokens, options),
     });
   }
   if (GEMINI_API_KEY && (!only || only === "gemini")) {
@@ -159,20 +160,22 @@ function buildRecapProviderChain() {
 
 const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
 
-// Per-guild chain: Kimi first, then DeepSeek (model determined by tier), then
+// Per-guild chain: DeepSeek first, then Kimi when enabled, then
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
 // whitelisted guilds use the owner's key; free guilds (brief only) use the
 // owner's key with a daily rate limit.
-function buildGuildChain(guildId, tierConfig) {
+function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
   const only = AI_PROVIDER_FORCE;
+  const deepSeekOptions = providerOptions.deepSeek || {};
 
-  // Kimi as primary — prepended to every chain unless forcing a different provider
-  const kimiPrimary = (KIMI_API_KEY && (!only || only === "kimi"))
+  // Kimi is the second-choice provider. KIMI_ENABLED=false removes it entirely
+  // while the account has insufficient balance, without deleting its key.
+  const kimiSecondary = (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi"))
     ? [{ label: `kimi:${KIMI_MODEL}`, call: callKimi }]
     : [];
 
   if (only === "kimi") {
-    return { chain: kimiPrimary, rateLimited: false };
+    return { chain: kimiSecondary, rateLimited: false };
   }
   if (only && only !== "deepseek") {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
@@ -194,16 +197,18 @@ function buildGuildChain(guildId, tierConfig) {
             apiKey: guildKey,
             model: DEEPSEEK_MODEL,
             reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+            ...deepSeekOptions,
           }),
       };
-      return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
+      return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
     }
     if (isWhitelisted && DEEPSEEK_API_KEY) {
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}`,
-        call: callDeepSeek,
+        call: (turns, persona, maxTokens) =>
+          callDeepSeek(turns, persona, maxTokens, deepSeekOptions),
       };
-      return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
+      return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
     }
     // No key and not whitelisted — shouldn't happen (command blocks it),
     // but fall through to flash as safety net
@@ -211,7 +216,7 @@ function buildGuildChain(guildId, tierConfig) {
 
   // brief → flash model
   if (!DEEPSEEK_API_KEY) {
-    return { chain: [...kimiPrimary, ...FALLBACK_CHAIN], rateLimited: false };
+    return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
 
   // Free guild (brief) — check daily rate limit
@@ -219,7 +224,7 @@ function buildGuildChain(guildId, tierConfig) {
     const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
     if (!rateCheck.allowed) {
       console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
-      return { chain: [...kimiPrimary, ...FALLBACK_CHAIN], rateLimited: true };
+      return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: true };
     }
   }
 
@@ -229,9 +234,10 @@ function buildGuildChain(guildId, tierConfig) {
       callDeepSeek(turns, persona, maxTokens, {
         model: DEEPSEEK_MODEL_FREE,
         reasoningHeadroom: 0,
+        ...deepSeekOptions,
       }),
   };
-  return { chain: [...kimiPrimary, entry, ...FALLBACK_CHAIN], rateLimited: false };
+  return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
 }
 
 async function runProviderChain(chain, turns, persona, maxTokens) {
@@ -267,9 +273,14 @@ async function generateAIReply(message, userText, options = {}) {
     includeContext = true,
     includeEmojiPrompt = true,
     resolveEmojis = true,
+    providerOptions = {},
   } = options;
   const tierConfig = getTierConfig(message.guildId);
-  const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
+  const { chain: guildChain, rateLimited } = buildGuildChain(
+    message.guildId,
+    tierConfig,
+    providerOptions,
+  );
   if (guildChain.length === 0) return null;
   const userTurn = buildUserTurn(message, userText);
   const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
