@@ -8,9 +8,11 @@ const {
   VOICE_REPAIR_PERSONA,
   sanitizeVoiceText,
   hasJapaneseKana,
+  normalizeSpeechPronunciation,
+  parseVoicePayload,
   interactionAsMessage,
   voiceGenerationOptions,
-  sendVoiceTranscript,
+  publishVoiceTranscript,
   handleVoiceCommand,
 } = require("../src/voice-reply");
 const {
@@ -37,6 +39,7 @@ async function it(name, fn) {
 function makeInteraction(text = "今天過得怎麼樣？") {
   const edits = [];
   const deferred = [];
+  const followUps = [];
   return {
     id: "interaction-1",
     guildId: "guild-1",
@@ -49,8 +52,10 @@ function makeInteraction(text = "今天過得怎麼樣？") {
     options: { getString: () => text },
     deferReply: async (payload) => deferred.push(payload),
     editReply: async (payload) => edits.push(payload),
+    followUp: async (payload) => followUps.push(payload),
     edits,
     deferred,
+    followUps,
   };
 }
 
@@ -61,6 +66,8 @@ async function main() {
     assert.match(VOICE_PERSONA, /西奈津美/);
     assert.match(VOICE_PERSONA, /質問そのものに直接答えて/);
     assert.match(VOICE_PERSONA, /相手の記憶、親しさ、グループの記憶、最近の会話/);
+    assert.match(VOICE_PERSONA, /JSON の display/);
+    assert.match(VOICE_PERSONA, /JSON の speech/);
     assert.doesNotMatch(VOICE_PERSONA, /繁體中文/);
     assert.match(VOICE_REPAIR_PERSONA, /日本語音声台本の校正者/);
   });
@@ -80,6 +87,15 @@ async function main() {
   await it("accepts kana and rejects Chinese-only text", () => {
     assert.equal(hasJapaneseKana("今日は大丈夫だよ。"), true);
     assert.equal(hasJapaneseKana("今天很好。"), false);
+  });
+  await it("keeps display spelling but normalizes known TTS pronunciations", () => {
+    const parsed = parseVoicePayload(JSON.stringify({
+      display: "ROSELIAも好きだけど、摳捷くんが特別かも。",
+      speech: "ROSELIAも好きだけど、摳捷くんが特別かも。",
+    }));
+    assert.equal(parsed.displayText, "ROSELIAも好きだけど、摳捷くんが特別かも。");
+    assert.equal(parsed.speechText, "ロゼリアも好きだけど、コジェックくんが特別かも。");
+    assert.equal(normalizeSpeechPronunciation("RoseliaとKojek"), "ロゼリアとコジェック");
   });
 
   console.log("slash command flow");
@@ -106,15 +122,19 @@ async function main() {
       warmup: () => {},
       generateAIReply: async (_message, _text, options) => {
         aiOptions = options;
-        return "うん、今日はちょっと嬉しかった。";
+        return JSON.stringify({
+          display: "うん、今日はちょっと嬉しかった。",
+          speech: "うん、今日はちょっと嬉しかった。",
+        });
       },
       synthesize: async (text) => {
         events.push("tts");
         ttsText = text;
         return { ogg: Buffer.from("ogg"), durationSecs: 1, waveform: "AA==" };
       },
-      sendVoiceTranscript: async (_channel, text) => {
+      publishVoiceTranscript: async (target, text) => {
         events.push(`text:${text}`);
+        await target.editReply({ content: text, allowedMentions: { parse: [] } });
         return true;
       },
       sendVoiceMessage: async () => {
@@ -133,23 +153,28 @@ async function main() {
       "tts",
       "voice",
     ]);
+    assert.deepEqual(interaction.deferred, [undefined]);
     assert.equal(interaction.edits.length, 1);
-    assert.equal(interaction.edits[0], "語音已送出。");
+    assert.equal(interaction.edits[0].content, "うん、今日はちょっと嬉しかった。");
+    assert.equal(interaction.followUps.length, 0);
   });
   await it("falls back to the transcript when TTS is unavailable", async () => {
     const interaction = makeInteraction();
     const result = await handleVoiceCommand(interaction, {}, {
       warmup: () => {},
-      generateAIReply: async () => "少し緊張するけど、話せて嬉しい。",
-      sendVoiceTranscript: async () => true,
+      generateAIReply: async () => JSON.stringify({
+        display: "少し緊張するけど、話せて嬉しい。",
+        speech: "少し緊張するけど、話せて嬉しい。",
+      }),
+      publishVoiceTranscript: async () => true,
       synthesize: async () => null,
       sendVoiceMessage: async () => {
         throw new Error("must not send");
       },
     });
     assert.equal(result, false);
-    assert.match(interaction.edits[0], /語音服務暫時不可用/);
-    assert.match(interaction.edits[0], /文字台詞已經送出/);
+    assert.match(interaction.followUps[0].content, /語音服務暫時不可用/);
+    assert.match(interaction.followUps[0].content, /文字台詞已經送出/);
   });
   await it("repairs Chinese output once before sending it to TTS", async () => {
     const interaction = makeInteraction();
@@ -159,13 +184,18 @@ async function main() {
       warmup: () => {},
       generateAIReply: async (_message, text, options) => {
         calls.push({ text, options });
-        return calls.length === 1 ? "今天很好。" : "今日はちょっと嬉しかったよ。";
+        return calls.length === 1
+          ? "今天很好。"
+          : JSON.stringify({
+            display: "今日はちょっと嬉しかったよ。",
+            speech: "今日はちょっと嬉しかったよ。",
+          });
       },
       synthesize: async (text) => {
         ttsText = text;
         return { ogg: Buffer.from("ogg"), durationSecs: 1, waveform: "AA==" };
       },
-      sendVoiceTranscript: async () => true,
+      publishVoiceTranscript: async () => true,
       sendVoiceMessage: async () => true,
     });
     assert.equal(result, true);
@@ -194,10 +224,10 @@ async function main() {
     assert.equal(interaction.edits[0], "語音台詞生成失敗了，請再試一次。");
   });
 
-  await it("posts the transcript without allowing generated mentions", async () => {
+  await it("publishes the interaction transcript without allowing mentions", async () => {
     let payload;
-    const ok = await sendVoiceTranscript(
-      { send: async (value) => { payload = value; } },
+    const ok = await publishVoiceTranscript(
+      { editReply: async (value) => { payload = value; } },
       "今日は大丈夫だよ。",
     );
     assert.equal(ok, true);
