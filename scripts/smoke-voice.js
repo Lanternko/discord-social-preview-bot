@@ -82,8 +82,9 @@ async function main() {
     assert.equal(options.includeHistory, false);
     assert.equal(options.recordMemory, false);
     assert.equal(options.includeContext, true);
-    assert.deepEqual(options.providerOptions.deepSeek.thinking, { type: "disabled" });
-    assert.equal(options.providerOptions.deepSeek.reasoningHeadroom, 0);
+    assert.deepEqual(options.providerOptions.deepSeek.thinking, { type: "enabled" });
+    assert.equal(options.providerOptions.deepSeek.reasoningEffort, "high");
+    assert.equal(options.providerOptions.deepSeek.reasoningHeadroom, 2048);
   });
   await it("strips markup, URLs and emoji before TTS", () => {
     assert.equal(

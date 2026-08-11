@@ -26,7 +26,7 @@ If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipp
 ## Call shape
 
 - All providers use `withAbortTimeout()` for timeout + error handling.
-- DeepSeek V4 defaults to thinking mode. `/voice` explicitly disables thinking and reasoning headroom because it only needs a short spoken reply; daily recaps explicitly keep thinking enabled.
+- DeepSeek V4 defaults to thinking mode. `/voice` and daily recaps explicitly use the regular `high` thinking policy with reasoning headroom; voice requests therefore retain the provider's long-tail latency risk.
 - DeepSeek + Groq share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
 - Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../src/ai/providers.js).
