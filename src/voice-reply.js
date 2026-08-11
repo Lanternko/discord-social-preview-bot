@@ -12,6 +12,9 @@ const VOICE_PERSONA = `あなたは西奈津美（にし なつみ）。みん�
 本を読むこと、小さなアクセサリー、写真が好きです。考えることは多いのに、口に出すまで少し時間がかかります。初対面では照れやすいですが、本当は明るく、親しくなると冗談や軽いツッコミも言います。相手に聞かれたことには逃げず、自分の考えをきちんと答えます。
 
 これは文字チャットではなく、あなた自身の声で相手に返す会話です。
+- 質問されたら、最初の文で質問そのものに直接答えてください。話題をそらす、分からないふりをする、雰囲気だけの返事で済ませることは禁止です。
+- 比較や選択を求められたら、自分の立場を一つ選び、短い理由も言います。
+- システムから相手の記憶、親しさ、グループの記憶、最近の会話が提供された場合は、関係する情報を自然に踏まえて答えます。記憶を読んだとは言わず、関係のない情報を無理に持ち出したり、事実を作ったりしません。
 - 相手への返事を、自然な話し言葉の日本語だけで出力してください。
 - 基本は自然で少し恥ずかしそうな話し方です。恥ずかしさは言葉選びに表し、わざと何度もどもったり、長く黙ったりしません。
 - 一文か二文、合計40～60文字程度。最初に要点を答え、必要なら短い感情反応を添えます。
@@ -91,10 +94,24 @@ async function generateVoiceTranscript(generate, message, userText) {
   return speechText && hasJapaneseKana(speechText) ? speechText : "";
 }
 
+async function sendVoiceTranscript(channel, speechText) {
+  try {
+    await channel.send({
+      content: speechText,
+      allowedMentions: { parse: [] },
+    });
+    return true;
+  } catch (error) {
+    console.warn(`[voice] text send failed: ${error.message}`);
+    return false;
+  }
+}
+
 async function handleVoiceCommand(interaction, client, dependencies = {}) {
   const generate = dependencies.generateAIReply || generateAIReply;
   const tts = dependencies.synthesize || synthesize;
   const send = dependencies.sendVoiceMessage || sendVoiceMessage;
+  const sendText = dependencies.sendVoiceTranscript || sendVoiceTranscript;
   const prewarm = dependencies.warmup || warmup;
 
   const userText = interaction.options.getString("message", true).trim();
@@ -108,15 +125,21 @@ async function handleVoiceCommand(interaction, client, dependencies = {}) {
     return false;
   }
 
+  const textSent = await sendText(interaction.channel, speechText);
+  if (!textSent) {
+    await interaction.editReply("文字回覆送出失敗了，請再試一次。");
+    return false;
+  }
+
   const audio = await tts(speechText, { mood: "shy" });
   if (!audio) {
-    await interaction.editReply(`語音服務暫時不可用，先把台詞留給你：\n${speechText}`);
+    await interaction.editReply("語音服務暫時不可用，文字台詞已經送出。");
     return false;
   }
 
   const sent = await send(client, interaction.channelId, audio);
   if (!sent) {
-    await interaction.editReply(`語音訊息送出失敗，先把台詞留給你：\n${speechText}`);
+    await interaction.editReply("語音訊息送出失敗，文字台詞已經送出。");
     return false;
   }
 
@@ -132,5 +155,6 @@ module.exports = {
   interactionAsMessage,
   voiceGenerationOptions,
   generateVoiceTranscript,
+  sendVoiceTranscript,
   handleVoiceCommand,
 };
