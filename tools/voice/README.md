@@ -155,6 +155,31 @@ python3 tools/voice/prepare_retrieval_review.py \
 
 `prepare_retrieval_review.py` 只接受清單中明確列出的時間段，檢查候選的 source/span/hash，並以 `retrieval_human_review` 及 rank-only acoustic provenance 寫入新批次；它拒絕覆寫既有人工紀錄，也不會寫入 speaker prediction 或 training eligibility。
 
+若要檢查 top-k 是否漏掉大量台詞，可先在 `_tmp` 跑全季高召回重掃。這不是
+speaker gate：較長 turn 只用未校準的 ECAPA classifier score 做低門檻排序，短於
+1.8 秒的反應句則完全繞過聲紋淘汰。輸出固定為
+`training_eligible=false`、`pending_human_review`，不得直接搬進候選池或訓練集：
+
+```bash
+CUDA_VISIBLE_DEVICES='' data/voice/.venv/bin/python \
+  tools/voice/high_recall_rescan.py \
+  --audio-root data/voice/xibao/_tmp/full-audio \
+  --sentences-root data/voice/xibao/_tmp/s1-mine/sentences \
+  --bank-dir data/voice/xibao/calibration/review-bank \
+  --reviews data/voice/xibao/review/reviews.json \
+  --model-dir ~/.cache/huggingface/hub/models--speechbrain--spkrec-ecapa-voxceleb \
+  --out data/voice/xibao/_tmp/high-recall-rescan/report.json
+
+data/voice/.venv/bin/python tools/voice/render_high_recall_review.py \
+  --report data/voice/xibao/_tmp/high-recall-rescan/report.json \
+  --out data/voice/xibao/_tmp/high-recall-rescan/review.html \
+  --clips-dir data/voice/xibao/_tmp/high-recall-rescan/clips
+```
+
+瀏覽頁的人工標記只存在瀏覽器 localStorage，可匯出 JSON；它故意不寫回正式
+review bank。要晉升片段，仍需先補足連續口型預審，再走
+`prepare_retrieval_review.py` 的 fail-closed 流程。
+
 畫面預審候選可用整數 `review_batch` 固定小批次順序。測評台先依 batch、再依 speaker probability 排序，避免後續新候選插入目前正在審核的十段 canary。
 
 ## 訓練 readiness 與 Irodori manifest
