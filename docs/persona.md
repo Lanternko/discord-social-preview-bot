@@ -8,7 +8,7 @@ Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../src/co
 
 ## Voice output layer
 
-`/voice` does not define a second character persona and does not overwrite `AI_PERSONA`. It appends a narrow output layer to the existing persona: 1–3 speakable Japanese sentences, punctuation for natural breathing, and no Markdown, URLs, emoji, parenthetical actions, or speaker labels. The first release uses a natural-but-slightly-shy delivery matched to the current shy speaker embedding, without forcing constant stutters or excessive ellipses. A future monologue voice should be an explicit style/embedding option, not a change to the text persona.
+`/voice` has a dedicated Japanese spoken persona and does not overwrite `AI_PERSONA`. It shares Xibao's identity and relationships but excludes the text persona's Traditional-Chinese and Discord-format rules. Output is 1–2 short speakable Japanese sentences with natural breathing and no Markdown, URLs, emoji, parenthetical actions, or speaker labels. If a provider still returns non-Japanese text, a separate repair persona retries once. The initial delivery uses the listening-test winner `clean-41-sep`; a future monologue voice should be an explicit style/embedding option, not a change to the text persona.
 
 ## Mention response routing
 

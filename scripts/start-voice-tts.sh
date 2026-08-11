@@ -5,7 +5,7 @@ project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 arale_server_default=$(CDPATH= cd -- "$project_root/../arale-persona-bot" 2>/dev/null && pwd)/server/tts_server_irodori.py
 
 tts_server_script=${XIBAO_TTS_SERVER_SCRIPT:-$arale_server_default}
-voice_embed=${XIBAO_VOICE_EMBED:-$project_root/data/voice/xibao/irodori/mood-shy/speaker_inversion/checkpoint_final.speaker.safetensors}
+voice_embed=${XIBAO_VOICE_EMBED:-$project_root/data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors}
 
 if [ ! -f "$tts_server_script" ]; then
   echo "找不到 Arale Irodori TTS server：$tts_server_script" >&2

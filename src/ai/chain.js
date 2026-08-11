@@ -259,9 +259,12 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
 
 async function generateAIReply(message, userText, options = {}) {
   const {
+    personaOverride = null,
     personaSuffix = "",
     maxReplyChars = null,
     recordMemory = true,
+    includeHistory = true,
+    includeContext = true,
     includeEmojiPrompt = true,
     resolveEmojis = true,
   } = options;
@@ -269,7 +272,7 @@ async function generateAIReply(message, userText, options = {}) {
   const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
   if (guildChain.length === 0) return null;
   const userTurn = buildUserTurn(message, userText);
-  const history = getChannelAIHistory(message.channelId);
+  const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
   let turns = [...history, { role: "user", content: userTurn }];
 
   // System-prompt assembly is ordered most-stable → most-volatile so the
@@ -279,7 +282,7 @@ async function generateAIReply(message, userText, options = {}) {
   //   2. emoji table     (per bot session — memoized, same string every call)
   //   3. familiarity      (per-guild, drifts slowly as talk counts grow)
   //   4. group context    (per-call, fully volatile — MUST be last)
-  let persona = tierConfig.persona;
+  let persona = personaOverride || tierConfig.persona;
 
   const emojiMap = buildEmojiMap(
     message.client,
@@ -292,13 +295,13 @@ async function generateAIReply(message, userText, options = {}) {
   // identity (not topic), so it goes in for ALL tiers including brief — the
   // ~300 token cost buys 西寶 the ability to greet 摯友 vs 剛認識 differently
   // without us hand-curating any list.
-  const roster = getFamiliarityRoster(message.guildId);
+  const roster = includeContext ? getFamiliarityRoster(message.guildId) : [];
   if (roster.length > 0) {
     persona += buildFamiliarityBlock(roster);
   }
 
   let profileBlock = "";
-  if (AI_LONG_TERM_MEMORY_ENABLED) {
+  if (AI_LONG_TERM_MEMORY_ENABLED && includeContext) {
     const userProfile = getUserProfile(message.guildId, message.author?.id);
     profileBlock = buildUserProfileBlock(userProfile);
     if (profileBlock) persona += profileBlock;
@@ -320,7 +323,7 @@ async function generateAIReply(message, userText, options = {}) {
   let groupContextSize = 0;
   let groupContextLines = null;
   let groupBlock = "";
-  if (tierConfig.groupContextCount > 0 && message.channel) {
+  if (includeContext && tierConfig.groupContextCount > 0 && message.channel) {
     const ctx = await fetchGroupContext(
       message.channel,
       tierConfig.groupContextCount,
@@ -342,7 +345,7 @@ async function generateAIReply(message, userText, options = {}) {
   let targetCtxSize = 0;
   let targetBlock = "";
   let imitationActive = false;
-  if (message.channel) {
+  if (includeContext && message.channel) {
     imitationActive = detectImitationIntent(userText);
     const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
       ? listUserProfiles(message.guildId)
@@ -386,7 +389,11 @@ async function generateAIReply(message, userText, options = {}) {
   // scheduled posts (daily recap / bedtime story), which never enter conv memory
   // and are filtered out of group context (it drops the bot's own messages).
   let replyBlock = "";
-  if (message.reference?.messageId && typeof message.fetchReference === "function") {
+  if (
+    includeContext &&
+    message.reference?.messageId &&
+    typeof message.fetchReference === "function"
+  ) {
     try {
       const ref = await message.fetchReference();
       const refContent = (ref.content || "").trim();

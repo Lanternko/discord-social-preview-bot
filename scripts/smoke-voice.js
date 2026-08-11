@@ -4,10 +4,12 @@ const assert = require("node:assert/strict");
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 
 const {
-  VOICE_PERSONA_SUFFIX,
+  VOICE_PERSONA,
+  VOICE_REPAIR_PERSONA,
   sanitizeVoiceText,
   hasJapaneseKana,
   interactionAsMessage,
+  voiceGenerationOptions,
   handleVoiceCommand,
 } = require("../src/voice-reply");
 const {
@@ -53,9 +55,18 @@ function makeInteraction(text = "今天過得怎麼樣？") {
 
 async function main() {
   console.log("voice prompt and sanitizer");
-  await it("keeps the original persona and adds Japanese speech-only rules", () => {
-    assert.match(VOICE_PERSONA_SUFFIX, /只輸出可朗讀的日文台詞/);
-    assert.match(VOICE_PERSONA_SUFFIX, /不要輸出中文/);
+  await it("uses a standalone Japanese spoken persona", () => {
+    assert.match(VOICE_PERSONA, /自然な話し言葉の日本語だけ/);
+    assert.match(VOICE_PERSONA, /西奈津美/);
+    assert.doesNotMatch(VOICE_PERSONA, /繁體中文/);
+    assert.match(VOICE_REPAIR_PERSONA, /日本語音声台本の校正者/);
+  });
+  await it("keeps voice generation out of text history and memory", () => {
+    const options = voiceGenerationOptions(VOICE_PERSONA);
+    assert.equal(options.personaOverride, VOICE_PERSONA);
+    assert.equal(options.includeHistory, false);
+    assert.equal(options.recordMemory, false);
+    assert.equal(options.includeContext, true);
   });
   await it("strips markup, URLs and emoji before TTS", () => {
     assert.equal(
@@ -100,6 +111,8 @@ async function main() {
       sendVoiceMessage: async () => true,
     });
     assert.equal(result, true);
+    assert.equal(aiOptions.personaOverride, VOICE_PERSONA);
+    assert.equal(aiOptions.includeHistory, false);
     assert.equal(aiOptions.recordMemory, false);
     assert.equal(aiOptions.includeEmojiPrompt, false);
     assert.equal(ttsText, "うん、今日はちょっと嬉しかった。");
@@ -120,16 +133,44 @@ async function main() {
     assert.match(interaction.edits[0], /語音服務暫時不可用/);
     assert.match(interaction.edits[0], /少し緊張するけど/);
   });
-  await it("does not send Chinese-only output to Japanese TTS", async () => {
+  await it("repairs Chinese output once before sending it to TTS", async () => {
+    const interaction = makeInteraction();
+    const calls = [];
+    let ttsText = "";
+    const result = await handleVoiceCommand(interaction, {}, {
+      warmup: () => {},
+      generateAIReply: async (_message, text, options) => {
+        calls.push({ text, options });
+        return calls.length === 1 ? "今天很好。" : "今日はちょっと嬉しかったよ。";
+      },
+      synthesize: async (text) => {
+        ttsText = text;
+        return { ogg: Buffer.from("ogg"), durationSecs: 1, waveform: "AA==" };
+      },
+      sendVoiceMessage: async () => true,
+    });
+    assert.equal(result, true);
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].text, /今天很好/);
+    assert.equal(calls[1].options.personaOverride, VOICE_REPAIR_PERSONA);
+    assert.equal(calls[1].options.includeContext, false);
+    assert.equal(ttsText, "今日はちょっと嬉しかったよ。");
+  });
+  await it("does not send output that remains Chinese after one repair", async () => {
     const interaction = makeInteraction();
     let called = false;
+    let generations = 0;
     await handleVoiceCommand(interaction, {}, {
       warmup: () => {},
-      generateAIReply: async () => "今天很好。",
+      generateAIReply: async () => {
+        generations += 1;
+        return "今天很好。";
+      },
       synthesize: async () => {
         called = true;
       },
     });
+    assert.equal(generations, 2);
     assert.equal(called, false);
     assert.equal(interaction.edits[0], "語音台詞生成失敗了，請再試一次。");
   });

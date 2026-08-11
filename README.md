@@ -134,7 +134,7 @@ npm start
 ./scripts/start-voice-tts.sh
 ```
 
-預設讀取 `data/voice/xibao/irodori/mood-shy/speaker_inversion/checkpoint_final.speaker.safetensors`，監聽 `127.0.0.1:8056`。路徑不同時可設定 `XIBAO_VOICE_EMBED` 與 `XIBAO_TTS_SERVER_SCRIPT`；完整環境變數見 [docs/env.md](docs/env.md)。
+預設讀取已通過聽感比較的 `data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors`，監聽 `127.0.0.1:8056`。路徑不同時可設定 `XIBAO_VOICE_EMBED` 與 `XIBAO_TTS_SERVER_SCRIPT`；完整環境變數見 [docs/env.md](docs/env.md)。
 
 > **「西寶」只是預設的顯示名稱與人格**。
 > - 改名字：到 Discord Developer Portal → Bot → 改 username，或直接在伺服器幫 bot 改暱稱

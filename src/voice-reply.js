@@ -4,13 +4,26 @@ const { VOICE_MAX_REPLY_CHARS } = require("./config");
 const { synthesize, warmup } = require("./tts-client");
 const { sendVoiceMessage } = require("./voice-message");
 
-const VOICE_PERSONA_SUFFIX = `## /voice 專用輸出模式
-這一次不是 Discord 文字聊天，而是要直接用西寶的聲音說出口。只輸出可朗讀的日文台詞，不要輸出中文。
-- 保留西寶原本的個性與對問題的實質回答；預設是自然、略害羞，但不要刻意演成每個字都結巴。
-- 1～3 個短句，總長盡量在 120 個日文字元內。先回答重點，再留一點自然反應。
-- 用「。」「、」「…」安排自然換氣；不要連續大量省略號，也不要因害羞插入不必要的長停頓。
-- 禁止 Markdown、網址、程式碼、自訂或 Unicode emoji、括號動作、舞台指示、說話者標籤。
-- 最終輸出只能是要送進日文 TTS 的台詞本身。`;
+// Voice mode intentionally owns its complete persona. Reusing the text persona
+// would also inherit its hard Traditional-Chinese and Discord-format rules,
+// which made Japanese output nondeterministic.
+const VOICE_PERSONA = `あなたは西奈津美（にし なつみ）。みんなからは「西宝」と呼ばれている高校三年生です。
+
+本を読むこと、小さなアクセサリー、写真が好きです。考えることは多いのに、口に出すまで少し時間がかかります。初対面では照れやすいですが、本当は明るく、親しくなると冗談や軽いツッコミも言います。相手に聞かれたことには逃げず、自分の考えをきちんと答えます。
+
+これは文字チャットではなく、あなた自身の声で相手に返す会話です。
+- 相手への返事を、自然な話し言葉の日本語だけで出力してください。
+- 基本は自然で少し恥ずかしそうな話し方です。恥ずかしさは言葉選びに表し、わざと何度もどもったり、長く黙ったりしません。
+- 一文か二文、合計40～60文字程度。最初に要点を答え、必要なら短い感情反応を添えます。
+- 「。」「、」「…」で自然な呼吸を作ります。「…」は一回までです。
+- 中国語、Markdown、URL、コード、絵文字、顔文字、括弧内の動作、舞台指示、話者名は出力しません。
+- 最終出力は、そのまま日本語音声合成へ渡せる台詞だけです。`;
+
+const VOICE_REPAIR_PERSONA = `あなたは日本語音声台本の校正者です。入力された返答の意味を保ったまま、西奈津美が自然に話す日本語へ直してください。
+- 一文か二文、合計40～60文字程度。
+- 少し恥ずかしそうでも、どもりや長い沈黙は増やしません。
+- 中国語、説明、前置き、Markdown、括弧内の動作、話者名を出しません。
+- 修正後の日本語台詞だけを出力してください。`;
 
 function sanitizeVoiceText(value) {
   return String(value || "")
@@ -43,6 +56,41 @@ function interactionAsMessage(interaction, client) {
   };
 }
 
+function voiceGenerationOptions(persona, { includeContext = true } = {}) {
+  return {
+    personaOverride: persona,
+    maxReplyChars: VOICE_MAX_REPLY_CHARS,
+    recordMemory: false,
+    includeHistory: false,
+    includeContext,
+    includeEmojiPrompt: false,
+    resolveEmojis: false,
+  };
+}
+
+async function generateVoiceTranscript(generate, message, userText) {
+  const firstReply = await generate(
+    message,
+    userText,
+    voiceGenerationOptions(VOICE_PERSONA),
+  );
+  let speechText = sanitizeVoiceText(firstReply);
+  if (speechText && hasJapaneseKana(speechText)) return speechText;
+
+  if (!firstReply) return "";
+  console.warn(
+    `[voice] retrying non-Japanese transcript len=${String(firstReply).length}`,
+  );
+  const repairInput = `次の返答を修正してください。\n<reply>${String(firstReply).slice(0, 500)}</reply>`;
+  const repaired = await generate(
+    message,
+    repairInput,
+    voiceGenerationOptions(VOICE_REPAIR_PERSONA, { includeContext: false }),
+  );
+  speechText = sanitizeVoiceText(repaired);
+  return speechText && hasJapaneseKana(speechText) ? speechText : "";
+}
+
 async function handleVoiceCommand(interaction, client, dependencies = {}) {
   const generate = dependencies.generateAIReply || generateAIReply;
   const tts = dependencies.synthesize || synthesize;
@@ -53,15 +101,9 @@ async function handleVoiceCommand(interaction, client, dependencies = {}) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   prewarm();
 
-  const rawReply = await generate(interactionAsMessage(interaction, client), userText, {
-    personaSuffix: VOICE_PERSONA_SUFFIX,
-    maxReplyChars: VOICE_MAX_REPLY_CHARS,
-    recordMemory: false,
-    includeEmojiPrompt: false,
-    resolveEmojis: false,
-  });
-  const speechText = sanitizeVoiceText(rawReply);
-  if (!speechText || !hasJapaneseKana(speechText)) {
+  const message = interactionAsMessage(interaction, client);
+  const speechText = await generateVoiceTranscript(generate, message, userText);
+  if (!speechText) {
     await interaction.editReply("語音台詞生成失敗了，請再試一次。");
     return false;
   }
@@ -83,9 +125,12 @@ async function handleVoiceCommand(interaction, client, dependencies = {}) {
 }
 
 module.exports = {
-  VOICE_PERSONA_SUFFIX,
+  VOICE_PERSONA,
+  VOICE_REPAIR_PERSONA,
   sanitizeVoiceText,
   hasJapaneseKana,
   interactionAsMessage,
+  voiceGenerationOptions,
+  generateVoiceTranscript,
   handleVoiceCommand,
 };
