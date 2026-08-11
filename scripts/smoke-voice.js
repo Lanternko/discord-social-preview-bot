@@ -1,0 +1,172 @@
+#!/usr/bin/env node
+const assert = require("node:assert/strict");
+
+process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
+
+const {
+  VOICE_PERSONA_SUFFIX,
+  sanitizeVoiceText,
+  hasJapaneseKana,
+  interactionAsMessage,
+  handleVoiceCommand,
+} = require("../src/voice-reply");
+const {
+  MESSAGE_FLAG_IS_VOICE_MESSAGE,
+  sendVoiceMessage,
+} = require("../src/voice-message");
+const { postTts } = require("../src/tts-client");
+const { VOICE_COMMAND } = require("../src/commands");
+
+let passed = 0;
+let failed = 0;
+async function it(name, fn) {
+  try {
+    await fn();
+    passed += 1;
+    console.log(`  ✓ ${name}`);
+  } catch (error) {
+    failed += 1;
+    console.error(`  ✗ ${name}`);
+    console.error(`    ${error.stack || error.message}`);
+  }
+}
+
+function makeInteraction(text = "今天過得怎麼樣？") {
+  const edits = [];
+  const deferred = [];
+  return {
+    id: "interaction-1",
+    guildId: "guild-1",
+    channelId: "channel-1",
+    guild: { id: "guild-1", name: "測試群" },
+    channel: { id: "channel-1" },
+    user: { id: "user-1", username: "測試者" },
+    member: { displayName: "小測" },
+    createdTimestamp: 1234,
+    options: { getString: () => text },
+    deferReply: async (payload) => deferred.push(payload),
+    editReply: async (payload) => edits.push(payload),
+    edits,
+    deferred,
+  };
+}
+
+async function main() {
+  console.log("voice prompt and sanitizer");
+  await it("keeps the original persona and adds Japanese speech-only rules", () => {
+    assert.match(VOICE_PERSONA_SUFFIX, /只輸出可朗讀的日文台詞/);
+    assert.match(VOICE_PERSONA_SUFFIX, /不要輸出中文/);
+  });
+  await it("strips markup, URLs and emoji before TTS", () => {
+    assert.equal(
+      sanitizeVoiceText("**うん** https://example.com :xibao: 😳 `大丈夫`。"),
+      "うん 大丈夫。",
+    );
+  });
+  await it("accepts kana and rejects Chinese-only text", () => {
+    assert.equal(hasJapaneseKana("今日は大丈夫だよ。"), true);
+    assert.equal(hasJapaneseKana("今天很好。"), false);
+  });
+
+  console.log("slash command flow");
+  await it("registers /voice with one required message option", () => {
+    assert.equal(VOICE_COMMAND.name, "voice");
+    assert.equal(VOICE_COMMAND.options[0].name, "message");
+    assert.equal(VOICE_COMMAND.options[0].required, true);
+  });
+  await it("maps an interaction to the existing AI message context", () => {
+    const interaction = makeInteraction();
+    const client = { user: { id: "bot-1" } };
+    const message = interactionAsMessage(interaction, client);
+    assert.equal(message.author.id, "user-1");
+    assert.equal(message.channelId, "channel-1");
+    assert.equal(message.client, client);
+  });
+  await it("sends voice and keeps the text-memory path disabled", async () => {
+    const interaction = makeInteraction();
+    const client = { rest: {} };
+    let aiOptions;
+    let ttsText;
+    const result = await handleVoiceCommand(interaction, client, {
+      warmup: () => {},
+      generateAIReply: async (_message, _text, options) => {
+        aiOptions = options;
+        return "うん、今日はちょっと嬉しかった。";
+      },
+      synthesize: async (text) => {
+        ttsText = text;
+        return { ogg: Buffer.from("ogg"), durationSecs: 1, waveform: "AA==" };
+      },
+      sendVoiceMessage: async () => true,
+    });
+    assert.equal(result, true);
+    assert.equal(aiOptions.recordMemory, false);
+    assert.equal(aiOptions.includeEmojiPrompt, false);
+    assert.equal(ttsText, "うん、今日はちょっと嬉しかった。");
+    assert.equal(interaction.edits.length, 1);
+    assert.equal(interaction.edits[0], "語音已送出。");
+  });
+  await it("falls back to the transcript when TTS is unavailable", async () => {
+    const interaction = makeInteraction();
+    const result = await handleVoiceCommand(interaction, {}, {
+      warmup: () => {},
+      generateAIReply: async () => "少し緊張するけど、話せて嬉しい。",
+      synthesize: async () => null,
+      sendVoiceMessage: async () => {
+        throw new Error("must not send");
+      },
+    });
+    assert.equal(result, false);
+    assert.match(interaction.edits[0], /語音服務暫時不可用/);
+    assert.match(interaction.edits[0], /少し緊張するけど/);
+  });
+  await it("does not send Chinese-only output to Japanese TTS", async () => {
+    const interaction = makeInteraction();
+    let called = false;
+    await handleVoiceCommand(interaction, {}, {
+      warmup: () => {},
+      generateAIReply: async () => "今天很好。",
+      synthesize: async () => {
+        called = true;
+      },
+    });
+    assert.equal(called, false);
+    assert.equal(interaction.edits[0], "語音台詞生成失敗了，請再試一次。");
+  });
+
+  console.log("TTS and Discord transport");
+  await it("parses the Irodori TTS response contract", async () => {
+    const fetchImpl = async (_url, request) => {
+      assert.deepEqual(JSON.parse(request.body), { text: "こんにちは" });
+      return {
+        ok: true,
+        headers: new Headers({ "x-duration-secs": "1.25", "x-waveform": "AQI=" }),
+        arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer,
+      };
+    };
+    const audio = await postTts({ text: "こんにちは" }, fetchImpl);
+    assert.equal(audio.durationSecs, 1.25);
+    assert.equal(audio.waveform, "AQI=");
+    assert.deepEqual([...audio.ogg], [1, 2, 3]);
+  });
+  await it("uses Discord's voice-message flag and attachment metadata", async () => {
+    let route;
+    let payload;
+    const client = {
+      rest: { post: async (r, p) => { route = r; payload = p; } },
+    };
+    const ok = await sendVoiceMessage(client, "channel-1", {
+      ogg: Buffer.from([1]), durationSecs: 2.5, waveform: "AQ==",
+    });
+    assert.equal(ok, true);
+    assert.equal(route, "/channels/channel-1/messages");
+    assert.equal(payload.body.flags, MESSAGE_FLAG_IS_VOICE_MESSAGE);
+    assert.equal(payload.body.attachments[0].duration_secs, 2.5);
+    assert.equal(payload.files[0].contentType, "audio/ogg");
+  });
+
+  console.log(`\nvoice smoke: ${passed} passed, ${failed} failed`);
+  if (failed > 0) process.exitCode = 1;
+}
+
+main();

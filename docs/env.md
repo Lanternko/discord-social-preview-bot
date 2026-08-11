@@ -1,5 +1,16 @@
 # Environment Variables
 
+## `/voice` voice reply
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TTS_SERVER_URL` | `http://127.0.0.1:8056` | Local service compatible with Arale Irodori `/tts` and `/warmup` |
+| `TTS_REQUEST_TIMEOUT_MS` | `60000` | Per-request timeout, including a cold model start |
+| `TTS_DEFAULT_REF_ID` | *(empty)* | Optional speaker embedding name/path; leave empty when the service has a default |
+| `VOICE_MAX_REPLY_CHARS` | `140` | Transcript cap before sending text to TTS |
+
+`scripts/start-voice-tts.sh` also accepts `XIBAO_VOICE_EMBED`, `XIBAO_TTS_SERVER_SCRIPT`, `XIBAO_IRODORI_PYTHON`, and `TTS_PORT`. The launcher isolates the shared server's mood lookup directory so `mood=shy` cannot accidentally select Arale's own embedding. These settings affect only `/voice`; mentions, scheduled posts, and the existing text persona remain text-only.
+
 | Variable | Default | Notes |
 |---|---|---|
 | `DISCORD_TOKEN` | *(required)* | |

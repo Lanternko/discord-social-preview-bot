@@ -199,6 +199,13 @@ module.exports = {
   // messages in any guild, bypassing the poster/ManageMessages checks.
   BOT_OWNER_IDS: parseCsvEnv("BOT_OWNER_IDS"),
   AI_PERSONA: process.env.AI_PERSONA || DEFAULT_AI_PERSONA,
+  TTS_SERVER_URL: process.env.TTS_SERVER_URL || "http://127.0.0.1:8056",
+  TTS_REQUEST_TIMEOUT_MS: parsePositiveIntEnv(
+    "TTS_REQUEST_TIMEOUT_MS",
+    60 * 1000,
+  ),
+  TTS_DEFAULT_REF_ID: process.env.TTS_DEFAULT_REF_ID || "",
+  VOICE_MAX_REPLY_CHARS: parsePositiveIntEnv("VOICE_MAX_REPLY_CHARS", 140),
   DEFAULT_AI_PERSONA,
   THREADS_EMBED_COLOR: 0x101010,
   DEDUPE_WINDOW_MS: 60 * 1000,

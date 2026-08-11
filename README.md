@@ -4,7 +4,7 @@
 
 一個會攔截 Threads / X / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebook / 巴哈姆特 / PTT 連結、並回覆完整預覽的 Discord bot。
 
-同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)）。
+同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)），也可用 `/voice` 明確要求西寶發一則語音訊息。
 
 ###  [邀請西寶到你的伺服器](https://discord.com/oauth2/authorize?client_id=1491051091524059316&permissions=2815164231806016&scope=bot+applications.commands)
 
@@ -125,6 +125,16 @@ npm start
 ## @西寶 AI 回覆（可選）
 
 在任何頻道 `@西寶 你今天好嗎？` 會觸發回覆。
+
+原本的文字模式仍是預設行為。只有執行 `/voice message:想說的話` 才會生成適合朗讀的日文短句，並以 Discord 語音訊息回覆；語音回合不會寫入文字模式的對話記憶。若 TTS 暫時不可用，指令會私下顯示本次台詞，不會影響一般文字聊天。
+
+語音服務沿用 Arale 專案的 Irodori HTTP 契約。啟動西寶的害羞聲線服務：
+
+```bash
+./scripts/start-voice-tts.sh
+```
+
+預設讀取 `data/voice/xibao/irodori/mood-shy/speaker_inversion/checkpoint_final.speaker.safetensors`，監聽 `127.0.0.1:8056`。路徑不同時可設定 `XIBAO_VOICE_EMBED` 與 `XIBAO_TTS_SERVER_SCRIPT`；完整環境變數見 [docs/env.md](docs/env.md)。
 
 > **「西寶」只是預設的顯示名稱與人格**。
 > - 改名字：到 Discord Developer Portal → Bot → 改 username，或直接在伺服器幫 bot 改暱稱
