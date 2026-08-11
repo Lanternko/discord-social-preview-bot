@@ -1,6 +1,9 @@
 const { MessageFlags } = require("discord.js");
 const { generateAIReply } = require("./ai/chain");
-const { VOICE_MAX_REPLY_CHARS } = require("./config");
+const {
+  DEEPSEEK_REASONING_HEADROOM,
+  VOICE_MAX_REPLY_CHARS,
+} = require("./config");
 const { synthesize, warmup } = require("./tts-client");
 const { sendVoiceMessage } = require("./voice-message");
 
@@ -137,12 +140,14 @@ function voiceGenerationOptions(persona, { includeContext = true } = {}) {
     includeContext,
     includeEmojiPrompt: false,
     resolveEmojis: false,
-    // DeepSeek V4 defaults to thinking mode. Voice replies are short style
-    // transformations, so hidden reasoning only adds latency and timeout risk.
+    // Keep the regular DeepSeek V4 thinking policy explicit for voice mode.
+    // This preserves answer quality for difficult questions at the cost of the
+    // provider's known long-tail latency.
     providerOptions: {
       deepSeek: {
-        thinking: { type: "disabled" },
-        reasoningHeadroom: 0,
+        thinking: { type: "enabled" },
+        reasoningEffort: "high",
+        reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
       },
     },
   };

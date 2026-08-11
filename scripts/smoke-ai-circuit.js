@@ -523,7 +523,7 @@ async function main() {
     assert.ok(dsEntry);
     assert.ok(dsEntry.label.includes("flash"), `expected flash model, got ${dsEntry.label}`);
   });
-  await itAsync("passes voice-specific non-thinking options to keyed DeepSeek", async () => {
+  await itAsync("passes task-specific thinking options to keyed DeepSeek", async () => {
     resetKeyCache();
     setGuildApiKey("voice-guild", "sk-voice-test");
     let requestBody;
@@ -541,7 +541,11 @@ async function main() {
     };
     try {
       const { chain } = buildGuildChain("voice-guild", standardTier, {
-        deepSeek: { thinking: { type: "disabled" }, reasoningHeadroom: 0 },
+        deepSeek: {
+          thinking: { type: "enabled" },
+          reasoningEffort: "high",
+          reasoningHeadroom: 2048,
+        },
       });
       const result = await chain[0].call(
         [{ role: "user", content: "こんにちは" }],
@@ -549,8 +553,9 @@ async function main() {
         100,
       );
       assert.equal(result.ok, true);
-      assert.deepEqual(requestBody.thinking, { type: "disabled" });
-      assert.equal(requestBody.max_tokens, 100);
+      assert.deepEqual(requestBody.thinking, { type: "enabled" });
+      assert.equal(requestBody.reasoning_effort, "high");
+      assert.equal(requestBody.max_tokens, 2148);
     } finally {
       global.fetch = originalFetch;
     }
