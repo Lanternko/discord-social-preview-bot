@@ -6,6 +6,10 @@
 
 Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild AI plan (see `/ai-tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../src/ai/persona.js).
 
+## Voice output layer
+
+`/voice` does not define a second character persona and does not overwrite `AI_PERSONA`. It appends a narrow output layer to the existing persona: 1–3 speakable Japanese sentences, punctuation for natural breathing, and no Markdown, URLs, emoji, parenthetical actions, or speaker labels. The first release uses a natural-but-slightly-shy delivery matched to the current shy speaker embedding, without forcing constant stutters or excessive ellipses. A future monologue voice should be an explicit style/embedding option, not a change to the text persona.
+
 ## Mention response routing
 
 When a user mentions the bot (`@西寶`), the bot checks the message text after stripping the mention:

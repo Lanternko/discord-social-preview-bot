@@ -31,6 +31,7 @@ const {
   removeGuildApiKey,
 } = require("./ai/guild-key-store");
 const { getUsage } = require("./ai/rate-limiter");
+const { handleVoiceCommand } = require("./voice-reply");
 const {
   isStableObservation,
   describeObservationEvidence,
@@ -190,6 +191,20 @@ const AI_KEY_COMMAND = {
   ],
 };
 
+const VOICE_COMMAND = {
+  name: "voice",
+  description: "讓西寶用語音回答（不影響原本的文字回覆）",
+  options: [
+    {
+      name: "message",
+      description: "想對西寶說的話",
+      type: 3, // STRING
+      required: true,
+      max_length: 500,
+    },
+  ],
+};
+
 // Returns true when the registered command matches the expected spec on the
 // fields we care about. Currently checks description + defaultMemberPermissions
 // — extend here if we ever start diffing options.
@@ -221,6 +236,7 @@ async function ensureApplicationCommands(client) {
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
     AI_KEY_COMMAND,
+    VOICE_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -815,6 +831,11 @@ async function handleInteraction(interaction, client) {
 
   if (interaction.commandName === AI_KEY_COMMAND.name) {
     await handleAiKeyCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === VOICE_COMMAND.name) {
+    await handleVoiceCommand(interaction, client);
   }
 }
 
@@ -825,11 +846,13 @@ module.exports = {
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
   AI_KEY_COMMAND,
+  VOICE_COMMAND,
   ensureApplicationCommands,
   buildPermissionDebugMessage,
   handleTierCommand,
   handleScheduleCommand,
   handleMemoryCommand,
   handleAiKeyCommand,
+  handleVoiceCommand,
   handleInteraction,
 };

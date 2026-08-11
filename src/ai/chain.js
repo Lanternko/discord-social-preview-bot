@@ -194,7 +194,14 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
   return null;
 }
 
-async function generateAIReply(message, userText) {
+async function generateAIReply(message, userText, options = {}) {
+  const {
+    personaSuffix = "",
+    maxReplyChars = null,
+    recordMemory = true,
+    includeEmojiPrompt = true,
+    resolveEmojis = true,
+  } = options;
   const tierConfig = getTierConfig(message.guildId);
   const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
   if (guildChain.length === 0) return null;
@@ -216,7 +223,7 @@ async function generateAIReply(message, userText) {
     message.guildId,
     EMOJI_TRUSTED_GUILD_IDS,
   );
-  persona += buildEmojiPromptBlock(emojiMap);
+  if (includeEmojiPrompt) persona += buildEmojiPromptBlock(emojiMap);
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
   // identity (not topic), so it goes in for ALL tiers including brief — the
@@ -237,6 +244,10 @@ async function generateAIReply(message, userText) {
     const guildBlock = buildGuildProfileBlock(guildProfile);
     if (guildBlock) persona += guildBlock;
   }
+
+  // Mode-specific rules are appended last so they can narrow output format
+  // without replacing the stable character persona used by normal text chat.
+  if (personaSuffix) persona += `\n\n${personaSuffix}`;
 
   // Group + target context are both injected as user-role turns (NOT in the
   // system prompt) so user-controlled Discord text stays out of the highest-
@@ -358,7 +369,10 @@ async function generateAIReply(message, userText) {
     tierConfig.maxTokens,
   );
   if (result) {
-    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
+    const capped = trimDescription(
+      result.text,
+      maxReplyChars || tierConfig.maxReplyChars,
+    );
     // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the
     // resolved `<:name:id>` syntax, the model would see its own raw IDs next
     // turn and imitate them — mangling the id/colons and producing broken emoji.
@@ -366,22 +380,24 @@ async function generateAIReply(message, userText) {
       message.member?.displayName ||
       message.author?.globalName ||
       message.author?.username;
-    recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns, {
-      guildId: message.guildId,
-      userId: message.author?.id,
-      displayName,
-    });
-    recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
-      guildId: message.guildId,
-      userId: message.client?.user?.id,
-      displayName: message.client?.user?.username || "西寶",
-    });
+    if (recordMemory) {
+      recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns, {
+        guildId: message.guildId,
+        userId: message.author?.id,
+        displayName,
+      });
+      recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+        guildId: message.guildId,
+        userId: message.client?.user?.id,
+        displayName: message.client?.user?.username || "西寶",
+      });
+    }
     const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
       `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
 
-    if (AI_LONG_TERM_MEMORY_ENABLED) {
+    if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {
       const guildId = message.guildId;
       const userId = message.author?.id;
       const runChain = (t, p, m) => runProviderChain(guildChain, t, p, m);
@@ -412,7 +428,7 @@ async function generateAIReply(message, userText) {
       }
     }
 
-    return resolveCustomEmojis(capped, emojiMap);
+    return resolveEmojis ? resolveCustomEmojis(capped, emojiMap) : capped;
   }
 
   console.warn(

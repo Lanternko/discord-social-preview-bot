@@ -7,10 +7,11 @@
   "type": "commonjs",
   "scripts": {
     "start": "if [ -x /opt/homebrew/opt/node@22/bin/node ]; then /opt/homebrew/opt/node@22/bin/node src/index.js; else node src/index.js; fi",
-    "test": "npm run test:pure && npm run test:routing && npm run test:circuit",
+    "test": "npm run test:pure && npm run test:routing && npm run test:circuit && npm run test:voice",
     "test:pure": "node scripts/smoke.js",
     "test:routing": "node scripts/routing-smoke.js",
-    "test:circuit": "node scripts/smoke-ai-circuit.js"
+    "test:circuit": "node scripts/smoke-ai-circuit.js",
+    "test:voice": "node scripts/smoke-voice.js"
   },
   "engines": {
     "node": ">=20"
