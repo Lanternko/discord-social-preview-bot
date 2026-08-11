@@ -228,3 +228,25 @@ review bank：positive 52 / negative 32。工具 commit `1d09dd2`、`1205471`。
 
 **不要拿 loss 跨資料集比。** 害羞 loss 最低但聲音最不穩：素材少、同質性高本來就好擬合，
 這個數字跟品質無關。這是第二次踩到同一個坑（第一次是拿 11 段的 0.845 當成「純度勝過數量」）。
+
+---
+
+## 更新 2026-08-11（分離版勝出，clean-41 ablation）
+
+使用者聽完同句、同 seed、同步數的「真人／原始 54 段／分離後 54 段」八組比較後，
+結論是：**分離版大致都比較好**。後續以 `full-54-sep` 為主線，原始版只保留作基準。
+
+背景量測已收斂成 `tools/voice/measure_separation_snr.py`。它會先對 raw 與 vocal stem
+做時間互相關對齊，再以 least squares 配適 vocal 增益，最後以
+`raw = gain * vocal + residual` 計算能量比；不能拿被 loudnorm 到 -23 LUFS 的 stem
+直接減 raw。54 段重跑結果與先前臨時量測一致：
+
+- 中位數 12.94 dB，最差 4.59 dB，最好 32.30 dB。
+- `< 10 dB` 共 13 段；排除後為 41 段 / 136.811 秒 / 6 個來源集。
+- 完整報告：`data/voice/xibao/reports/separation-snr-full54.json`（資料產物，不進 Git）。
+- clean input：`data/voice/xibao/irodori/clean-41-sep/train.input.jsonl`（資料產物，不進 Git）。
+
+下一顆模型應使用相同 seed、3000 steps 與推論句，只把 `< 10 dB` 的 13 段排除，命名
+`clean-41-sep`。這是資料潔淨度 ablation，不要同時改 learning rate、步數或生成參數。
+另用既有 `full-54-sep` 的 1500 / 2000 / 2500 / 3000 checkpoint 做同句 sweep，分開判斷
+「低 SNR 分離瑕疵」與「訓練後段過擬合」。
