@@ -151,6 +151,8 @@ module.exports = {
     .map((s) => s.trim())
     .filter(Boolean),
   KIMI_API_KEY: process.env.KIMI_API_KEY,
+  KIMI_ENABLED:
+    (process.env.KIMI_ENABLED || "true").toLowerCase() === "true",
   KIMI_MODEL: process.env.KIMI_MODEL || "kimi-k2.6",
   KIMI_BASE_URL:
     process.env.KIMI_BASE_URL ||

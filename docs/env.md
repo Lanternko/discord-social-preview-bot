@@ -49,11 +49,14 @@
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |
 | `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (`deepseek-v4-pro` / `-reasoner`) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. Set to 0 for non-reasoning models like `deepseek-chat` if you want to save tokens |
+| `KIMI_API_KEY` | — | Optional. Second provider after DeepSeek |
+| `KIMI_ENABLED` | `true` | Set `false` to remove Kimi from all provider chains without deleting its key, for example while the account balance is empty |
+| `KIMI_MODEL` | `kimi-k2.6` | Kimi model name |
 | `GROQ_API_KEY` | — | Optional. Third layer (Groq free tier) |
 | `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated within-Groq fallback. Legacy `GROQ_MODEL` read as single-item list |
 | `GEMINI_API_KEY` | — | Optional. Last-layer fallback. **See [ai-providers.md](ai-providers.md) for billing trap** |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
-| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `groq`, `gemini`. Empty = full chain |
+| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `kimi`, `groq`, `gemini`. Empty = full chain; `KIMI_ENABLED=false` still keeps Kimi disabled |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
 | `RECAP_KIMI_TIMEOUT_MS` | `45000` | Daily-recap-only Kimi timeout; interactive replies still use `AI_TIMEOUT_MS` |
 | `RECAP_DEEPSEEK_TIMEOUT_MS` | `90000` | Daily-recap-only DeepSeek timeout. Recaps explicitly keep thinking enabled and retain `DEEPSEEK_REASONING_HEADROOM` |

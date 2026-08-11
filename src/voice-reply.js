@@ -137,6 +137,14 @@ function voiceGenerationOptions(persona, { includeContext = true } = {}) {
     includeContext,
     includeEmojiPrompt: false,
     resolveEmojis: false,
+    // DeepSeek V4 defaults to thinking mode. Voice replies are short style
+    // transformations, so hidden reasoning only adds latency and timeout risk.
+    providerOptions: {
+      deepSeek: {
+        thinking: { type: "disabled" },
+        reasoningHeadroom: 0,
+      },
+    },
   };
 }
 
