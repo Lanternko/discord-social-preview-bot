@@ -27,17 +27,17 @@ const VOICE_PERSONA = `あなたは西奈津美（にし なつみ）。みん�
 - 一文か二文、合計40～60文字程度。最初に要点を答え、必要なら短い感情反応を添えます。
 - 「。」「、」「…」で自然な呼吸を作ります。「…」は一回までです。
 - 中国語、Markdown、URL、コード、絵文字、顔文字、括弧内の動作、舞台指示、話者名は出力しません。
-- 最終出力は必ず JSON 一個だけです。説明やコードフェンスは付けません。
-- JSON の display は画面に見せる台詞で、固有名詞は普段の表記を保ちます。
-- JSON の speech は display と同じ意味の読み上げ台詞です。英字、外国語名、日本語として読みにくい人名はカタカナの正しい読みへ直します。通常の日本語の漢字はそのままで構いません。
-- 例：{"display":"ROSELIAも好きだけど、摳捷くんと話す方が落ち着くよ。","speech":"ロゼリアも好きだけど、コジェックくんと話す方が落ち着くよ。"}`;
+- 最終出力は「表示：」と「読み：」の二行だけです。説明やコードフェンスは付けません。
+- 表示には画面で見せる台詞を書き、固有名詞は相手が使った普段の表記を保ちます。
+- 読みには表示と同じ内容の音声台本を書きます。英字、外国語名、日本語として読みにくい人名だけを正しいカタカナ読みに直し、それ以外の言葉や語気は変えません。通常の日本語の漢字はそのままで構いません。
+- 例：
+表示：ROSELIAも好きだけど、摳捷くんと話す方が落ち着くよ。
+読み：ロゼリアも好きだけど、コジェックくんと話す方が落ち着くよ。`;
 
-const VOICE_REPAIR_PERSONA = `あなたは日本語音声台本の校正者です。入力された返答の意味を保ったまま、西奈津美が自然に話す日本語へ直してください。
-- 一文か二文、合計40～60文字程度。
-- 少し恥ずかしそうでも、どもりや長い沈黙は増やしません。
-- 中国語、説明、前置き、Markdown、括弧内の動作、話者名を出しません。
-- 必ず {"display":"画面用の台詞","speech":"音声合成用の台詞"} という JSON 一個だけを出力します。
-- display は元の固有名詞表記を保ち、speech では英字や日本語として読みにくい人名をカタカナ読みに直してください。`;
+const VOICE_REPAIR_PERSONA = `あなたは日本語音声台本の読み方を整える校正者です。入力された表示台詞を一字一句できるだけ保って、音声合成用の台詞だけを返してください。
+- 英字、外国語名、日本語として読みにくい人名を、文脈から判断した正しいカタカナ読みに直します。
+- 通常の日本語の漢字、言葉、語順、語気、句読点は変えません。
+- 説明、前置き、ラベル、Markdown、括弧、話者名を付けず、読み上げる台詞だけを出力します。`;
 
 function sanitizeVoiceText(value) {
   return String(value || "")
@@ -94,6 +94,18 @@ function parseVoicePayload(value, { allowPlain = false } = {}) {
       // A repair pass below gets one chance to turn malformed output into JSON.
     }
   }
+  const labelled = candidate.match(
+    /(?:^|\n)\s*(?:表示|display)\s*[：:]\s*([\s\S]*?)\s*\n+\s*(?:読み|speech)\s*[：:]\s*([\s\S]+)$/i,
+  );
+  if (labelled) {
+    const displayText = capVoiceText(sanitizeVoiceText(labelled[1]));
+    const speechText = capVoiceText(
+      normalizeSpeechPronunciation(sanitizeVoiceText(labelled[2])),
+    );
+    if (displayText && speechText && hasJapaneseKana(speechText)) {
+      return { displayText, speechText };
+    }
+  }
   if (!allowPlain) return null;
   const displayText = capVoiceText(sanitizeVoiceText(candidate));
   const speechText = capVoiceText(normalizeSpeechPronunciation(displayText));
@@ -139,20 +151,51 @@ async function generateVoiceReply(generate, message, userText) {
 
   if (!firstReply) return "";
   console.warn(
-    `[voice] retrying malformed voice payload len=${String(firstReply).length}`,
+    `[voice] generating missing speech script len=${String(firstReply).length}`,
   );
-  const repairInput = `次の返答を修正してください。\n<reply>${String(firstReply).slice(0, 500)}</reply>`;
-  const repaired = await generate(
+  const displayText = capVoiceText(sanitizeVoiceText(firstReply));
+  if (!displayText || !hasJapaneseKana(displayText)) return null;
+  const repairInput = `次の表示台詞を音声用に読み替えてください。\n<display>${displayText}</display>`;
+  const speechReply = await generate(
     message,
     repairInput,
     voiceGenerationOptions(VOICE_REPAIR_PERSONA, { includeContext: false }),
   );
-  return parseVoicePayload(repaired, { allowPlain: true });
+  const speechText = capVoiceText(
+    normalizeSpeechPronunciation(sanitizeVoiceText(speechReply || displayText)),
+  );
+  return speechText && hasJapaneseKana(speechText)
+    ? { displayText, speechText }
+    : null;
+}
+
+function formatVoiceQuestion(interaction, userText) {
+  const displayName = String(
+    interaction.member?.displayName ||
+    interaction.user?.globalName ||
+    interaction.user?.username ||
+    "群友",
+  ).replace(/[\r\n]+/g, " ").trim();
+  const quoted = String(userText).replace(/\r?\n/g, "\n> ");
+  return `> **${displayName}：** ${quoted}`;
+}
+
+async function publishVoiceQuestion(interaction, userText) {
+  try {
+    await interaction.reply({
+      content: formatVoiceQuestion(interaction, userText),
+      allowedMentions: { parse: [] },
+    });
+    return true;
+  } catch (error) {
+    console.warn(`[voice] question send failed: ${error.message}`);
+    return false;
+  }
 }
 
 async function publishVoiceTranscript(interaction, displayText) {
   try {
-    await interaction.editReply({
+    await interaction.followUp({
       content: displayText,
       allowedMentions: { parse: [] },
     });
@@ -167,26 +210,34 @@ async function handleVoiceCommand(interaction, client, dependencies = {}) {
   const generate = dependencies.generateAIReply || generateAIReply;
   const tts = dependencies.synthesize || synthesize;
   const send = dependencies.sendVoiceMessage || sendVoiceMessage;
+  const publishQuestion = dependencies.publishVoiceQuestion || publishVoiceQuestion;
   const publishText = dependencies.publishVoiceTranscript || publishVoiceTranscript;
   const prewarm = dependencies.warmup || warmup;
 
   const userText = interaction.options.getString("message", true).trim();
-  // Public acknowledgement makes the slash-command question visible to the
-  // whole channel. The edited response becomes the display transcript.
-  await interaction.deferReply();
+  // Discord only shows slash-command invocations to their author. Mirror the
+  // question in a normal public bot message before any slow AI/TTS work.
+  const questionSent = await publishQuestion(interaction, userText);
+  if (!questionSent) return false;
   prewarm();
 
   const message = interactionAsMessage(interaction, client);
   const voiceReply = await generateVoiceReply(generate, message, userText);
   if (!voiceReply) {
-    await interaction.editReply("語音台詞生成失敗了，請再試一次。");
+    await interaction.followUp({
+      content: "語音台詞生成失敗了，請再試一次。",
+      flags: MessageFlags.Ephemeral,
+    });
     return false;
   }
 
   const { displayText, speechText } = voiceReply;
   const textSent = await publishText(interaction, displayText);
   if (!textSent) {
-    await interaction.editReply("文字回覆送出失敗了，請再試一次。");
+    await interaction.followUp({
+      content: "文字回覆送出失敗了，請再試一次。",
+      flags: MessageFlags.Ephemeral,
+    });
     return false;
   }
 
@@ -221,6 +272,8 @@ module.exports = {
   interactionAsMessage,
   voiceGenerationOptions,
   generateVoiceReply,
+  formatVoiceQuestion,
+  publishVoiceQuestion,
   publishVoiceTranscript,
   handleVoiceCommand,
 };
