@@ -25,6 +25,10 @@ export TTS_IRODORI_DEFAULT_EMBED=$voice_embed
 # select Arale's si_shy_gold instead of Xibao's checkpoint.
 export TTS_IRODORI_EMBED_DIR=$(dirname -- "$voice_embed")
 export TTS_TEMPO_SLOW=${TTS_TEMPO_SLOW:-1.0}
+# The listening audit found this seed preserves Xibao's shy timbre most
+# reliably. A fixed seed also makes the shared server stop after one candidate
+# instead of rerolling up to CAND_MAX candidates by roughness alone.
+export TTS_IRODORI_SEED=${XIBAO_IRODORI_SEED:-${TTS_IRODORI_SEED:-1082616115}}
 
 irodori_python=${XIBAO_IRODORI_PYTHON:-$HOME/side_projects/reference-repos/Irodori-TTS/.venv/bin/python}
 exec "$irodori_python" "$tts_server_script"

@@ -9,7 +9,7 @@
 | `TTS_DEFAULT_REF_ID` | *(empty)* | Optional speaker embedding name/path; leave empty when the service has a default |
 | `VOICE_MAX_REPLY_CHARS` | `60` | Transcript cap before sending text to TTS |
 
-`scripts/start-voice-tts.sh` also accepts `XIBAO_VOICE_EMBED`, `XIBAO_TTS_SERVER_SCRIPT`, `XIBAO_IRODORI_PYTHON`, and `TTS_PORT`. The launcher isolates the shared server's mood lookup directory so `mood=shy` cannot accidentally select Arale's own embedding. These settings affect only `/voice`; mentions, scheduled posts, and the existing text persona remain text-only.
+`scripts/start-voice-tts.sh` also accepts `XIBAO_VOICE_EMBED`, `XIBAO_TTS_SERVER_SCRIPT`, `XIBAO_IRODORI_PYTHON`, `XIBAO_IRODORI_SEED`, and `TTS_PORT`. The launcher isolates the shared server's mood lookup directory so `mood=shy` cannot accidentally select Arale's own embedding. It fixes the production seed to the listening-test winner `1082616115` by default; set `XIBAO_IRODORI_SEED` to override it. A fixed seed intentionally disables the server's random roughness-only candidate rerolls. These settings affect only `/voice`; mentions, scheduled posts, and the existing text persona remain text-only.
 
 | Variable | Default | Notes |
 |---|---|---|
