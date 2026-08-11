@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 
@@ -66,6 +68,17 @@ function makeInteraction(text = "今天過得怎麼樣？") {
 
 async function main() {
   console.log("voice prompt and sanitizer");
+  await it("pins the listening-test winner seed in the Xibao TTS launcher", () => {
+    const launcher = fs.readFileSync(
+      path.join(__dirname, "start-voice-tts.sh"),
+      "utf8",
+    );
+    assert.match(
+      launcher,
+      /TTS_IRODORI_SEED=\$\{XIBAO_IRODORI_SEED:-\$\{TTS_IRODORI_SEED:-1082616115\}\}/,
+    );
+    assert.match(launcher, /TTS_TEMPO_SLOW=\$\{TTS_TEMPO_SLOW:-1\.0\}/);
+  });
   await it("uses a standalone Japanese spoken persona", () => {
     assert.match(VOICE_PERSONA, /自然な話し言葉の日本語だけ/);
     assert.match(VOICE_PERSONA, /西奈津美/);
