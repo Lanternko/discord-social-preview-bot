@@ -79,15 +79,15 @@ async function main() {
     );
     assert.match(launcher, /TTS_TEMPO_SLOW=\$\{TTS_TEMPO_SLOW:-1\.0\}/);
   });
-  await it("uses a standalone Japanese spoken persona", () => {
-    assert.match(VOICE_PERSONA, /自然な話し言葉の日本語だけ/);
+  await it("uses a standalone bilingual spoken persona", () => {
+    assert.match(VOICE_PERSONA, /台湾で自然に使う繁體中文/);
+    assert.match(VOICE_PERSONA, /自然な話し言葉の日本語/);
     assert.match(VOICE_PERSONA, /西奈津美/);
     assert.match(VOICE_PERSONA, /質問そのものに直接答えて/);
     assert.match(VOICE_PERSONA, /相手の記憶、親しさ、グループの記憶、最近の会話/);
     assert.match(VOICE_PERSONA, /「表示：」と「読み：」/);
     assert.match(VOICE_PERSONA, /正しいカタカナ読みに直し/);
-    assert.doesNotMatch(VOICE_PERSONA, /繁體中文/);
-    assert.match(VOICE_REPAIR_PERSONA, /日本語音声台本の読み方を整える校正者/);
+    assert.match(VOICE_REPAIR_PERSONA, /繁體中文の表示台詞/);
   });
   await it("keeps voice generation out of text history and memory", () => {
     const options = voiceGenerationOptions(VOICE_PERSONA);
@@ -118,9 +118,9 @@ async function main() {
     assert.equal(parsed.speechText, "ロゼリアも好きだけど、コジェックくんが特別かも。");
     assert.equal(normalizeSpeechPronunciation("RoseliaとKojek"), "ロゼリアとコジェック");
     const labelled = parseVoicePayload(
-      "表示：ROSELIAと摳捷くん、どっちも大切だよ。\n読み：ロゼリアとコジェックくん、どっちも大切だよ。",
+      "表示：ROSELIA 和摳捷對我都很重要。\n読み：ロゼリアとコジェックくん、どっちも大切だよ。",
     );
-    assert.equal(labelled.displayText, "ROSELIAと摳捷くん、どっちも大切だよ。");
+    assert.equal(labelled.displayText, "ROSELIA 和摳捷對我都很重要。");
     assert.equal(labelled.speechText, "ロゼリアとコジェックくん、どっちも大切だよ。");
   });
 
@@ -149,7 +149,7 @@ async function main() {
       generateAIReply: async (_message, _text, options) => {
         events.push("generate");
         aiOptions = options;
-        return "表示：うん、今日はちょっと嬉しかった。\n読み：うん、今日はちょっと嬉しかった。";
+        return "表示：嗯，今天過得還滿開心的。\n読み：うん、今日はちょっと嬉しかった。";
       },
       synthesize: async (text) => {
         events.push("tts");
@@ -180,7 +180,7 @@ async function main() {
     assert.deepEqual(events, [
       "question:今天過得怎麼樣？",
       "generate",
-      "text:うん、今日はちょっと嬉しかった。",
+      "text:嗯，今天過得還滿開心的。",
       "tts",
       "voice",
     ]);
@@ -195,7 +195,7 @@ async function main() {
     const result = await handleVoiceCommand(interaction, {}, {
       warmup: () => {},
       generateAIReply: async () => JSON.stringify({
-        display: "少し緊張するけど、話せて嬉しい。",
+        display: "雖然有點緊張，但能和你說話很開心。",
         speech: "少し緊張するけど、話せて嬉しい。",
       }),
       publishVoiceTranscript: async () => true,
@@ -208,7 +208,7 @@ async function main() {
     assert.match(interaction.followUps[0].content, /語音服務暫時不可用/);
     assert.match(interaction.followUps[0].content, /文字台詞已經送出/);
   });
-  await it("creates a separate katakana speech script when the first output is plain", async () => {
+  await it("translates a plain Chinese display reply into a Japanese speech script", async () => {
     const interaction = makeInteraction();
     const calls = [];
     let ttsText = "";
@@ -217,7 +217,7 @@ async function main() {
       generateAIReply: async (_message, text, options) => {
         calls.push({ text, options });
         return calls.length === 1
-          ? "ROSELIAも好きだけど、摳捷くんが特別かも。"
+          ? "我也喜歡 ROSELIA，但摳捷對我來說可能更特別。"
           : "ロゼリアも好きだけど、コジェックくんが特別かも。";
       },
       synthesize: async (text) => {
@@ -229,12 +229,13 @@ async function main() {
     });
     assert.equal(result, true);
     assert.equal(calls.length, 2);
+    assert.match(calls[1].text, /繁體中文/);
     assert.match(calls[1].text, /ROSELIA/);
     assert.equal(calls[1].options.personaOverride, VOICE_REPAIR_PERSONA);
     assert.equal(calls[1].options.includeContext, false);
     assert.equal(ttsText, "ロゼリアも好きだけど、コジェックくんが特別かも。");
   });
-  await it("does not send Chinese output to the speech converter or TTS", async () => {
+  await it("does not send Chinese to TTS when the Japanese repair also fails", async () => {
     const interaction = makeInteraction();
     let called = false;
     let generations = 0;
@@ -248,7 +249,7 @@ async function main() {
         called = true;
       },
     });
-    assert.equal(generations, 1);
+    assert.equal(generations, 2);
     assert.equal(called, false);
     assert.match(interaction.followUps[0].content, /語音台詞生成失敗/);
   });
@@ -268,10 +269,10 @@ async function main() {
     let payload;
     const ok = await publishVoiceTranscript(
       { followUp: async (value) => { payload = value; } },
-      "今日は大丈夫だよ。",
+      "今天沒問題喔。",
     );
     assert.equal(ok, true);
-    assert.equal(payload.content, "今日は大丈夫だよ。");
+    assert.equal(payload.content, "今天沒問題喔。");
     assert.deepEqual(payload.allowedMentions, { parse: [] });
   });
 
