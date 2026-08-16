@@ -177,11 +177,22 @@ module.exports = {
     parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
   ),
   // Daily recaps run ahead of their publish time and may use a longer budget
-  // without making interactive @ replies wait. DeepSeek keeps reasoning on.
+  // without making interactive @ replies wait. DeepSeek keeps reasoning on,
+  // but `high` effort has burned the entire 2948-token budget on hidden
+  // thinking (empty finish_reason=length, 2026-08-13..16). Recaps therefore
+  // use a larger headroom + a dedicated display budget, then a no-think retry.
   RECAP_KIMI_TIMEOUT_MS: parsePositiveIntEnv("RECAP_KIMI_TIMEOUT_MS", 45000),
   RECAP_DEEPSEEK_TIMEOUT_MS: parsePositiveIntEnv(
     "RECAP_DEEPSEEK_TIMEOUT_MS",
     90000,
+  ),
+  RECAP_DEEPSEEK_REASONING_HEADROOM: parsePositiveIntEnv(
+    "RECAP_DEEPSEEK_REASONING_HEADROOM",
+    4096,
+  ),
+  RECAP_DEEPSEEK_MAX_TOKENS: parsePositiveIntEnv(
+    "RECAP_DEEPSEEK_MAX_TOKENS",
+    1600,
   ),
   RECAP_GEMINI_TIMEOUT_MS: parsePositiveIntEnv(
     "RECAP_GEMINI_TIMEOUT_MS",

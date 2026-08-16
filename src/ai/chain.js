@@ -17,6 +17,7 @@ const {
   DEEPSEEK_REASONING_HEADROOM,
   RECAP_KIMI_TIMEOUT_MS,
   RECAP_DEEPSEEK_TIMEOUT_MS,
+  RECAP_DEEPSEEK_REASONING_HEADROOM,
   RECAP_GEMINI_TIMEOUT_MS,
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
@@ -119,22 +120,34 @@ const AI_PROVIDER_CHAIN = buildAIProviderChain();
 // Daily recaps have a task-specific latency budget because generation starts
 // one minute before publication. Keep Groq/Llama completely out of this chain:
 // a recap should wait for the higher-quality providers instead of silently
-// changing voice. DeepSeek remains first and Kimi is second when enabled.
+// changing voice. DeepSeek remains first; a same-model no-think entry is
+// second so a thinking-empty day still publishes from DeepSeek.
 function buildRecapProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
-    const options = {
+    const thinkingOptions = {
       timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
-      reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+      reasoningHeadroom: RECAP_DEEPSEEK_REASONING_HEADROOM,
       thinking: { type: "enabled" },
-      reasoningEffort: "high",
+      reasoningEffort: "medium",
     };
     chain.push({
       label: `deepseek:${DEEPSEEK_MODEL}`,
-      options,
+      options: thinkingOptions,
       call: (turns, persona, maxTokens) =>
-        callDeepSeek(turns, persona, maxTokens, options),
+        callDeepSeek(turns, persona, maxTokens, thinkingOptions),
+    });
+    const directOptions = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: 0,
+      thinking: { type: "disabled" },
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
+      options: directOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, directOptions),
     });
   }
   if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {

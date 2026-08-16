@@ -1,5 +1,5 @@
 const cron = require("node-cron");
-const { EMOJI_TRUSTED_GUILD_IDS } = require("./config");
+const { EMOJI_TRUSTED_GUILD_IDS, RECAP_DEEPSEEK_MAX_TOKENS } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
 const { trimDescription } = require("./utils");
@@ -173,9 +173,12 @@ async function executeScheduledTask(schedule, client, options = {}) {
   }
 
   const turns = [{ role: "user", content: prompt }];
+  const maxTokens = taskType === "daily_recap"
+    ? Math.max(tierConfig.maxTokens, RECAP_DEEPSEEK_MAX_TOKENS)
+    : tierConfig.maxTokens;
   if (taskType === "daily_recap") {
     console.log(
-      `[daily-recap] promptChars=${prompt.length} personaChars=${persona.length}`,
+      `[daily-recap] promptChars=${prompt.length} personaChars=${persona.length} maxTokens=${maxTokens}`,
     );
   }
 
@@ -184,7 +187,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
       providerChain,
       turns,
       persona,
-      tierConfig.maxTokens,
+      maxTokens,
     );
 
     if (!result) {

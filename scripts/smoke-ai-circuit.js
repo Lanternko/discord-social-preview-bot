@@ -13,6 +13,8 @@ process.env.KIMI_ENABLED = "true";
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
 process.env.RECAP_KIMI_TIMEOUT_MS = "45000";
 process.env.RECAP_DEEPSEEK_TIMEOUT_MS = "90000";
+process.env.RECAP_DEEPSEEK_REASONING_HEADROOM = "4096";
+process.env.RECAP_DEEPSEEK_MAX_TOKENS = "1600";
 process.env.RECAP_GEMINI_TIMEOUT_MS = "45000";
 delete process.env.AI_PROVIDER;
 
@@ -119,20 +121,25 @@ async function main() {
   });
 
   console.log("daily recap provider policy");
-  it("uses DeepSeek → Kimi → Gemini and excludes Groq/Llama", () => {
+  it("uses DeepSeek thinking → DeepSeek direct → Kimi → Gemini and excludes Groq/Llama", () => {
     assert.deepEqual(
       RECAP_PROVIDER_CHAIN.map((provider) => provider.label.split(":")[0]),
-      ["deepseek", "kimi", "gemini"],
+      ["deepseek", "deepseek", "kimi", "gemini"],
     );
+    assert.ok(RECAP_PROVIDER_CHAIN[1].label.endsWith(":direct"));
     assert.ok(RECAP_PROVIDER_CHAIN.every((provider) => !/groq|llama/i.test(provider.label)));
     assert.equal(RECAP_PROVIDER_CHAIN[0].options.timeoutMs, 90000);
-    assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 45000);
+    assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
     assert.equal(RECAP_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
+    assert.equal(RECAP_PROVIDER_CHAIN[3].options.timeoutMs, 45000);
     assert.deepEqual(RECAP_PROVIDER_CHAIN[0].options.thinking, { type: "enabled" });
-    assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningEffort, "high");
+    assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningEffort, "medium");
+    assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningHeadroom, 4096);
+    assert.deepEqual(RECAP_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
+    assert.equal(RECAP_PROVIDER_CHAIN[1].options.reasoningHeadroom, 0);
   });
 
-  await itAsync("sends DeepSeek recap with thinking enabled and reasoning headroom", async () => {
+  await itAsync("sends DeepSeek recap with medium thinking and recap headroom", async () => {
     const originalFetch = global.fetch;
     let requestBody;
     global.fetch = async (_url, options) => {
@@ -151,21 +158,64 @@ async function main() {
       };
     };
     try {
-      const result = await callDeepSeek(
+      const result = await RECAP_PROVIDER_CHAIN[0].call(
         [{ role: "user", content: "回顧" }],
         "persona",
-        100,
-        {
-          timeoutMs: 90000,
-          reasoningHeadroom: 2048,
-          thinking: { type: "enabled" },
-          reasoningEffort: "high",
-        },
+        1600,
       );
       assert.equal(result.ok, true);
       assert.deepEqual(requestBody.thinking, { type: "enabled" });
-      assert.equal(requestBody.reasoning_effort, "high");
-      assert.equal(requestBody.max_tokens, 2148);
+      assert.equal(requestBody.reasoning_effort, "medium");
+      assert.equal(requestBody.max_tokens, 5696);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await itAsync("falls back to DeepSeek :direct when thinking recap returns empty", async () => {
+    resetCircuitState();
+    const originalFetch = global.fetch;
+    const bodies = [];
+    global.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      if (bodies.length === 1) {
+        return {
+          ok: true,
+          headers: { get: () => null },
+          json: async () => ({
+            choices: [{ message: { content: "" }, finish_reason: "length" }],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 2948,
+              completion_tokens_details: { reasoning_tokens: 2948 },
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "今日回顧：有人在露營。" }, finish_reason: "stop" }],
+        }),
+      };
+    };
+    try {
+      const recapDeepSeek = RECAP_PROVIDER_CHAIN.filter((provider) =>
+        provider.label.startsWith("deepseek:"),
+      );
+      const result = await runProviderChain(
+        recapDeepSeek,
+        [{ role: "user", content: "回顧" }],
+        "persona",
+        1600,
+      );
+      assert.equal(result.provider.label.endsWith(":direct"), true);
+      assert.equal(result.text, "今日回顧：有人在露營。");
+      assert.deepEqual(bodies[0].thinking, { type: "enabled" });
+      assert.equal(bodies[0].reasoning_effort, "medium");
+      assert.deepEqual(bodies[1].thinking, { type: "disabled" });
+      assert.equal(bodies[1].reasoning_effort, undefined);
     } finally {
       global.fetch = originalFetch;
     }
