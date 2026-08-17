@@ -87,9 +87,7 @@ const {
 const { getMissingChannelPermissions } = require("../src/discord-io");
 const { isTrashEmoji } = require("../src/reaction-delete");
 const {
-  STORY_MODES,
   localDateKey,
-  pickStoryMode,
   messagePreview,
   selectStoryIngredients,
   buildBedtimeStoryPrompt,
@@ -2060,20 +2058,6 @@ it("localDateKey formats date in requested timezone", () => {
   const d = new Date("2026-05-29T14:00:00.000Z");
   assert.equal(localDateKey(d, "Asia/Taipei"), "2026-05-29");
 });
-it("pickStoryMode avoids recently used modes when possible", () => {
-  const now = new Date("2026-05-29T14:00:00.000Z");
-  const initial = pickStoryMode({ id: "s1", timezone: "Asia/Taipei" }, now);
-  const second = pickStoryMode(
-    {
-      id: "s1",
-      timezone: "Asia/Taipei",
-      recentStorySeeds: [initial.mode.key],
-    },
-    now,
-  );
-  assert.notEqual(second.mode.key, initial.mode.key);
-  assert.ok(STORY_MODES.some((m) => m.key === second.mode.key));
-});
 it("messagePreview trims URLs and long content", () => {
   const preview = messagePreview({
     content: `今晚看這個 https://example.com/${"a".repeat(120)}`,
@@ -2106,7 +2090,7 @@ it("selectStoryIngredients prefers reacted then recent messages", () => {
   assert.equal(selected.ingredients[0].authorName, "hot");
   assert.match(selected.activeChannels[0], /#general/);
 });
-it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", () => {
+it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", () => {
   const msg = {
     content: "今天有人說晚安故事要像太空任務",
     createdTimestamp: 1,
@@ -2119,18 +2103,18 @@ it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", ()
     guildName: "搖E露營",
     messages: [msg],
     channelStats: [{ name: "chat", count: 1 }],
-    schedule: { id: "s1", recentStorySeeds: ["dream-chatroom"] },
+    schedule: { id: "s1" },
     now: new Date("2026-05-29T14:00:00.000Z"),
   });
   assert.match(built.prompt, /搖E露營/);
-  assert.match(built.prompt, /今晚故事模式/);
   assert.match(built.prompt, /可用靈感素材/);
-  // coherence rules: few threaded items, no one-off props, character interaction
+  assert.match(built.prompt, /自己發明今晚的故事/);
   assert.match(built.prompt, /挑 1～3 個/);
   assert.match(built.prompt, /只出現一次、對主線沒作用的東西就刪掉/);
   assert.match(built.prompt, /角色之間有互動和對話/);
-  assert.match(built.prompt, /dream-chatroom/);
-  assert.ok(built.modeKey);
+  assert.doesNotMatch(built.prompt, /今晚故事模式/);
+  assert.doesNotMatch(built.prompt, /哄大家睡覺/);
+  assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
 });
 

@@ -42,7 +42,7 @@ const TASK_TYPES = {
         console.warn("[bedtime-story] no guild for channel, falling back");
         return {
           prompt:
-            "（系統提示：現在是睡前時間。請主動講一個短短的原創床邊故事，溫馨可愛但要有一個小轉折。故事講完後，用你平常的語氣哄大家去睡覺。）",
+            "（系統提示：現在是睡前時間。請主動講一個短短的原創故事，有一個小轉折。自己決定場景和結尾，不要硬接到睡覺。）",
         };
       }
 
@@ -57,12 +57,11 @@ const TASK_TYPES = {
         schedule,
       });
       console.log(
-        `[bedtime-story] guild=${guild.name} mode=${built.modeKey} ingredients=${messages.length}`,
+        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length}`,
       );
       return {
         prompt: built.prompt,
-        onSuccess: () =>
-          markBedtimeStoryUsed(schedule, built.modeKey, built.dateKey),
+        onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
       };
     },
   },
