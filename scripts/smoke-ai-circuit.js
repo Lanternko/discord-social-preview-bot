@@ -11,6 +11,9 @@ process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
 process.env.KIMI_API_KEY = process.env.KIMI_API_KEY || "sk-kimi-smoke-dummy";
 process.env.KIMI_ENABLED = "true";
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
+process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "sk-openai-smoke-dummy";
+process.env.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
+process.env.STORY_OPENAI_TIMEOUT_MS = "45000";
 process.env.RECAP_KIMI_TIMEOUT_MS = "45000";
 process.env.RECAP_DEEPSEEK_TIMEOUT_MS = "90000";
 process.env.RECAP_DEEPSEEK_REASONING_HEADROOM = "4096";
@@ -33,6 +36,7 @@ const {
   runProviderChain,
   buildGuildChain,
   RECAP_PROVIDER_CHAIN,
+  STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
 } = require("../src/ai/chain");
 const {
@@ -137,6 +141,47 @@ async function main() {
     assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningHeadroom, 4096);
     assert.deepEqual(RECAP_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
     assert.equal(RECAP_PROVIDER_CHAIN[1].options.reasoningHeadroom, 0);
+  });
+
+  console.log("bedtime story provider policy");
+  it("uses OpenAI Luna then DeepSeek direct", () => {
+    assert.deepEqual(
+      STORY_PROVIDER_CHAIN.map((provider) => provider.label),
+      ["openai:gpt-5.6-luna", `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-chat"}:direct`],
+    );
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 45000);
+    assert.equal(STORY_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
+    assert.deepEqual(STORY_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
+  });
+
+  await itAsync("sends story prompt to OpenAI with max_completion_tokens", async () => {
+    const originalFetch = global.fetch;
+    let requestUrl;
+    let requestBody;
+    global.fetch = async (url, options) => {
+      requestUrl = url;
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "從前從前。" }, finish_reason: "stop" }],
+        }),
+      };
+    };
+    try {
+      const result = await STORY_PROVIDER_CHAIN[0].call(
+        [{ role: "user", content: "講故事" }],
+        "persona",
+        900,
+      );
+      assert.equal(result.ok, true);
+      assert.match(String(requestUrl), /api\.openai\.com/);
+      assert.equal(requestBody.model, "gpt-5.6-luna");
+      assert.equal(requestBody.max_completion_tokens, 900);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   await itAsync("sends DeepSeek recap with medium thinking and recap headroom", async () => {

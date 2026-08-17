@@ -139,6 +139,15 @@ module.exports = {
     "VIDEO_ATTACHMENT_TIMEOUT_MS",
     20000,
   ),
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+  OPENAI_MODEL: process.env.OPENAI_MODEL || "gpt-5.6-luna",
+  OPENAI_BASE_URL:
+    process.env.OPENAI_BASE_URL ||
+    "https://api.openai.com/v1/chat/completions",
+  STORY_OPENAI_TIMEOUT_MS: parsePositiveIntEnv(
+    "STORY_OPENAI_TIMEOUT_MS",
+    45000,
+  ),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.0-flash",
   GROQ_API_KEY: process.env.GROQ_API_KEY,
@@ -212,12 +221,12 @@ module.exports = {
   // messages in any guild, bypassing the poster/ManageMessages checks.
   BOT_OWNER_IDS: parseCsvEnv("BOT_OWNER_IDS"),
   AI_PERSONA: process.env.AI_PERSONA || DEFAULT_AI_PERSONA,
-  TTS_SERVER_URL: process.env.TTS_SERVER_URL || "http://127.0.0.1:8056",
+  TTS_SERVER_URL: process.env.TTS_SERVER_URL || "http://127.0.0.1:8055",
   TTS_REQUEST_TIMEOUT_MS: parsePositiveIntEnv(
     "TTS_REQUEST_TIMEOUT_MS",
     60 * 1000,
   ),
-  TTS_DEFAULT_REF_ID: process.env.TTS_DEFAULT_REF_ID || "",
+  TTS_DEFAULT_REF_ID: process.env.TTS_DEFAULT_REF_ID || "xibao",
   VOICE_MAX_REPLY_CHARS: parsePositiveIntEnv("VOICE_MAX_REPLY_CHARS", 60),
   DEFAULT_AI_PERSONA,
   THREADS_EMBED_COLOR: 0x101010,

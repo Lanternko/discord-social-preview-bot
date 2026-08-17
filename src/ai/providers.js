@@ -1,5 +1,8 @@
 const {
   AI_TIMEOUT_MS,
+  OPENAI_API_KEY,
+  OPENAI_MODEL,
+  OPENAI_BASE_URL,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -268,6 +271,52 @@ async function callKimi(turns, persona, maxTokens, overrides = {}) {
   });
 }
 
+async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
+  const model = overrides.model || OPENAI_MODEL;
+  const apiKey = overrides.apiKey || OPENAI_API_KEY;
+  const url = overrides.baseUrl || OPENAI_BASE_URL;
+  const body = {
+    model,
+    messages: buildOpenAIMessages(turns, persona),
+    max_completion_tokens: maxTokens,
+  };
+  const label = `openai:${model}`;
+
+  const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;
+  return withAbortTimeout(timeoutMs, label, async (signal) => {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+
+    logRateHeaders(label, response);
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      const f = classifyHttpFailure(response, errText);
+      console.warn(`[ai] ${label} http ${response.status} kind=${f.kind}: ${errText.slice(0, 200)}`);
+      return f;
+    }
+
+    const payload = await response.json();
+    const meta = openAIResponseMeta(payload);
+    logResponseMeta(label, meta);
+    const raw = payload?.choices?.[0]?.message?.content;
+    const text = (typeof raw === "string" ? raw : "").trim();
+    if (!text) {
+      const finishReason = payload?.choices?.[0]?.finish_reason ?? "unknown";
+      console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
+      return fail("empty", { detail: finishReason });
+    }
+    return ok(text, { meta });
+  });
+}
+
 async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
   const model = overrides.model || DEEPSEEK_MODEL;
   const apiKey = overrides.apiKey || DEEPSEEK_API_KEY;
@@ -333,5 +382,6 @@ module.exports = {
   callGemini,
   callGroq,
   callKimi,
+  callOpenAI,
   callDeepSeek,
 };

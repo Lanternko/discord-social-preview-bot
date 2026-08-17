@@ -3,6 +3,9 @@ const {
   AI_LONG_TERM_MEMORY_ENABLED,
   AI_FREE_DAILY_LIMIT,
   EMOJI_TRUSTED_GUILD_IDS,
+  OPENAI_API_KEY,
+  OPENAI_MODEL,
+  STORY_OPENAI_TIMEOUT_MS,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -63,6 +66,7 @@ const {
   callGemini,
   callGroq,
   callKimi,
+  callOpenAI,
   callDeepSeek,
 } = require("./providers");
 const {
@@ -172,6 +176,39 @@ function buildRecapProviderChain() {
 }
 
 const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
+
+// Bedtime stories used to sit on the 25s chat chain; v4-pro thinking
+// regularly aborted and Groq (now 404) was the only thing still publishing.
+// Luna goes first so 22:00 does not wait out a doomed DeepSeek call.
+function buildStoryProviderChain() {
+  const chain = [];
+  const only = AI_PROVIDER_FORCE;
+  if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
+    const options = { timeoutMs: STORY_OPENAI_TIMEOUT_MS };
+    chain.push({
+      label: `openai:${OPENAI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callOpenAI(turns, persona, maxTokens, options),
+    });
+  }
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const options = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: 0,
+      thinking: { type: "disabled" },
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options),
+    });
+  }
+  return chain;
+}
+
+const STORY_PROVIDER_CHAIN = buildStoryProviderChain();
 
 // Per-guild chain: DeepSeek first, then Kimi when enabled, then
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
@@ -534,10 +571,12 @@ async function generateAIReply(message, userText, options = {}) {
 module.exports = {
   AI_PROVIDER_CHAIN,
   RECAP_PROVIDER_CHAIN,
+  STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
   PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
   buildRecapProviderChain,
+  buildStoryProviderChain,
   buildGuildChain,
   getPersonalMemoryContextEntries,
   runProviderChain,
