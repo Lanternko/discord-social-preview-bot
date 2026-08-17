@@ -53,12 +53,19 @@ function selectStoryIngredients(messages, channelStats, limit = MAX_INGREDIENTS)
     .filter((m) => !m.author?.bot)
     .filter((m) => messagePreview(m));
 
-  const reacted = [...nonBot]
+  const reacted = [];
+  const reactedAuthors = new Set();
+  const ranked = [...nonBot]
     .map((m) => ({ message: m, reactions: messageReactionCount(m) }))
     .filter((entry) => entry.reactions > 0)
-    .sort((a, b) => b.reactions - a.reactions)
-    .slice(0, 4)
-    .map((entry) => entry.message);
+    .sort((a, b) => b.reactions - a.reactions);
+  for (const entry of ranked) {
+    const authorId = entry.message.author?.id || "unknown";
+    if (reactedAuthors.has(authorId)) continue;
+    reactedAuthors.add(authorId);
+    reacted.push(entry.message);
+    if (reacted.length >= 4) break;
+  }
 
   const recent = [...nonBot]
     .sort((a, b) => {
@@ -116,14 +123,16 @@ function buildBedtimeStoryPrompt({
     "自己發明今晚的故事。不要套固定世界觀（營火、便利商店、太空歌劇、郵局、社團、都市傳說、夢境聊天室、假新聞播報都不要當預設場景），除非今晚素材自己指向那個地方。",
     "",
     "寫作要求：",
+    "- 第一行必須是 Markdown 標題：`## ` 加上具體標題。禁止寫「床邊故事」，也不要加「睡前故事」「今日故事」這類套話。",
     "- 寫一個 180～420 字的原創短故事，有趣、有一個小轉折或誤會。",
-    "- 整個故事只有一個場景、一條主線。從素材裡挑 2～3 則融進主線，其餘完全忽略。",
+    "- 整個故事只有一個場景、一條主線。從素材裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。",
+    "- 登場人物 2～5 人（含被點名的群友）。不要一個人獨角戲，也不要擠進一堆路人。",
     "- 用到的每一則都要讓看過原訊息的人對得上號：留下原句裡最好認的專有物或碎片（「很會運氣了」不能收成「運氣」；「牛肉麵」不能收成「湯」）。可以改寫情節，不能蒸發辨識點。",
     "- 主要物品要少而貫穿：出場的重要物品或角色，後面都要再被用到或呼應。",
     "- 角色可以借群友暱稱，讓角色之間有互動和對話。不要冒犯，不要編造現實隱私。",
     "- 可以用今天的群聊素材當靈感，但不要做今日回顧，不要流水帳。",
     "- 只有真的吵架、個資才抽象成道具或天氣。黃色玩笑可以含蓄，但專有名詞要留著。",
-    "- 排版要好讀：2～5 段，每段之間空一行。",
+    "- 排版：標題下一行空白，之後 2～5 段，每段之間空一行。",
     "- 故事在哪裡結束就停。不要為了睡前時段硬接到睡覺、晚安或枕頭。）",
     "",
   ];
@@ -134,7 +143,7 @@ function buildBedtimeStoryPrompt({
   }
 
   if (ingredients.length > 0) {
-    lines.push("【可用靈感素材】（挑 2～3 則，用了就要認得出是哪一則）");
+    lines.push("【可用靈感素材】（挑兩個不同人的各一則，用了就要認得出是哪一則）");
     for (const item of ingredients) {
       const reacted = item.reactions > 0 ? `，反應 ${item.reactions}` : "";
       lines.push(
