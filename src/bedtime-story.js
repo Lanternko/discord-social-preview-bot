@@ -98,6 +98,20 @@ function selectStoryIngredients(messages, channelStats, limit = MAX_INGREDIENTS)
   return { ingredients, activeChannels };
 }
 
+const TITLE_PREFIX_RE = /^(床邊故事|睡前故事|今日故事)\s*[｜|:\-—–／/]?\s*/;
+
+function sanitizeBedtimeTitle(text) {
+  if (!text || typeof text !== "string") return text;
+  const lines = text.split(/\r?\n/);
+  let first = lines[0].trim();
+  first = first.replace(/^\*{1,3}\s*/, "").replace(/\s*\*{1,3}$/, "");
+  first = first.replace(/^#+\s*/, "");
+  first = first.replace(TITLE_PREFIX_RE, "").trim();
+  if (!first) return text;
+  lines[0] = `## ${first}`;
+  return lines.join("\n");
+}
+
 function markBedtimeStoryUsed(schedule, dateKey) {
   if (!schedule?.id || !dateKey) return null;
   return updateSchedule(schedule.id, {
@@ -123,7 +137,7 @@ function buildBedtimeStoryPrompt({
     "自己發明今晚的故事。不要套固定世界觀（營火、便利商店、太空歌劇、郵局、社團、都市傳說、夢境聊天室、假新聞播報都不要當預設場景），除非今晚素材自己指向那個地方。",
     "",
     "寫作要求：",
-    "- 第一行必須是 Markdown 標題：`## ` 加上具體標題。禁止寫「床邊故事」，也不要加「睡前故事」「今日故事」這類套話。",
+    "- 第一行必須是 Markdown 標題：`## ` 加上具體標題（例如 `## 會替人照相的魔法鏡`）。標題裡不要出現「床邊故事」四個字，也不要寫「睡前故事」「今日故事」。故事本文裡提不提都可以。",
     "- 寫一個 180～420 字的原創短故事，有趣、有一個小轉折或誤會。",
     "- 整個故事只有一個場景、一條主線。從素材裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。",
     "- 登場人物 2～5 人（含被點名的群友）。不要一個人獨角戲，也不要擠進一堆路人。",
@@ -170,5 +184,6 @@ module.exports = {
   messagePreview,
   selectStoryIngredients,
   markBedtimeStoryUsed,
+  sanitizeBedtimeTitle,
   buildBedtimeStoryPrompt,
 };

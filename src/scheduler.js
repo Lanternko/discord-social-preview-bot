@@ -28,6 +28,7 @@ const {
   BEDTIME_LOOKBACK_MS,
   buildBedtimeStoryPrompt,
   markBedtimeStoryUsed,
+  sanitizeBedtimeTitle,
 } = require("./bedtime-story");
 
 // ── Task types ──────────────────────────────────────────────────────────
@@ -203,7 +204,10 @@ async function executeScheduledTask(schedule, client, options = {}) {
     }
 
     const capped = trimDescription(result.text, tierConfig.maxReplyChars);
-    const text = resolveCustomEmojis(capped, emojiMap);
+    const titled = taskType === "bedtime_story"
+      ? sanitizeBedtimeTitle(capped)
+      : capped;
+    const text = resolveCustomEmojis(titled, emojiMap);
     // Generation starts one minute early, but publication must never happen
     // before the user-configured wall-clock time. Awaiting a timer is
     // non-blocking; if generation ran long, waitUntil resolves immediately.

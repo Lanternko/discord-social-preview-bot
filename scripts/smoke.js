@@ -90,6 +90,7 @@ const {
   localDateKey,
   messagePreview,
   selectStoryIngredients,
+  sanitizeBedtimeTitle,
   buildBedtimeStoryPrompt,
 } = require("../src/bedtime-story");
 
@@ -2112,13 +2113,23 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /兩個不同的人/);
   assert.match(built.prompt, /登場人物 2～5 人/);
   assert.match(built.prompt, /## /);
-  assert.match(built.prompt, /禁止寫「床邊故事」/);
+  assert.match(built.prompt, /標題裡不要出現「床邊故事」/);
+  assert.match(built.prompt, /故事本文裡提不提都可以/);
   assert.match(built.prompt, /對得上號/);
   assert.match(built.prompt, /角色之間有互動和對話/);
   assert.doesNotMatch(built.prompt, /今晚故事模式/);
   assert.doesNotMatch(built.prompt, /哄大家睡覺/);
   assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
+});
+it("sanitizeBedtimeTitle strips 床邊故事 from the first line only", () => {
+  const out = sanitizeBedtimeTitle(
+    "**床邊故事｜會替人照相的魔法鏡**\n\n魔法使濤濤對著鏡子。",
+  );
+  assert.match(out, /^## 會替人照相的魔法鏡\n/);
+  assert.doesNotMatch(out.split("\n")[0], /床邊故事/);
+  const bodyOk = sanitizeBedtimeTitle("## 魔法鏡\n\n這不是床邊故事套版。");
+  assert.match(bodyOk, /這不是床邊故事套版/);
 });
 
 // --- target-context (imitation / mention targeting) ---
