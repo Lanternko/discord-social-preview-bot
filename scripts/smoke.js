@@ -2109,8 +2109,8 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /搖E露營/);
   assert.match(built.prompt, /可用靈感素材/);
   assert.match(built.prompt, /自己發明今晚的故事/);
-  assert.match(built.prompt, /挑 1～3 個/);
-  assert.match(built.prompt, /只出現一次、對主線沒作用的東西就刪掉/);
+  assert.match(built.prompt, /挑 2～3 則/);
+  assert.match(built.prompt, /對得上號/);
   assert.match(built.prompt, /角色之間有互動和對話/);
   assert.doesNotMatch(built.prompt, /今晚故事模式/);
   assert.doesNotMatch(built.prompt, /哄大家睡覺/);

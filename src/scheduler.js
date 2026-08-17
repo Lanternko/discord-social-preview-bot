@@ -59,6 +59,9 @@ const TASK_TYPES = {
       console.log(
         `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length}`,
       );
+      if (built.buffet?.length) {
+        console.log(`[bedtime-story] buffet=${built.buffet.join(" | ")}`);
+      }
       return {
         prompt: built.prompt,
         onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
