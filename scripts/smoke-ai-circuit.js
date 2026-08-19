@@ -124,6 +124,11 @@ async function main() {
     assert.deepEqual(ok("hi"), { ok: true, text: "hi" });
   });
 
+  console.log("chat fallback chain");
+  it("puts OpenAI Luna first in the shared fallback", () => {
+    assert.equal(FALLBACK_CHAIN[0].label, "openai:gpt-5.6-luna");
+  });
+
   console.log("daily recap provider policy");
   it("uses DeepSeek thinking → DeepSeek direct → Kimi → Gemini and excludes Groq/Llama", () => {
     assert.deepEqual(

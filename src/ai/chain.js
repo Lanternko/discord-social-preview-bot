@@ -84,11 +84,18 @@ function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CON
   return groupContextLines.slice(-count);
 }
 
-// Fallback chain (Groq + Gemini) built once at startup — shared by all guilds.
-// Kimi and DeepSeek are per-guild (model/key/rate-limit), built in buildGuildChain.
+// Fallback chain shared by all guilds. Luna first: Groq/Gemini models in
+// env are currently 404, and DeepSeek v4-pro chat hits the 25s abort when
+// hidden reasoning runs long (same prompt size, more thinking).
 function buildFallbackChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
+  if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
+    chain.push({
+      label: `openai:${OPENAI_MODEL}`,
+      call: (turns, persona, maxTokens) => callOpenAI(turns, persona, maxTokens),
+    });
+  }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
       chain.push({
