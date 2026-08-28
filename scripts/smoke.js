@@ -92,6 +92,8 @@ const {
   selectStoryIngredients,
   sanitizeBedtimeTitle,
   buildBedtimeStoryPrompt,
+  STORY_CRAFT_MOVES,
+  pickStoryCraftMoves,
 } = require("../src/bedtime-story");
 
 let pass = 0;
@@ -2116,14 +2118,36 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /標題裡不要出現「床邊故事」/);
   assert.match(built.prompt, /故事本文裡提不提都可以/);
   assert.match(built.prompt, /對得上號/);
-  assert.match(built.prompt, /照字面用/);
+  assert.match(built.prompt, /不必逐字貼原句/);
+  assert.match(built.prompt, /不准消音/);
   assert.match(built.prompt, /口交牛肉麵/);
-  assert.match(built.prompt, /不要含蓄改寫/);
+  assert.match(built.prompt, /今晚要用的寫法/);
   assert.match(built.prompt, /角色之間有互動和對話/);
   assert.doesNotMatch(built.prompt, /今晚故事模式/);
   assert.doesNotMatch(built.prompt, /哄大家睡覺/);
   assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
+});
+it("buildBedtimeStoryPrompt rotates exactly three craft moves", () => {
+  const built = buildBedtimeStoryPrompt({
+    guildName: "搖E露營",
+    messages: [],
+    schedule: { id: "s1" },
+    rng: () => 0,
+  });
+  const moves = built.prompt
+    .split("【今晚要用的寫法】")[1]
+    .split("\n")
+    .filter((line) => line.startsWith("- "));
+  assert.equal(moves.length, 3);
+  assert.equal(moves[0], `- ${STORY_CRAFT_MOVES[0]}`);
+});
+it("pickStoryCraftMoves never repeats a move", () => {
+  const picked = pickStoryCraftMoves(STORY_CRAFT_MOVES, 3, () => 0.999999);
+  assert.equal(picked.length, 3);
+  assert.equal(new Set(picked).size, 3);
+  const all = pickStoryCraftMoves(STORY_CRAFT_MOVES, 99, Math.random);
+  assert.equal(all.length, STORY_CRAFT_MOVES.length);
 });
 it("sanitizeBedtimeTitle strips 床邊故事 from the first line only", () => {
   const out = sanitizeBedtimeTitle(
