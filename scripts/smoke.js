@@ -2515,6 +2515,7 @@ it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph te
   assert.match(prompt, /挑其中一段做別的事/);
   assert.match(prompt, /整篇只做一次/);
   assert.match(prompt, /最多 5 段/);
+  assert.match(prompt, /emoji 不要每段都掛在最後一個字後面/);
   assert.match(prompt, /講完就停/);
   assert.doesNotMatch(prompt, /每個熱門訊息各一小段/);
   assert.doesNotMatch(prompt, /結尾可以有個簡短的感想或期待/);
