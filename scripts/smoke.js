@@ -2119,6 +2119,7 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /故事本文裡提不提都可以/);
   assert.match(built.prompt, /對得上號/);
   assert.match(built.prompt, /不必逐字貼原句/);
+  assert.match(built.prompt, /挑反應數高的、或原句本身就好笑的/);
   assert.match(built.prompt, /不准消音/);
   assert.match(built.prompt, /口交牛肉麵/);
   assert.match(built.prompt, /今晚要用的寫法/);
