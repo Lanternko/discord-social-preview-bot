@@ -16,6 +16,13 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`.
 
 Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/apps/discord-social-preview-bot/`.
 
+**Production is the main checkout's working tree, whatever branch it is on** — `scripts/bot-watchdog.sh` hardcodes `REPO=~/side_projects/apps/discord-social-preview-bot` and relaunches `node src/index.js` from there. Two consequences:
+
+- **There is no separate deploy branch.** Whatever `git branch --show-current` prints in that folder is what's live (2026-08-29: `fix/recap-deepseek-empty`, not `main` and not a `deploy/*` branch). Check it before assuming.
+- **Uncommitted edits in that working tree go live on the next restart.** Run `git status` before restarting; another session's half-finished work is not your deploy.
+
+A cron watchdog runs every minute and restarts the bot if the process is gone, so `kill <pid>` alone is a valid restart — or run `scripts/bot-watchdog.sh` by hand to skip the wait. Do **not** `pkill -f 'node src/index.js'`: that pattern also matches Claude Code's own tool shells (use `pkill -xf` or the pid).
+
 ### Daily ops
 
 ```bash
@@ -26,14 +33,19 @@ tail -50 ~/side_projects/apps/discord-social-preview-bot/bot.log
 pgrep -f 'node src/index.js'
 ```
 
-### Redeploy after merging to main
+### Redeploy after merging
+
+Merge the PR into **the branch the main checkout is already on** (see above) so the deploy never needs a `git checkout` in that shared folder.
 
 ```bash
 cd ~/side_projects/apps/discord-social-preview-bot
-git pull
-pkill -f 'src/index.js' && sleep 1
-nohup node src/index.js > bot.log 2>&1 &
-sleep 3 && tail -20 bot.log
+git branch --show-current          # confirm this is the branch you merged into
+git status --short                 # anything uncommitted goes live too — check whose it is
+git merge --ff-only origin/<that-branch>
+npm test
+kill "$(pgrep -xf 'node src/index.js')"   # watchdog relaunches within 60s
+./scripts/bot-watchdog.sh                 # or restart immediately
+tail -20 bot.log
 ```
 
 ### Verify restart success

@@ -50,11 +50,12 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
    ln -sf "$(pwd)/node_modules" ../dspb-<feature>/node_modules   #   so link (or reinstall) per worktree
    ```
    Work, commit, and run/deploy the bot from that worktree. `git worktree list` shows who's on what; `git worktree remove <path>` when done. (The harness may reset cwd back to the main dir between commands — address the worktree by absolute path or `git -C <path>`.)
+   ⚠️ **`npm test` in a worktree creates a fake `data/`.** The stores write relative to cwd, so a test run leaves a real `data/` holding fixtures (`sk-mykey`). Any later script you point at real guild data then reads the fixtures. Before touching live data from a worktree: `rm -rf data && ln -s "$(pwd)/../discord-social-preview-bot/data" data`.
    ⚠️ **Never `git add -A` in a worktree before checking `git status` for the `.env`/`node_modules`/`data` symlinks.** A trailing-slash gitignore pattern (`data/`) does NOT match a symlink, so `add -A` commits it — and checking that branch out in the main tree then **replaces the real directory with a self-pointing link, deleting its contents** (lost `data/` once, 2026-07-05; recovered from the running bot's memory). `.gitignore` now uses slash-less patterns to block this, but older branches may predate the fix — verify with `git ls-tree <branch> -- data node_modules .env` before any checkout in the main tree.
 1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
-4. After merge, **provide redeploy steps** (see [deploy.md](docs/deploy.md)) — the host tracks GitHub, not the local tree.
+4. After merge, redeploy (see [deploy.md](docs/deploy.md)). **Prod is the main checkout's working tree on whatever branch it currently has** — there is no `deploy/*` branch; check `git branch --show-current` there and merge the PR into *that* branch, so deploying never needs a `git checkout` in the shared folder.
 5. Status reports: include **current branch, commit hash, push status, test status**. All human-facing communication in 繁體中文.
 
 ## Quick start (local)
