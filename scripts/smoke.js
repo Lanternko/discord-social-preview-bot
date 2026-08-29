@@ -2528,6 +2528,24 @@ it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => 
   assert.match(prompt, /最多承認一次看不懂/);
 });
 
+it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph template", () => {
+  const prompt = buildRecapPrompt({
+    totalMessages: 1,
+    uniqueAuthors: 1,
+    topAuthors: [],
+    topReacted: [],
+  }, [], "測試群");
+  assert.match(prompt, /挑 3～4 則真的有梗的展開/);
+  assert.match(prompt, /可以整則完全不提/);
+  assert.match(prompt, /挑其中一段做別的事/);
+  assert.match(prompt, /整篇只做一次/);
+  assert.match(prompt, /最多 5 段/);
+  assert.match(prompt, /emoji 不要每段都掛在最後一個字後面/);
+  assert.match(prompt, /講完就停/);
+  assert.doesNotMatch(prompt, /每個熱門訊息各一小段/);
+  assert.doesNotMatch(prompt, /結尾可以有個簡短的感想或期待/);
+});
+
 console.log("");
 console.log(`Result: ${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
