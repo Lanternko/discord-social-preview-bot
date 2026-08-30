@@ -93,11 +93,15 @@ const {
   DEFAULT_THREADS_VIEWER_HOSTS,
   parseThreadsViewerHosts,
   loadThreadsViewerHosts,
+  DEFAULT_INSTAGRAM_VIEWER_HOSTS,
+  parseInstagramViewerHosts,
+  loadInstagramViewerHosts,
 } = require("../src/config");
 const {
   exactThreadsShareUrl,
   canonicalizeThreadsPostUrl,
 } = require("../src/threads-url");
+const { canonicalizeInstagramPostUrl } = require("../src/instagram-url");
 const { isTrashEmoji } = require("../src/reaction-delete");
 const {
   localDateKey,
@@ -316,6 +320,100 @@ it("fails fast during startup on invalid THREADS_VIEWER_HOSTS", () => {
   assert.match(result.stderr, /invalid Threads viewer host/);
 });
 
+console.log("Instagram canonical URL and viewer config");
+it("normalizes Instagram posts/reels and strips query tracking", () => {
+  assert.equal(
+    canonicalizeInstagramPostUrl(
+      "https://instagram.com/reels/DcA0yXWMF4E/?igsh=tracking",
+    ),
+    "https://www.instagram.com/reel/DcA0yXWMF4E/",
+  );
+  assert.equal(
+    canonicalizeInstagramPostUrl(
+      "https://www.instagram.com/p/ABC_123/?img_index=2&utm_source=x",
+    ),
+    "https://www.instagram.com/p/ABC_123/?img_index=2",
+  );
+  for (const invalid of [
+    "http://www.instagram.com/reel/DcA0yXWMF4E/",
+    "https://www.instagram.com:443/reel/DcA0yXWMF4E/",
+    "https://instagram.com.evil/reel/DcA0yXWMF4E/",
+    "https://www.instagram.com/stories/user/123/",
+  ]) {
+    assert.equal(canonicalizeInstagramPostUrl(invalid), null, invalid);
+  }
+});
+it("uses the tested Instagram viewer order and supports legacy aliases", () => {
+  assert.deepEqual(DEFAULT_INSTAGRAM_VIEWER_HOSTS, [
+    "instagram7.com",
+    "fxig.seria.moe",
+    "deinstagram.com",
+  ]);
+  assert.deepEqual(
+    parseInstagramViewerHosts("A.example,a.example,b.example,c.example"),
+    ["a.example", "b.example", "c.example"],
+  );
+  assert.deepEqual(
+    loadInstagramViewerHosts({
+      FIXER_INSTAGRAM: "legacy-primary.example",
+      FIXER_INSTAGRAM_SECONDARY: "legacy-secondary.example",
+    }),
+    [
+      "legacy-primary.example",
+      "legacy-secondary.example",
+      "deinstagram.com",
+    ],
+  );
+});
+it("rejects unsafe Instagram viewer configuration", () => {
+  for (const invalid of [
+    "https://viewer.example",
+    "viewer.example/path",
+    "viewer.example:443",
+    "127.0.0.1",
+    "localhost",
+    "a.example,b.example,c.example,d.example",
+  ]) {
+    assert.throws(() => parseInstagramViewerHosts(invalid), invalid);
+  }
+});
+
+console.log("Instagram viewer validation");
+it("rejects empty, login-wall, unavailable, and generic Instagram cards", () => {
+  assert.equal(isViewerPreviewUseful([], "instagram"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram • Log in", description: "Log in to Instagram" }],
+      "instagram",
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ description: "Post not found" }], "instagram"),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ title: "Instagram" }], "instagram"),
+    false,
+  );
+});
+it("accepts a playable Instagram viewer or meaningful caption", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram", video: { url: "https://cdn/video.mp4" } }],
+      "instagram",
+    ),
+    true,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "@hele.778899", description: "一家子神经！" }],
+      "instagram",
+    ),
+    true,
+  );
+});
+
 console.log("Threads viewer validation");
 it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () => {
   assert.equal(isViewerPreviewUseful([], "threads"), false);
@@ -440,10 +538,10 @@ it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {
     false,
   );
 });
-it("instagram -> ddinstagram", () => {
+it("instagram -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.instagram.com/p/ABC/"),
-    "https://ddinstagram.com/p/ABC/",
+    "https://instagram7.com/p/ABC/",
   );
 });
 it("reddit -> rxddit", () => {

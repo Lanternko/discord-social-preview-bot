@@ -1,13 +1,11 @@
-const {
-  FIXEMBED_BASE_URL,
-  FIXER_INSTAGRAM,
-  FIXER_INSTAGRAM_SECONDARY,
-} = require("../config");
+const { EmbedBuilder } = require("discord.js");
+const { INSTAGRAM_VIEWER_HOSTS } = require("../config");
 const {
   isInstagramStoryUrl,
   extractInstagramStoryOwner,
   replaceHostFixer,
 } = require("../url-routing");
+const { resolveInstagramUrl } = require("../instagram-url");
 const { fetchPageProbeMetadata } = require("../probe");
 
 // og:title is typically "DisplayName (@username) • Instagram…"
@@ -47,18 +45,22 @@ async function buildInstagramPayload(url) {
     };
   }
 
-  const primaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM);
-  const secondaryUrl = replaceHostFixer(url, FIXER_INSTAGRAM_SECONDARY);
-  console.log(`[preview] instagram-fixer ${url}`);
+  const canonicalUrl = resolveInstagramUrl(url);
+  const viewerUrls = INSTAGRAM_VIEWER_HOSTS.map((host) =>
+    replaceHostFixer(canonicalUrl, host),
+  );
+  const localFallback = new EmbedBuilder()
+    .setColor(0xe1306c)
+    .setTitle("Instagram 貼文")
+    .setURL(canonicalUrl)
+    .setDescription("預覽目前無法載入，請點標題前往原始貼文。");
+  console.log(`[preview] instagram-viewer ${canonicalUrl}`);
   return {
-    content: primaryUrl,
-    fallbackContent: secondaryUrl,
-    embedFallback: {
-      content: `${FIXEMBED_BASE_URL}${encodeURIComponent(url)}`,
-    },
-    recoverUrls: [primaryUrl, secondaryUrl],
-    recoverEmbedOptions: { color: 0xe1306c, footerText: "Instagram · 預覽降級" },
-    sourceUrl: url,
+    content: viewerUrls[0],
+    fallbackContents: viewerUrls.slice(1),
+    viewerValidation: "instagram",
+    embedFallback: { embeds: [localFallback] },
+    sourceUrl: canonicalUrl,
   };
 }
 

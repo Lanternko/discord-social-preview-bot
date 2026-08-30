@@ -286,10 +286,12 @@ docker run -d \
 
 ### Instagram
 
+貼文與 Reels 會先正規化成無追蹤參數的 canonical Instagram URL，再依序交給最多三個 viewer。預設順序為 `instagram7.com → fxig.seria.moe → deinstagram.com`；空白、登入牆或「Post not found」會自動嘗試下一層。
+
 | 貼文類型 | 預覽行為 |
 |---|---|
 | 限時動態 | 無法預覽，直接回報作者名稱 |
-| 貼文 / Reels | 依序嘗試 ddinstagram → fxstagram → FixEmbed |
+| 貼文 / Reels | 依序嘗試 `INSTAGRAM_VIEWER_HOSTS`；全部失敗則顯示可點回 canonical 原文的本機資訊卡 |
 
 ### 其他平台
 
@@ -310,7 +312,7 @@ docker run -d \
 |---|---|
 | Threads（所有 viewer 失敗） | 本機資訊卡：canonical 原文連結；影片貼文另保留作者／文案與「影片無法載入」提示 |
 | Instagram 限時動態 | 文字訊息：「這是 **@xxx** 的限動！」 |
-| Instagram Reels（所有 fixer 失敗） | FixEmbed 連結（最後防線） |
+| Instagram 貼文 / Reels（所有 viewer 失敗） | 本機資訊卡：canonical Instagram 原文連結 |
 | 巴哈姆特限制板 / 登入牆 | 顯示公開部分，內文可能為空 |
 | 已刪除 / 私人 / 被限流的貼文 | 道歉訊息：「對不起對不起…預覽載入失敗了…」 |
 

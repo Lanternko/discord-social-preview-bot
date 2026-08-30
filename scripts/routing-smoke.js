@@ -704,6 +704,45 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(edits.at(-1).content, "");
   });
 
+  await it("Instagram viewer chain advances past a login wall and stops on playable media", async () => {
+    const edits = [];
+    const target = {
+      id: "instagram-viewer-chain",
+      embeds: [{ title: "Instagram • Log in" }],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        if (payload.content === "https://viewer-two.example/reel/1") {
+          this.embeds = [{ title: "@creator", video: { url: "https://cdn.example/video.mp4" } }];
+        }
+        return this;
+      },
+    };
+    const result = await checkAndHandleEmptyEmbeds(
+      { reply: async () => assert.fail("must not apologize") },
+      [
+        {
+          sentMessage: target,
+          isUrlOnly: true,
+          fallbackContents: [
+            "https://viewer-two.example/reel/1",
+            "https://viewer-three.example/reel/1",
+          ],
+          viewerValidation: "instagram",
+          embedFallback: null,
+          recoverUrls: null,
+        },
+      ],
+    );
+    assert.equal(result.allSucceeded, true);
+    assert.deepEqual(
+      edits.map((edit) => edit.content),
+      ["https://viewer-two.example/reel/1"],
+    );
+  });
+
   await it("successful video attachment removes the entire viewer fallback chain", async () => {
     const outgoing = await resolveOutgoing(
       {
@@ -815,13 +854,27 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   // === INSTAGRAM CASES ===
   console.log("buildInstagramPayload");
 
-  await it("instagram post → primary fixer + fallbackContent + embedFallback", async () => {
-    const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+  await it("instagram reel → canonical ordered viewers + local fallback", async () => {
+    const p = await buildInstagramPayload(
+      "https://instagram.com/reels/DcA0yXWMF4E/?igsh=tracking",
+    );
     const s = shapeOf(p);
     assert.equal(s.contentStartsWithHttp, true);
-    assert.ok(s.contentText.includes("ddinstagram"));
-    assert.equal(s.hasFallbackContent, true);
+    assert.equal(
+      s.contentText,
+      "https://instagram7.com/reel/DcA0yXWMF4E/",
+    );
+    assert.deepEqual(p.fallbackContents, [
+      "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
+      "https://deinstagram.com/reel/DcA0yXWMF4E/",
+    ]);
+    assert.equal(p.viewerValidation, "instagram");
     assert.equal(s.hasEmbedFallback, true);
+    assert.equal(
+      p.embedFallback.embeds[0].data.url,
+      "https://www.instagram.com/reel/DcA0yXWMF4E/",
+    );
+    assert.equal(p.recoverUrls, undefined);
   });
 
   await it("instagram story (with owner, display-name probe fails) → owner-only message", async () => {

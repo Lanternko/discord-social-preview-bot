@@ -32,7 +32,9 @@ Viewer 由 `THREADS_VIEWER_HOSTS` 設定，格式為最多三個逗號分隔的�
 ## Instagram
 
 - **Stories** (`/stories/<username>/`): no fixer works — bot immediately replies with owner username in 西寶 voice; skips embed-check pipeline entirely.
-- **Posts / Reels**: Primary = `FIXER_INSTAGRAM` (ddinstagram.com) → Secondary = `FIXER_INSTAGRAM_SECONDARY` (fxstagram.com) → embedFallback = FixEmbed wrapper → OG recovery (fetches fixer host's HTML for OG tags).
+- **Posts / Reels**: [src/instagram-url.js](../src/instagram-url.js) first normalizes `instagram.com` / `www.instagram.com`, singularizes `/reels/` to `/reel/`, removes query tracking, and validates the post shortcode. Discord then tries `INSTAGRAM_VIEWER_HOSTS` in order (default `instagram7.com,fxig.seria.moe,deinstagram.com`). Empty embeds, login walls, unavailable/not-found cards, and generic no-media cards advance to the next viewer; the first meaningful text/media embed wins. All viewers failing produces a local embed linked to the canonical Instagram URL.
+
+Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXER_INSTAGRAM` / `FIXER_INSTAGRAM_SECONDARY` compatibility. Instagram payloads intentionally omit `recoverUrls`, so the bot process never fetches third-party viewer HTML.
 
 ## Bilibili
 
@@ -50,7 +52,7 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 | Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via playwright probe; restricted board → public-summary embed with login notice |
 | PTT | ptt.cc | — | Custom embed via playwright probe |
 
-除 Threads 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Instagram-non-story）仍可帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 刻意不做 bot-side viewer fetch，改走 local canonical embed。
+除 Threads 與 Instagram 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback）仍可帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 與 Instagram 刻意不做 bot-side viewer fetch，改走 local canonical embed。
 
 **Reddit short links** (`redd.it/<id>`) now correctly route to `rxddit.com/<id>` (was: falling into FixEmbed wrapper because `buildFallbackUrl` only matched `reddit.com` / `www.reddit.com`).
 

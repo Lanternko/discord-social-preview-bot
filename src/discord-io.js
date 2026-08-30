@@ -154,10 +154,56 @@ function isUsefulThreadsViewerEmbed(embed) {
   return !genericTitleOnly && (hasMedia || meaningfulText);
 }
 
+function isUsefulInstagramViewerEmbed(embed) {
+  const title = String(readEmbedValue(embed, "title") || "").trim();
+  const description = String(
+    readEmbedValue(embed, "description") || "",
+  ).trim();
+  const author = String(readEmbedValue(embed, "author")?.name || "").trim();
+  const fieldText = (readEmbedValue(embed, "fields") || [])
+    .flatMap((field) => [field?.name, field?.value])
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const visibleText = [title, description, author, fieldText]
+    .filter(Boolean)
+    .join(" ");
+
+  if (
+    /instagram[^\n]{0,16}log\s*in|log\s*in[^\n]{0,16}instagram/i.test(
+      visibleText,
+    ) ||
+    /post\s+not\s+found|content\s+(?:isn't|is not)\s+available|page\s+(?:isn't|is not)\s+available/i.test(
+      visibleText,
+    )
+  ) {
+    return false;
+  }
+
+  const hasMedia = Boolean(
+    readEmbedValue(embed, "image") ||
+      readEmbedValue(embed, "thumbnail") ||
+      readEmbedValue(embed, "video"),
+  );
+  const meaningfulText = [title, description, author, fieldText].some(
+    (value) =>
+      value &&
+      !/^(?:instagram|post|reel|vxinstagram|fxinstagram|deinstagram media)$/i.test(
+        value,
+      ),
+  );
+  return hasMedia || meaningfulText;
+}
+
 function isViewerPreviewUseful(embeds, viewerValidation = null) {
   if (!Array.isArray(embeds) || embeds.length === 0) return false;
-  if (viewerValidation !== "threads") return true;
-  return embeds.some(isUsefulThreadsViewerEmbed);
+  if (viewerValidation === "threads") {
+    return embeds.some(isUsefulThreadsViewerEmbed);
+  }
+  if (viewerValidation === "instagram") {
+    return embeds.some(isUsefulInstagramViewerEmbed);
+  }
+  return true;
 }
 
 // A payload may carry `videoAttachment` (a direct mp4 URL). Try to download +
@@ -446,6 +492,7 @@ module.exports = {
   inferMissingPermissionsFromError,
   suppressOriginalEmbeds,
   isUsefulThreadsViewerEmbed,
+  isUsefulInstagramViewerEmbed,
   isViewerPreviewUseful,
   resolveOutgoing,
   sendPreviews,

@@ -24,6 +24,11 @@ const DEFAULT_THREADS_VIEWER_HOSTS = [
   "fzthreads.com",
   "fixthreads.seria.moe",
 ];
+const DEFAULT_INSTAGRAM_VIEWER_HOSTS = [
+  "instagram7.com",
+  "fxig.seria.moe",
+  "deinstagram.com",
+];
 
 function isPlainDnsHostname(value) {
   if (typeof value !== "string") return false;
@@ -50,7 +55,7 @@ function isPlainDnsHostname(value) {
   );
 }
 
-function parseThreadsViewerHosts(rawValue) {
+function parseViewerHosts(rawValue, label) {
   const candidates = Array.isArray(rawValue)
     ? rawValue
     : String(rawValue ?? "").split(",");
@@ -62,21 +67,29 @@ function parseThreadsViewerHosts(rawValue) {
     if (!host) continue;
     if (!isPlainDnsHostname(host)) {
       throw new Error(
-        `[config] invalid Threads viewer host "${candidate}"; expected a plain public DNS hostname`,
+        `[config] invalid ${label} viewer host "${candidate}"; expected a plain public DNS hostname`,
       );
     }
     if (seen.has(host)) continue;
     seen.add(host);
     hosts.push(host);
     if (hosts.length > 3) {
-      throw new Error("[config] THREADS_VIEWER_HOSTS accepts at most 3 hosts");
+      throw new Error(`[config] ${label.toUpperCase()}_VIEWER_HOSTS accepts at most 3 hosts`);
     }
   }
 
   if (hosts.length === 0) {
-    throw new Error("[config] Threads viewer host list must not be empty");
+    throw new Error(`[config] ${label} viewer host list must not be empty`);
   }
   return hosts;
+}
+
+function parseThreadsViewerHosts(rawValue) {
+  return parseViewerHosts(rawValue, "Threads");
+}
+
+function parseInstagramViewerHosts(rawValue) {
+  return parseViewerHosts(rawValue, "Instagram");
 }
 
 function loadThreadsViewerHosts(env = process.env) {
@@ -96,6 +109,25 @@ function loadThreadsViewerHosts(env = process.env) {
 }
 
 const THREADS_VIEWER_HOSTS = loadThreadsViewerHosts();
+
+function loadInstagramViewerHosts(env = process.env) {
+  if (env.INSTAGRAM_VIEWER_HOSTS !== undefined) {
+    return parseInstagramViewerHosts(env.INSTAGRAM_VIEWER_HOSTS);
+  }
+  if (
+    env.FIXER_INSTAGRAM !== undefined ||
+    env.FIXER_INSTAGRAM_SECONDARY !== undefined
+  ) {
+    return parseInstagramViewerHosts([
+      env.FIXER_INSTAGRAM || DEFAULT_INSTAGRAM_VIEWER_HOSTS[0],
+      env.FIXER_INSTAGRAM_SECONDARY || DEFAULT_INSTAGRAM_VIEWER_HOSTS[1],
+      DEFAULT_INSTAGRAM_VIEWER_HOSTS[2],
+    ]);
+  }
+  return [...DEFAULT_INSTAGRAM_VIEWER_HOSTS];
+}
+
+const INSTAGRAM_VIEWER_HOSTS = loadInstagramViewerHosts();
 
 const DEFAULT_AI_PERSONA = `你是西奈津美（Nishi Natsumi），大家叫你西寶。高中三年級，147 公分，短髮，橫濱あざみ野的高中。圖書委員，也是攝影社的。
 
@@ -165,6 +197,10 @@ module.exports = {
   loadThreadsViewerHosts,
   DEFAULT_THREADS_VIEWER_HOSTS,
   THREADS_VIEWER_HOSTS,
+  parseInstagramViewerHosts,
+  loadInstagramViewerHosts,
+  DEFAULT_INSTAGRAM_VIEWER_HOSTS,
+  INSTAGRAM_VIEWER_HOSTS,
   DISCORD_TOKEN: process.env.DISCORD_TOKEN,
   FIXEMBED_BASE_URL:
     process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=",
@@ -181,9 +217,10 @@ module.exports = {
   // Optional Bilibili mark shown before the video-preview title, e.g.
   // "<:bilibili:123456789>". Empty = omit the icon (info bar still works).
   BILIBILI_EMOJI: process.env.BILIBILI_EMOJI || "",
-  FIXER_INSTAGRAM: process.env.FIXER_INSTAGRAM || "ddinstagram.com",
-  FIXER_INSTAGRAM_SECONDARY:
-    process.env.FIXER_INSTAGRAM_SECONDARY || "fxstagram.com",
+  // Legacy aliases retained for existing deployments. New code consumes the
+  // ordered INSTAGRAM_VIEWER_HOSTS list.
+  FIXER_INSTAGRAM: INSTAGRAM_VIEWER_HOSTS[0],
+  FIXER_INSTAGRAM_SECONDARY: INSTAGRAM_VIEWER_HOSTS[1],
   SUPPRESS_ORIGINAL_EMBEDS:
     (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true",
   REPLY_MODE: (process.env.REPLY_MODE || "reply").toLowerCase(),
