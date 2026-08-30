@@ -4,15 +4,17 @@ Top-level dispatcher: [src/preview.js](../src/preview.js). Per-platform builders
 
 ## Threads
 
+Threads 的 `/share/<token>` 會先由 [src/threads-url.js](../src/threads-url.js) 展開成 `https://www.threads.com/@user/post/id`，之後 probe、viewer 與本機 fallback 全部只使用這個 canonical URL。Resolver 只允許精確的官方 HTTPS share URL，使用 `redirect: manual` 讀取單一 `Location`（不跟隨），並再次驗證官方 host 與 post path；timeout 2.5 秒、最多 4 個並行請求、同 URL inflight dedupe，以及最多 512 筆的正／負快取。解析失敗時保留原 share URL，不會請求轉址目的地。
+
 | Condition | Output |
 |---|---|
 | No image **AND** no video (`isTextOnly`) or `twitterCard === "summary"` | Custom embed (text only) |
 | Multiple images (`imageCount > 1`) | Multi-image carousel embed — 顯示前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）。若被截斷，最後一個 embed 的 description 追加提示（e.g. `... 還有 6 張`）。沒有 button — 原本每個 embed 的標題就連回原貼文。檢查順序早於 video；混合 image+video 走 carousel **並**帶 `videoAttachment`（discord-io 把 mp4 下載後當附件上傳，可播放影片在圖集下方；放不下就只剩 carousel、影片降級為封面）|
-| Has video / `videoCount > 0` (regardless of og:image presence) | 先試 `videoAttachment`（下載 mp4 → 上傳可播放影片）；放不下 / 停用 / 逾時 → Primary fixer (`FIXER_THREADS`) → secondary fixer (`FIXER_THREADS_SECONDARY`) → embedFallback (compact embed + 「影片無法載入」note) → OG recovery |
+| Has video / `videoCount > 0` (regardless of og:image presence) | 先試 `videoAttachment`（下載 mp4 → 上傳可播放影片）；放不下 / 停用 / 逾時 → 依 `THREADS_VIEWER_HOSTS` 順序逐一嘗試 viewer → local `embedFallback`（canonical link +「影片無法載入」note） |
 | `summary_large_image` + single image | Custom embed with image |
 | Generic / partial metadata | Compact text embed |
-| Probe error | Primary + secondary fixer + OG recovery list (was: just primary fixer) |
-| Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same primary + secondary fixer + OG recovery fallthrough |
+| Probe error | 依序嘗試 `THREADS_VIEWER_HOSTS` → local canonical `embedFallback` |
+| Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same ordered viewer chain → local fallback |
 
 **Order is load-bearing.** See [src/platforms/threads.js](../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../scripts/routing-smoke.js):
 
@@ -21,7 +23,9 @@ Top-level dispatcher: [src/preview.js](../src/preview.js). Per-platform builders
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
 
-**Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it (title `Threads • Log in` or the generic `Join Threads to share ideas…` description) and throws, so the post drops to the fixer chain instead of rendering a useless login card. The secondary fixer `fzthreads.com` fetches many of these where `fixthreads.seria.moe` also walls — asserted by `scripts/smoke.js`.
+**Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it and throws. Discord 的 viewer unfurl 也會再驗證內容：空 embed、`Threads • Log in`、`Join Threads…` 與只有 `Thread` / `Threads` 的泛用卡片都視為失敗並嘗試下一個 viewer；第一個含實質文字或媒體的 embed 才停止。
+
+Viewer 由 `THREADS_VIEWER_HOSTS` 設定，格式為最多三個逗號分隔的純 DNS hostname；預設順序 `fzthreads.com,fixthreads.seria.moe`。URL、path、port、IP、`localhost` 或超過三個值會在啟動時直接報錯。舊的 `FIXER_THREADS` / `FIXER_THREADS_SECONDARY` 仍作為相容設定。Threads 不帶 `recoverUrls`，因此 bot process 不會抓取第三方 viewer HTML；所有 viewer 都失敗時改用已建好的 canonical local embed。
 
 **Video attachment** ([src/video.js](../src/video.js)): a bot-built embed can't hold a playable video, so video / MIXED payloads carry `videoAttachment` (a direct mp4 URL). `sendPreviews` → `resolveOutgoing` downloads + re-uploads it as a Discord file (which DOES render an inline player). On any miss — disabled, guild not in `VIDEO_ATTACHMENT_GUILD_IDS`, over the guild's upload cap, at `VIDEO_ATTACHMENT_MAX_CONCURRENT`, or a fetch failure — it returns null and the payload keeps its existing behaviour (carousel for MIXED, fixer chain for video-only). A HEAD size pre-check + concurrency cap + per-fetch timeout keep a flood of video links from overwhelming the host. Env knobs in [env.md](env.md); pure gating asserted by `scripts/smoke.js`.
 
@@ -46,7 +50,7 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 | Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via playwright probe; restricted board → public-summary embed with login notice |
 | PTT | ptt.cc | — | Custom embed via playwright probe |
 
-All "URL-only" platforms above (X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Threads-video / Instagram-non-story) carry a `recoverUrls` list, so the empty-embed detector falls through to OG metadata fetch instead of just deleting.
+除 Threads 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Instagram-non-story）仍可帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 刻意不做 bot-side viewer fetch，改走 local canonical embed。
 
 **Reddit short links** (`redd.it/<id>`) now correctly route to `rxddit.com/<id>` (was: falling into FixEmbed wrapper because `buildFallbackUrl` only matched `reddit.com` / `www.reddit.com`).
 
@@ -55,11 +59,11 @@ All "URL-only" platforms above (X / Reddit / Pixiv / Bluesky / Facebook / Bilibi
 For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then re-fetches the message. **Four-layer fallback** — every layer must fail before apology:
 
 1. **Primary `content`** (fixer URL) — Discord unfurled it → done ✓
-2. **`fallbackContent`** (secondary fixer URL) — edit message, wait `EMBED_CHECK_DELAY_MS`. Unfurled → done ✓
+2. **`fallbackContents`**（任意長度的 ordered viewer list；舊 `fallbackContent` 自動相容成單一元素）— 每次 edit 後等待 `EMBED_CHECK_DELAY_MS`，第一個有效 unfurl 即停止 ✓
 3. **`embedFallback`** (pre-built embed payload) — edit message, no further waiting needed. Done ✓
 4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../src/og-fallback.js). Done ✓
 
-Only if all four fail (or each is null/missing) → delete message + reply `"抱歉，預覽載入失敗 🙏"`. Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
+Only if all four fail (or each is null/missing) → delete message + reply failure message. Threads payload 永遠提供 local `embedFallback`，所以 viewer 全失敗時仍保留 canonical click-through；其他平台維持原有 OG recovery / apology 行為。Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
 
 This is the "至少要顯示 description" guarantee: as long as at least one fixer host (or the original platform URL for non-auth-walled cases) returns OG tags, the user gets at least a title/description embed.
 

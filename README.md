@@ -104,6 +104,14 @@ DISCORD_TOKEN=剛剛複製的 bot token
 
 其他變數（fixer 網域、AI key 等）全部可以先留空，bot 會用預設值啟動。詳情見 [docs/env.md](docs/env.md)。
 
+Threads viewer 可選擇依序設定最多三個純 hostname（預設先 `fzthreads.com`、再 `fixthreads.seria.moe`）：
+
+```env
+THREADS_VIEWER_HOSTS=fzthreads.com,fixthreads.seria.moe
+```
+
+舊的 `FIXER_THREADS` / `FIXER_THREADS_SECONDARY` 設定仍相容。若填入完整 URL、path、port、IP、`localhost` 或超過三個 hostname，bot 會拒絕啟動，避免把不可信網址帶進預覽流程。
+
 ### Step 5：啟動
 
 ```bash
@@ -267,12 +275,14 @@ docker run -d \
 
 ### Threads
 
+`threads.com/share/...` 短連結會先安全展開成官方 canonical `@user/post/id`，再拿 canonical URL 做 probe 與 viewer fallback。展開只讀取官方 share 回應的單一 redirect header，不會跟隨或抓取 redirect 目的地。
+
 | 貼文類型 | 預覽行為 |
 |---|---|
 | 純文字 | 自訂 embed（標題＋內文） |
 | 單張圖片 | 自訂 embed（標題＋內文＋圖片） |
 | 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery）。含影片的混合貼文會在圖集下方額外附上可播放影片 |
-| 影片 | 先把影片下載後當附件上傳（可播放）；放不下才退回 fixer 連結 |
+| 影片 | 先把影片下載後當附件上傳（可播放）；放不下才依序嘗試 `THREADS_VIEWER_HOSTS`，全部失敗則顯示可點回 canonical 原文的本機資訊卡 |
 
 ### Instagram
 
@@ -298,7 +308,7 @@ docker run -d \
 
 | 情形 | Bot 的反應 |
 |---|---|
-| Threads 影片（所有 fixer 失敗） | 資訊卡：作者名稱＋文案＋「影片無法載入，請點連結觀看」 |
+| Threads（所有 viewer 失敗） | 本機資訊卡：canonical 原文連結；影片貼文另保留作者／文案與「影片無法載入」提示 |
 | Instagram 限時動態 | 文字訊息：「這是 **@xxx** 的限動！」 |
 | Instagram Reels（所有 fixer 失敗） | FixEmbed 連結（最後防線） |
 | 巴哈姆特限制板 / 登入牆 | 顯示公開部分，內文可能為空 |

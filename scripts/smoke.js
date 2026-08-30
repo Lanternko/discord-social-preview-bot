@@ -8,6 +8,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 
@@ -84,7 +85,19 @@ const {
   buildHelpMessage,
   buildPermissionDebugMessage,
 } = require("../src/commands");
-const { getMissingChannelPermissions } = require("../src/discord-io");
+const {
+  getMissingChannelPermissions,
+  isViewerPreviewUseful,
+} = require("../src/discord-io");
+const {
+  DEFAULT_THREADS_VIEWER_HOSTS,
+  parseThreadsViewerHosts,
+  loadThreadsViewerHosts,
+} = require("../src/config");
+const {
+  exactThreadsShareUrl,
+  canonicalizeThreadsPostUrl,
+} = require("../src/threads-url");
 const { isTrashEmoji } = require("../src/reaction-delete");
 const {
   localDateKey,
@@ -208,6 +221,136 @@ it("does not strip s on YouTube", () => {
   );
 });
 
+console.log("Threads URL resolver boundaries");
+it("accepts only an exact HTTPS Threads share URL", () => {
+  assert.equal(
+    exactThreadsShareUrl("https://www.threads.com/share/BBV95gatql/"),
+    "https://www.threads.com/share/BBV95gatql/",
+  );
+  for (const unsafe of [
+    "http://www.threads.com/share/BBV95gatql/",
+    "https://www.threads.com:443/share/BBV95gatql/",
+    "https://www.threads.com:444/share/BBV95gatql/",
+    "https://attacker@www.threads.com/share/BBV95gatql/",
+    "https://evil.example/share/BBV95gatql/",
+    "https://www.threads.com/share/BBV95gatql/?next=https://evil.example",
+    "https://www.threads.com/share/BBV95gatql/extra",
+    `https://www.threads.com/share/${"A".repeat(129)}/`,
+  ]) {
+    assert.equal(exactThreadsShareUrl(unsafe), null, unsafe);
+  }
+});
+it("accepts only canonical Threads post Locations and strips known tracking", () => {
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM?xmt=AQGz&slof=1",
+    ),
+    "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM",
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://evil.example/@0_s0321/post/DcqQ5GpETBM",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM?next=x",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com:443/@0_s0321/post/DcqQ5GpETBM",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      `https://www.threads.com/@user/post/${"A".repeat(129)}`,
+    ),
+    null,
+  );
+});
+
+console.log("Threads viewer config");
+it("uses ordered defaults and deduplicates up to three plain DNS hosts", () => {
+  assert.deepEqual(DEFAULT_THREADS_VIEWER_HOSTS, [
+    "fzthreads.com",
+    "fixthreads.seria.moe",
+  ]);
+  assert.deepEqual(
+    parseThreadsViewerHosts("A.example,a.example,b.example,c.example"),
+    ["a.example", "b.example", "c.example"],
+  );
+  assert.deepEqual(
+    loadThreadsViewerHosts({
+      FIXER_THREADS: "legacy-primary.example",
+      FIXER_THREADS_SECONDARY: "legacy-secondary.example",
+    }),
+    ["legacy-primary.example", "legacy-secondary.example"],
+  );
+});
+it("rejects URL, path, port, IP, localhost, and more than three viewers", () => {
+  for (const invalid of [
+    "https://viewer.example",
+    "viewer.example/path",
+    "viewer.example:443",
+    "127.0.0.1",
+    "localhost",
+    "a.example,b.example,c.example,d.example",
+  ]) {
+    assert.throws(() => parseThreadsViewerHosts(invalid), invalid);
+  }
+});
+it("fails fast during startup on invalid THREADS_VIEWER_HOSTS", () => {
+  const result = spawnSync(process.execPath, ["-e", "require('./src/config')"], {
+    cwd: path.join(__dirname, ".."),
+    env: {
+      ...process.env,
+      THREADS_VIEWER_HOSTS: "https://viewer.example/path",
+    },
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /invalid Threads viewer host/);
+});
+
+console.log("Threads viewer validation");
+it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () => {
+  assert.equal(isViewerPreviewUseful([], "threads"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Threads • Log in", description: "Join Threads to share ideas" }],
+      "threads",
+    ),
+    false,
+  );
+  assert.equal(isViewerPreviewUseful([{ title: "Thread" }], "threads"), false);
+  assert.equal(isViewerPreviewUseful([{ title: "Threads" }], "threads"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Threads", image: { url: "threads-logo" } }],
+      "threads",
+    ),
+    false,
+  );
+});
+it("accepts meaningful Threads text or media and preserves other platforms", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Threads", description: "real post content" }],
+      "threads",
+    ),
+    true,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ image: { url: "real-post-image" } }], "threads"),
+    true,
+  );
+  assert.equal(isViewerPreviewUseful([{ title: "Threads" }], null), true);
+});
+
 console.log("extractSupportedUrls");
 it("returns Threads URL with tracking stripped", () => {
   assert.deepEqual(
@@ -259,10 +402,10 @@ it("twitter -> fxtwitter", () => {
     "https://fxtwitter.com/u/status/1",
   );
 });
-it("threads -> fixthreads", () => {
+it("threads -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.threads.net/@a/post/1"),
-    "https://fixthreads.seria.moe/@a/post/1",
+    "https://fzthreads.com/@a/post/1",
   );
 });
 

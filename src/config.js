@@ -20,6 +20,83 @@ function parseCsvEnv(name, defaultValue = []) {
     .filter(Boolean);
 }
 
+const DEFAULT_THREADS_VIEWER_HOSTS = [
+  "fzthreads.com",
+  "fixthreads.seria.moe",
+];
+
+function isPlainDnsHostname(value) {
+  if (typeof value !== "string") return false;
+  const hostname = value.trim().toLowerCase();
+  if (
+    hostname.length === 0 ||
+    hostname.length > 253 ||
+    hostname === "localhost" ||
+    !hostname.includes(".") ||
+    hostname.endsWith(".") ||
+    hostname.includes(":") ||
+    hostname.includes("/") ||
+    hostname.includes("\\") ||
+    hostname.includes("@") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname)
+  ) {
+    return false;
+  }
+  return hostname.split(".").every(
+    (label) =>
+      label.length > 0 &&
+      label.length <= 63 &&
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+  );
+}
+
+function parseThreadsViewerHosts(rawValue) {
+  const candidates = Array.isArray(rawValue)
+    ? rawValue
+    : String(rawValue ?? "").split(",");
+  const hosts = [];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    const host = String(candidate).trim().toLowerCase();
+    if (!host) continue;
+    if (!isPlainDnsHostname(host)) {
+      throw new Error(
+        `[config] invalid Threads viewer host "${candidate}"; expected a plain public DNS hostname`,
+      );
+    }
+    if (seen.has(host)) continue;
+    seen.add(host);
+    hosts.push(host);
+    if (hosts.length > 3) {
+      throw new Error("[config] THREADS_VIEWER_HOSTS accepts at most 3 hosts");
+    }
+  }
+
+  if (hosts.length === 0) {
+    throw new Error("[config] Threads viewer host list must not be empty");
+  }
+  return hosts;
+}
+
+function loadThreadsViewerHosts(env = process.env) {
+  if (env.THREADS_VIEWER_HOSTS !== undefined) {
+    return parseThreadsViewerHosts(env.THREADS_VIEWER_HOSTS);
+  }
+  if (
+    env.FIXER_THREADS !== undefined ||
+    env.FIXER_THREADS_SECONDARY !== undefined
+  ) {
+    return parseThreadsViewerHosts([
+      env.FIXER_THREADS || DEFAULT_THREADS_VIEWER_HOSTS[0],
+      env.FIXER_THREADS_SECONDARY || DEFAULT_THREADS_VIEWER_HOSTS[1],
+    ]);
+  }
+  return [...DEFAULT_THREADS_VIEWER_HOSTS];
+}
+
+const THREADS_VIEWER_HOSTS = loadThreadsViewerHosts();
+
 const DEFAULT_AI_PERSONA = `你是西奈津美（Nishi Natsumi），大家叫你西寶。高中三年級，147 公分，短髮，橫濱あざみ野的高中。圖書委員，也是攝影社的。
 
 你喜歡看書，也喜歡蒐集小飾品——髮夾、耳環、手鏈，看到好看的就忍不住。你有個別人覺得很有趣的習慣：遠處傳來什麼好笑的事你就會笑出來，藏都藏不住。
@@ -83,13 +160,19 @@ const DEFAULT_AI_PERSONA = `你是西奈津美（Nishi Natsumi），大家叫你
 module.exports = {
   parsePositiveIntEnv,
   parseCsvEnv,
+  isPlainDnsHostname,
+  parseThreadsViewerHosts,
+  loadThreadsViewerHosts,
+  DEFAULT_THREADS_VIEWER_HOSTS,
+  THREADS_VIEWER_HOSTS,
   DISCORD_TOKEN: process.env.DISCORD_TOKEN,
   FIXEMBED_BASE_URL:
     process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=",
   FIXER_TWITTER: process.env.FIXER_TWITTER || "fxtwitter.com",
-  FIXER_THREADS: process.env.FIXER_THREADS || "fixthreads.seria.moe",
-  FIXER_THREADS_SECONDARY:
-    process.env.FIXER_THREADS_SECONDARY || "fzthreads.com",
+  // Legacy aliases retained for callers and existing deployments. New code
+  // should consume THREADS_VIEWER_HOSTS so a third viewer can be configured.
+  FIXER_THREADS: THREADS_VIEWER_HOSTS[0],
+  FIXER_THREADS_SECONDARY: THREADS_VIEWER_HOSTS[1],
   FIXER_REDDIT: process.env.FIXER_REDDIT || "rxddit.com",
   FIXER_PIXIV: process.env.FIXER_PIXIV || "phixiv.net",
   FIXER_BLUESKY: process.env.FIXER_BLUESKY || "bskx.app",

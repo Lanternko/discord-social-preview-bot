@@ -116,6 +116,50 @@ async function suppressOriginalEmbeds(message) {
   }
 }
 
+function readEmbedValue(embed, key) {
+  return embed?.[key] ?? embed?.data?.[key] ?? null;
+}
+
+function isUsefulThreadsViewerEmbed(embed) {
+  const title = String(readEmbedValue(embed, "title") || "").trim();
+  const description = String(
+    readEmbedValue(embed, "description") || "",
+  ).trim();
+  const author = String(readEmbedValue(embed, "author")?.name || "").trim();
+  const fieldText = (readEmbedValue(embed, "fields") || [])
+    .flatMap((field) => [field?.name, field?.value])
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const visibleText = [title, description, author, fieldText]
+    .filter(Boolean)
+    .join(" ");
+
+  if (
+    /\bthreads?\b[^\n]{0,12}\blog\s*in\b/i.test(visibleText) ||
+    /join\s+threads\b/i.test(visibleText)
+  ) {
+    return false;
+  }
+
+  const hasMedia = Boolean(
+    readEmbedValue(embed, "image") ||
+      readEmbedValue(embed, "thumbnail") ||
+      readEmbedValue(embed, "video"),
+  );
+  const meaningfulText = [title, description, author, fieldText].some(
+    (value) => value && !/^threads?$/i.test(value),
+  );
+  const genericTitleOnly = /^threads?$/i.test(title) && !meaningfulText;
+  return !genericTitleOnly && (hasMedia || meaningfulText);
+}
+
+function isViewerPreviewUseful(embeds, viewerValidation = null) {
+  if (!Array.isArray(embeds) || embeds.length === 0) return false;
+  if (viewerValidation !== "threads") return true;
+  return embeds.some(isUsefulThreadsViewerEmbed);
+}
+
 // A payload may carry `videoAttachment` (a direct mp4 URL). Try to download +
 // re-upload it so Discord shows a real playable video the bot controls; on a
 // miss (too big / disabled / at capacity / fetch fail) the payload keeps its
@@ -124,7 +168,7 @@ async function suppressOriginalEmbeds(message) {
 // URL to swap in instead: Discord unfurls the fixer's og:video by streaming
 // the remote mp4, so a video over the guild's upload cap still gets a native
 // player. Returns the message body to send.
-async function resolveOutgoing(payload, message) {
+async function resolveOutgoing(payload, message, options = {}) {
   const base = { ...payload };
   const videoUrl = base.videoAttachment;
   const attachmentEmbeds = base.videoAttachmentEmbeds;
@@ -136,7 +180,8 @@ async function resolveOutgoing(payload, message) {
   delete base.videoAttachmentMissContent;
   if (!videoUrl) return base;
 
-  const attachment = await fetchVideoAttachment(videoUrl, message.guild);
+  const fetchAttachment = options.fetchVideoAttachment || fetchVideoAttachment;
+  const attachment = await fetchAttachment(videoUrl, message.guild);
   if (!attachment) {
     if (typeof missContent === "string" && missContent) {
       console.log(`[video] miss → fixer unfurl ${missContent}`);
@@ -170,6 +215,7 @@ async function resolveOutgoing(payload, message) {
   if (typeof base.content === "string" && base.content.startsWith("http")) {
     delete base.content;
     delete base.fallbackContent;
+    delete base.fallbackContents;
   }
   return base;
 }
@@ -221,7 +267,15 @@ async function sendPreviews(message, payloads) {
     sent.push({
       sentMessage,
       isUrlOnly,
-      fallbackContent: base.fallbackContent ?? null,
+      fallbackContents: Array.isArray(base.fallbackContents)
+        ? base.fallbackContents.filter(
+            (candidate) =>
+              typeof candidate === "string" && candidate.startsWith("http"),
+          )
+        : typeof base.fallbackContent === "string" && base.fallbackContent
+          ? [base.fallbackContent]
+          : [],
+      viewerValidation: base.viewerValidation ?? null,
       embedFallback: base.embedFallback ?? null,
       recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
       recoverEmbedOptions: base.recoverEmbedOptions ?? null,
@@ -284,7 +338,8 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
   for (const item of urlMessages) {
     const {
       sentMessage,
-      fallbackContent,
+      fallbackContents,
+      viewerValidation,
       embedFallback,
       recoverUrls,
       recoverEmbedOptions,
@@ -301,13 +356,14 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    if (fetched.embeds.length > 0) continue;
+    if (isViewerPreviewUseful(fetched.embeds, viewerValidation)) continue;
 
-    console.log(`[preview] empty-embed detected ${fetched.id}`);
+    console.log(`[preview] empty-or-useless-embed detected ${fetched.id}`);
 
     let current = fetched;
 
-    if (fallbackContent) {
+    let viewerSucceeded = false;
+    for (const fallbackContent of fallbackContents || []) {
       console.log(`[preview] trying fallback url ${current.id}`);
       try {
         await current.edit({
@@ -328,12 +384,14 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      if (current?.embeds?.length > 0) {
+      if (isViewerPreviewUseful(current?.embeds, viewerValidation)) {
         console.log(`[preview] fallback url succeeded ${current.id}`);
-        continue;
+        viewerSucceeded = true;
+        break;
       }
-      console.log(`[preview] fallback url also empty ${current.id}`);
+      console.log(`[preview] fallback url empty or useless ${current.id}`);
     }
+    if (viewerSucceeded) continue;
 
     if (embedFallback) {
       try {
@@ -387,6 +445,9 @@ module.exports = {
   logMissingChannelPermissions,
   inferMissingPermissionsFromError,
   suppressOriginalEmbeds,
+  isUsefulThreadsViewerEmbed,
+  isViewerPreviewUseful,
+  resolveOutgoing,
   sendPreviews,
   apologyReply,
   checkAndHandleEmptyEmbeds,

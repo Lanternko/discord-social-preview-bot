@@ -16,6 +16,7 @@ process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 // Owner-delete tests below assume exactly this owner list. Set before any
 // require so config.js snapshots it at import.
 process.env.BOT_OWNER_IDS = "OWNER";
+process.env.EMBED_CHECK_DELAY_MS = "1";
 
 // === MOCK SETUP ===
 // Pre-require the modules whose exports we need to override, then poke their
@@ -25,7 +26,9 @@ require(probeModulePath);
 let _mockThreadsMetadata = null;
 let _mockPageMetadata = null;
 let _mockProbeError = null;
-require.cache[probeModulePath].exports.fetchThreadsMetadata = async () => {
+let _lastThreadsProbeUrl = null;
+require.cache[probeModulePath].exports.fetchThreadsMetadata = async (url) => {
+  _lastThreadsProbeUrl = url;
   if (_mockProbeError) throw _mockProbeError;
   return _mockThreadsMetadata;
 };
@@ -49,6 +52,20 @@ const { buildPttPayload } = require("../src/platforms/ptt");
 const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
 const { handleReactionDelete } = require("../src/reaction-delete");
+const {
+  checkAndHandleEmptyEmbeds,
+  resolveOutgoing,
+} = require("../src/discord-io");
+const {
+  resolveThreadsUrl,
+  resetThreadsUrlResolverForTests,
+  getThreadsUrlResolverStats,
+  RESOLVE_CACHE_MAX,
+  RESOLVE_MAX_CONCURRENT,
+  RESOLVE_TIMEOUT_MS,
+  POSITIVE_CACHE_TTL_MS,
+  NEGATIVE_CACHE_TTL_MS,
+} = require("../src/threads-url");
 
 // === TEST RUNNER ===
 let pass = 0;
@@ -74,6 +91,7 @@ function shapeOf(payload) {
     embedCount: Array.isArray(payload.embeds) ? payload.embeds.length : 0,
     hasComponents: Array.isArray(payload.components) && payload.components.length > 0,
     hasFallbackContent: typeof payload.fallbackContent === "string",
+    fallbackContents: payload.fallbackContents,
     hasEmbedFallback: payload.embedFallback != null,
     hasVideoAttachment: typeof payload.videoAttachment === "string",
     videoAttachmentText: payload.videoAttachment,
@@ -84,7 +102,263 @@ function shapeOf(payload) {
 const THREADS_URL = "https://www.threads.net/@a/post/1";
 
 (async () => {
+  console.log("resolveThreadsUrl — redirect security and resource bounds");
+
+  await it("reads one manual redirect, validates canonical Location, and cancels body", async () => {
+    resetThreadsUrlResolverForTests();
+    let calls = 0;
+    let cancelled = 0;
+    const shareUrl = "https://www.threads.com/share/BBV95gatql/";
+    const canonical = "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM";
+    const fetchImpl = async (requestedUrl, options) => {
+      calls += 1;
+      assert.equal(requestedUrl, shareUrl);
+      assert.equal(options.redirect, "manual");
+      assert.equal(options.method, "GET");
+      assert.ok(options.signal);
+      return {
+        status: 302,
+        headers: new Headers({ location: `${canonical}?xmt=tracking&slof=1` }),
+        bodyUsed: false,
+        body: { cancel: async () => void (cancelled += 1) },
+      };
+    };
+    assert.equal(await resolveThreadsUrl(shareUrl, { fetchImpl }), canonical);
+    assert.equal(await resolveThreadsUrl(shareUrl, { fetchImpl }), canonical);
+    assert.equal(calls, 1, "positive result should be cached");
+    assert.equal(cancelled, 1, "redirect body should be cancelled");
+    assert.equal(RESOLVE_TIMEOUT_MS, 2500);
+  });
+
+  await it("does not fetch non-exact share URLs and negative-caches unsafe Location", async () => {
+    resetThreadsUrlResolverForTests();
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return {
+        status: 302,
+        headers: new Headers({
+          location: "https://evil.example/@victim/post/redirected",
+        }),
+        body: null,
+      };
+    };
+    const unsafeInput = "http://www.threads.com/share/not-https/";
+    assert.equal(
+      await resolveThreadsUrl(unsafeInput, { fetchImpl }),
+      unsafeInput,
+    );
+    const safeInput = "https://www.threads.com/share/unsafe-location/";
+    assert.equal(await resolveThreadsUrl(safeInput, { fetchImpl }), safeInput);
+    assert.equal(await resolveThreadsUrl(safeInput, { fetchImpl }), safeInput);
+    assert.equal(calls, 1, "unsafe Location should be negative-cached");
+  });
+
+  await it("accepts a relative canonical Location and rejects unsafe redirect targets", async () => {
+    resetThreadsUrlResolverForTests();
+    let calls = 0;
+    const relativeShare = "https://www.threads.com/share/RELATIVE/";
+    const relativeResult = await resolveThreadsUrl(relativeShare, {
+      fetchImpl: async () => {
+        calls += 1;
+        return {
+          status: 302,
+          headers: new Headers({ location: "/@resolver/post/RELATIVE?xmt=x" }),
+          body: null,
+        };
+      },
+    });
+    assert.equal(
+      relativeResult,
+      "https://www.threads.com/@resolver/post/RELATIVE",
+    );
+
+    const unsafeLocations = [
+      "http://www.threads.com/@resolver/post/HTTP",
+      "https://threads.com.evil.example/@resolver/post/SUFFIX",
+      "https://127.0.0.1/@resolver/post/LOOPBACK",
+      "https://www.threads.com:443/@resolver/post/DEFAULTPORT",
+      "https://www.threads.com:444/@resolver/post/PORT",
+      "https://www.threads.com/not-a-post/PATH",
+      "https://www.threads.com/@resolver/post/ID?unexpected=1",
+    ];
+    for (let index = 0; index < unsafeLocations.length; index += 1) {
+      const shareUrl = `https://www.threads.com/share/UNSAFE${index}/`;
+      assert.equal(
+        await resolveThreadsUrl(shareUrl, {
+          fetchImpl: async () => {
+            calls += 1;
+            return {
+              status: 302,
+              headers: new Headers({ location: unsafeLocations[index] }),
+              body: null,
+            };
+          },
+        }),
+        shareUrl,
+      );
+    }
+    assert.equal(calls, unsafeLocations.length + 1);
+  });
+
+  await it("fails closed on missing Location, non-redirect status, and timeout", async () => {
+    resetThreadsUrlResolverForTests();
+    const cases = [
+      { token: "NOLOCATION", status: 302, headers: new Headers() },
+      { token: "OKSTATUS", status: 200, headers: new Headers() },
+      { token: "RATELIMIT", status: 429, headers: new Headers() },
+      { token: "SERVERERROR", status: 500, headers: new Headers() },
+    ];
+    for (const testCase of cases) {
+      const shareUrl = `https://www.threads.com/share/${testCase.token}/`;
+      assert.equal(
+        await resolveThreadsUrl(shareUrl, {
+          fetchImpl: async () => ({ ...testCase, body: null }),
+        }),
+        shareUrl,
+      );
+    }
+
+    const timeoutUrl = "https://www.threads.com/share/TIMEOUT/";
+    assert.equal(
+      await resolveThreadsUrl(timeoutUrl, {
+        fetchImpl: async (_url, options) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener("abort", () => {
+              const error = new Error("timed out");
+              error.name = "AbortError";
+              reject(error);
+            });
+          }),
+      }),
+      timeoutUrl,
+    );
+    const stats = getThreadsUrlResolverStats();
+    assert.equal(stats.active, 0);
+    assert.equal(stats.queued, 0);
+  });
+
+  await it("deduplicates inflight work and never exceeds four redirect fetches", async () => {
+    resetThreadsUrlResolverForTests();
+    let calls = 0;
+    const fetchImpl = async (shareUrl) => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      const token = new URL(shareUrl).pathname.split("/").filter(Boolean).pop();
+      return {
+        status: 302,
+        headers: new Headers({
+          location: `https://www.threads.com/@resolver/post/${token}`,
+        }),
+        body: null,
+      };
+    };
+    const shared = "https://www.threads.com/share/DEDUPE/";
+    const inputs = Array.from({ length: 100 }, () => shared);
+    for (let index = 0; index < 8; index += 1) {
+      inputs.push(`https://www.threads.com/share/CONCURRENCY${index}/`);
+    }
+    await Promise.all(inputs.map((url) => resolveThreadsUrl(url, { fetchImpl })));
+    const stats = getThreadsUrlResolverStats();
+    assert.equal(calls, 9, "100 identical inflight URLs share one fetch");
+    assert.ok(stats.maxObservedConcurrency <= RESOLVE_MAX_CONCURRENT);
+    assert.equal(RESOLVE_MAX_CONCURRENT, 4);
+  });
+
+  await it("bounds positive and negative resolver cache entries", async () => {
+    resetThreadsUrlResolverForTests();
+    const fetchImpl = async () => ({
+      status: 404,
+      headers: new Headers(),
+      body: null,
+    });
+    for (let index = 0; index < RESOLVE_CACHE_MAX + 8; index += 1) {
+      await resolveThreadsUrl(
+        `https://www.threads.com/share/NEGATIVE${index}/`,
+        { fetchImpl },
+      );
+    }
+    const stats = getThreadsUrlResolverStats();
+    assert.equal(stats.cacheSize, RESOLVE_CACHE_MAX);
+    assert.equal(stats.negativeEntries, RESOLVE_CACHE_MAX);
+  });
+
+  await it("expires positive and negative resolver cache entries at separate TTLs", async () => {
+    resetThreadsUrlResolverForTests();
+    const originalNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    try {
+      let positiveCalls = 0;
+      const positiveFetch = async () => {
+        positiveCalls += 1;
+        return {
+          status: 302,
+          headers: new Headers({
+            location: "https://www.threads.com/@resolver/post/POSITIVE",
+          }),
+          body: null,
+        };
+      };
+      const positiveUrl = "https://www.threads.com/share/POSITIVE/";
+      await resolveThreadsUrl(positiveUrl, { fetchImpl: positiveFetch });
+      now += POSITIVE_CACHE_TTL_MS - 1;
+      await resolveThreadsUrl(positiveUrl, { fetchImpl: positiveFetch });
+      assert.equal(positiveCalls, 1);
+      now += 2;
+      await resolveThreadsUrl(positiveUrl, { fetchImpl: positiveFetch });
+      assert.equal(positiveCalls, 2);
+
+      let negativeCalls = 0;
+      const negativeFetch = async () => {
+        negativeCalls += 1;
+        return { status: 404, headers: new Headers(), body: null };
+      };
+      const negativeUrl = "https://www.threads.com/share/NEGATIVETTL/";
+      await resolveThreadsUrl(negativeUrl, { fetchImpl: negativeFetch });
+      now += NEGATIVE_CACHE_TTL_MS - 1;
+      await resolveThreadsUrl(negativeUrl, { fetchImpl: negativeFetch });
+      assert.equal(negativeCalls, 1);
+      now += 2;
+      await resolveThreadsUrl(negativeUrl, { fetchImpl: negativeFetch });
+      assert.equal(negativeCalls, 2);
+    } finally {
+      Date.now = originalNow;
+    }
+  });
+
   console.log("buildThreadsPayload — branch coverage");
+
+  await it("expands a share URL before probe and uses canonical links", async () => {
+    resetThreadsUrlResolverForTests();
+    const shareUrl = "https://www.threads.com/share/BBV95gatql/";
+    const canonical = "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM";
+    _mockFetch = async (_url, options) => {
+      assert.equal(options.redirect, "manual");
+      return {
+        status: 302,
+        headers: new Headers({ location: `${canonical}?xmt=tracking` }),
+        body: null,
+      };
+    };
+    _mockThreadsMetadata = {
+      image: null,
+      title: "canonical post",
+      description: "body",
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      video: false,
+    };
+    try {
+      const p = await buildThreadsPayload(shareUrl);
+      assert.equal(_lastThreadsProbeUrl, canonical);
+      assert.equal(p.embeds[0].data.url, canonical);
+    } finally {
+      _mockFetch = null;
+    }
+  });
 
   await it("text-only (no image, no card) → compact embed only", async () => {
     _mockThreadsMetadata = {
@@ -233,7 +507,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
-  await it("video only (no multi-image) → video attachment + fixer fallback chain", async () => {
+  await it("video only (no multi-image) → video attachment + ordered viewer chain", async () => {
     _mockThreadsMetadata = {
       image: "https://x/thumb.jpg",
       title: "t",
@@ -251,18 +525,19 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.videoAttachmentText, "https://cdn.example/v.mp4");
     // ...and still carries the full fixer chain as the fallback when it misses
     assert.equal(s.contentStartsWithHttp, true);
-    assert.ok(s.contentText.includes("fixthreads"), "primary fixer present");
-    assert.equal(s.hasFallbackContent, true);
+    assert.ok(s.contentText.includes("fzthreads.com"), "primary viewer present");
+    assert.deepEqual(p.fallbackContents, [
+      "https://fixthreads.seria.moe/@a/post/1",
+    ]);
+    assert.equal(p.viewerValidation, "threads");
     assert.equal(s.hasEmbedFallback, true);
     assert.ok(
       Array.isArray(p.videoAttachmentEmbeds) &&
         p.videoAttachmentEmbeds.length === 1,
       "carries a clean title/文案 embed for the successful-attachment case",
     );
-    assert.ok(
-      Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
-      "video branch should expose recoverUrls",
-    );
+    assert.equal(p.recoverUrls, undefined, "Threads must not bot-fetch viewers");
+    assert.equal(p.embedFallback.embeds[0].data.url, THREADS_URL);
   });
 
   // Regression: a video-only post with NO og:image used to fall into the
@@ -284,10 +559,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasVideoAttachment, true, "flags the video for attachment");
     assert.equal(s.contentStartsWithHttp, true);
     assert.ok(
-      s.contentText.includes("fixthreads"),
+      s.contentText.includes("fzthreads.com"),
       "MUST route to video fixer, not text-only embed",
     );
-    assert.equal(s.hasFallbackContent, true);
+    assert.equal(p.fallbackContents.length, 1);
   });
 
   await it("single image (summary_large_image, imageCount=1) → 1 media embed", async () => {
@@ -325,26 +600,131 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasContent, false);
   });
 
-  await it("probe error → primary + secondary fixer + OG recovery list", async () => {
+  await it("probe error → ordered viewers then local canonical embed", async () => {
     _mockProbeError = new Error("probe boom");
     try {
       const p = await buildThreadsPayload(THREADS_URL);
       const s = shapeOf(p);
       assert.equal(s.contentStartsWithHttp, true);
-      assert.ok(s.contentText.includes("fixthreads"));
+      assert.ok(s.contentText.includes("fzthreads.com"));
       assert.equal(s.embedCount, 0);
-      assert.equal(
-        s.hasFallbackContent,
-        true,
-        "probe failure should still expose secondary fixer",
-      );
-      assert.ok(
-        Array.isArray(p.recoverUrls) && p.recoverUrls.length === 2,
-        "probe failure should expose recoverUrls for OG fallback",
-      );
+      assert.deepEqual(p.fallbackContents, [
+        "https://fixthreads.seria.moe/@a/post/1",
+      ]);
+      assert.equal(p.viewerValidation, "threads");
+      assert.equal(p.recoverUrls, undefined);
+      assert.equal(p.embedFallback.embeds[0].data.url, THREADS_URL);
     } finally {
       _mockProbeError = null;
     }
+  });
+
+  await it("Threads viewer validation advances through arbitrary fallbacks and stops at first useful embed", async () => {
+    const edits = [];
+    const target = {
+      id: "viewer-chain",
+      embeds: [
+        {
+          title: "Threads • Log in",
+          description: "Join Threads to share ideas",
+        },
+      ],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        if (payload.content === "https://viewer-one.example/post") {
+          this.embeds = [{ title: "Threads" }];
+        } else if (payload.content === "https://viewer-two.example/post") {
+          this.embeds = [{ title: "author", description: "real post body" }];
+        }
+        return this;
+      },
+    };
+    const result = await checkAndHandleEmptyEmbeds(
+      { reply: async () => assert.fail("must not apologize") },
+      [
+        {
+          sentMessage: target,
+          isUrlOnly: true,
+          fallbackContents: [
+            "https://viewer-one.example/post",
+            "https://viewer-two.example/post",
+            "https://viewer-three.example/post",
+          ],
+          viewerValidation: "threads",
+          embedFallback: null,
+          recoverUrls: null,
+        },
+      ],
+    );
+    assert.equal(result.allSucceeded, true);
+    assert.deepEqual(
+      edits.map((edit) => edit.content),
+      ["https://viewer-one.example/post", "https://viewer-two.example/post"],
+    );
+  });
+
+  await it("all useless Threads viewers end at local canonical embed without OG recovery", async () => {
+    const canonical = "https://www.threads.com/@a/post/1";
+    const edits = [];
+    const localEmbed = { title: "Threads 貼文", url: canonical };
+    const target = {
+      id: "viewer-local-fallback",
+      embeds: [],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        if (payload.content) this.embeds = [{ title: "Threads" }];
+        return this;
+      },
+      async delete() {
+        assert.fail("local fallback must prevent deletion");
+      },
+    };
+    const result = await checkAndHandleEmptyEmbeds(
+      { reply: async () => assert.fail("must not apologize") },
+      [
+        {
+          sentMessage: target,
+          isUrlOnly: true,
+          fallbackContents: ["https://viewer.example/post"],
+          viewerValidation: "threads",
+          embedFallback: { embeds: [localEmbed] },
+          recoverUrls: null,
+          sourceUrl: canonical,
+        },
+      ],
+    );
+    assert.equal(result.allSucceeded, true);
+    assert.deepEqual(edits.at(-1).embeds, [localEmbed]);
+    assert.equal(edits.at(-1).content, "");
+  });
+
+  await it("successful video attachment removes the entire viewer fallback chain", async () => {
+    const outgoing = await resolveOutgoing(
+      {
+        videoAttachment: "https://cdn.example/video.mp4",
+        videoAttachmentEmbeds: [{ title: "caption" }],
+        content: "https://fzthreads.com/@a/post/1",
+        fallbackContent: "https://legacy.example/@a/post/1",
+        fallbackContents: ["https://fixthreads.seria.moe/@a/post/1"],
+      },
+      { guild: null },
+      {
+        fetchVideoAttachment: async () => ({
+          buffer: Buffer.from("video"),
+          name: "video.mp4",
+        }),
+      },
+    );
+    assert.equal(outgoing.content, undefined);
+    assert.equal(outgoing.fallbackContent, undefined);
+    assert.equal(outgoing.fallbackContents, undefined);
+    assert.equal(outgoing.files.length, 1);
   });
 
   // === BAHAMUT CASES ===

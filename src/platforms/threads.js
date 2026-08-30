@@ -1,10 +1,6 @@
-const {
-  FIXER_THREADS,
-  FIXER_THREADS_SECONDARY,
-  MULTI_IMAGE_PREVIEW_COUNT,
-  THREADS_EMBED_COLOR,
-} = require("../config");
+const { THREADS_VIEWER_HOSTS, MULTI_IMAGE_PREVIEW_COUNT } = require("../config");
 const { replaceHostFixer } = require("../url-routing");
+const { resolveThreadsUrl } = require("../threads-url");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
 const {
@@ -21,45 +17,46 @@ function buildTailHint(hiddenImages, hasVideo) {
   return `... ${parts.join(" + ")}`;
 }
 
-function buildThreadsRecoverUrls(url) {
-  return [
-    replaceHostFixer(url, FIXER_THREADS),
-    replaceHostFixer(url, FIXER_THREADS_SECONDARY),
-  ];
+function buildThreadsViewerUrls(url) {
+  return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
 
-const THREADS_RECOVER_OPTIONS = {
-  color: THREADS_EMBED_COLOR,
-  footerText: "Threads · 預覽降級",
-};
+function buildThreadsLocalFallback(url, metadata = null, video = false) {
+  const embed = buildThreadsCompactEmbed(url, {
+    title: metadata?.title || (video ? "Threads 影片貼文" : "Threads 貼文"),
+    description:
+      metadata?.description || "預覽目前無法載入，請點標題前往原始貼文。",
+  });
+  if (video) {
+    const description = metadata?.description
+      ? `${trimDescription(metadata.description, 3900)}\n\n（影片無法載入，請點連結觀看）`
+      : "（影片無法載入，請點連結觀看）";
+    embed.setDescription(description);
+  }
+  return { embeds: [embed] };
+}
 
 async function buildThreadsPayload(url) {
-  try {
-    const metadata = await fetchThreadsMetadata(url);
+  const canonicalUrl = await resolveThreadsUrl(url);
+  const viewerUrls = buildThreadsViewerUrls(canonicalUrl);
 
+  try {
+    const metadata = await fetchThreadsMetadata(canonicalUrl);
     const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
-    // text-only requires NO image AND NO video — otherwise a video-only post
-    // (no og:image) silently routes to a text embed and never reaches the
-    // video fixer chain. Mixed image+video still routes to multi-image branch
-    // below.
     const isTextOnly = !metadata.image && !hasVideo;
 
     if (isTextOnly || metadata.twitterCard === "summary") {
       const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
-      console.log(`[preview] ${logLabel} ${metadata.twitterCard} ${url}`);
-      return { embeds: [buildThreadsCompactEmbed(url, metadata)] };
+      console.log(
+        `[preview] ${logLabel} ${metadata.twitterCard} ${canonicalUrl}`,
+      );
+      return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
     }
 
+    // This order is load-bearing: a mixed multi-image/video post retains its
+    // carousel while also attempting the direct video attachment.
     if (metadata.imageCount > 1) {
-      // MIXED (multi-image + video): keep the image gallery AND flag the video
-      // for upload as a Discord attachment (see video.js + discord-io), so a
-      // playable video sits below the gallery. `metadata.video` is the direct
-      // mp4 the probe found. When the upload is skipped (too big / disabled / at
-      // capacity) the carousel is the guaranteed floor and the video degrades to
-      // its poster frame — so, since the video plays for real when it can, the
-      // tail hint drops the "+ 影片" note.
       const videoAttachment = hasVideo ? metadata.video : undefined;
-
       const allImages =
         metadata.images && metadata.images.length > 1
           ? metadata.images.slice(0, 10)
@@ -73,19 +70,20 @@ async function buildThreadsPayload(url) {
         );
         const tailHint = buildTailHint(hiddenImages, false);
         console.log(
-          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${tailHint ? `"${tailHint}"` : "none"} ${url}`,
+          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${tailHint ? `"${tailHint}"` : "none"} ${canonicalUrl}`,
         );
         return {
           ...(videoAttachment ? { videoAttachment } : {}),
           embeds: buildThreadsCarouselEmbeds(
-            url,
+            canonicalUrl,
             metadata,
             previewImages,
             tailHint,
           ),
         };
       }
-      const fallbackEmbed = buildThreadsMediaEmbed(url, metadata);
+
+      const fallbackEmbed = buildThreadsMediaEmbed(canonicalUrl, metadata);
       const fallbackHint = buildTailHint(
         Math.max(0, (metadata.imageCount || 1) - 1),
         false,
@@ -97,7 +95,7 @@ async function buildThreadsPayload(url) {
         );
       }
       console.log(
-        `[preview] threads-multi-image fallback hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${fallbackHint ? `"${fallbackHint}"` : "none"} ${url}`,
+        `[preview] threads-multi-image fallback hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${fallbackHint ? `"${fallbackHint}"` : "none"} ${canonicalUrl}`,
       );
       return {
         ...(videoAttachment ? { videoAttachment } : {}),
@@ -106,37 +104,17 @@ async function buildThreadsPayload(url) {
     }
 
     if (metadata.video || metadata.videoCount > 0) {
-      console.log(`[preview] threads-video ${url}`);
-      // Clean title + 文案 embed shown ABOVE the uploaded video when the
-      // attachment succeeds — so a video-only post keeps its author + caption
-      // instead of being a bare player.
-      const videoEmbed = buildThreadsCompactEmbed(url, metadata);
-      if (!metadata.title) {
-        videoEmbed.setTitle("Threads 影片貼文");
-      }
-      // Fixer-fallback embed: same, but notes the video couldn't load — only
-      // reached when the fixer chain ALSO fails to unfurl.
-      const videoFallbackEmbed = buildThreadsCompactEmbed(url, metadata);
-      if (!metadata.title) {
-        videoFallbackEmbed.setTitle("Threads 影片貼文");
-      }
-      const videoDesc = metadata.description
-        ? trimDescription(metadata.description, 3900) +
-          "\n\n（影片無法載入，請點連結觀看）"
-        : "（影片無法載入，請點連結觀看）";
-      videoFallbackEmbed.setDescription(videoDesc);
+      console.log(`[preview] threads-video ${canonicalUrl}`);
+      const videoEmbed = buildThreadsCompactEmbed(canonicalUrl, metadata);
+      if (!metadata.title) videoEmbed.setTitle("Threads 影片貼文");
       return {
-        // Try to upload the video itself first (discord-io → video.js). If it's
-        // too big / disabled / at capacity, this whole payload IS the fixer
-        // chain it falls back to (primary → secondary → embedFallback → OG).
         ...(metadata.video ? { videoAttachment: metadata.video } : {}),
         videoAttachmentEmbeds: [videoEmbed],
-        content: replaceHostFixer(url, FIXER_THREADS),
-        fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
-        embedFallback: { embeds: [videoFallbackEmbed] },
-        recoverUrls: buildThreadsRecoverUrls(url),
-        recoverEmbedOptions: THREADS_RECOVER_OPTIONS,
-        sourceUrl: url,
+        content: viewerUrls[0],
+        fallbackContents: viewerUrls.slice(1),
+        viewerValidation: "threads",
+        embedFallback: buildThreadsLocalFallback(canonicalUrl, metadata, true),
+        sourceUrl: canonicalUrl,
       };
     }
 
@@ -145,27 +123,35 @@ async function buildThreadsPayload(url) {
       metadata.image &&
       metadata.imageCount <= 1
     ) {
-      console.log(`[preview] threads-single-image ${url}`);
-      return { embeds: [buildThreadsMediaEmbed(url, metadata)] };
+      console.log(`[preview] threads-single-image ${canonicalUrl}`);
+      return { embeds: [buildThreadsMediaEmbed(canonicalUrl, metadata)] };
     }
 
-    console.log(`[preview] threads-generic ${metadata.twitterCard} ${url}`);
-    return { embeds: [buildThreadsCompactEmbed(url, metadata)] };
+    console.log(
+      `[preview] threads-generic ${metadata.twitterCard} ${canonicalUrl}`,
+    );
+    return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
   } catch (error) {
-    console.warn(`Could not fetch Threads metadata for ${url}:`, error.message);
+    console.warn(
+      `Could not fetch Threads metadata for ${canonicalUrl}:`,
+      error.message,
+    );
   }
 
-  // Probe failure path — still hand back primary + secondary fixer + an OG
-  // recovery list so checkAndHandleEmptyEmbeds can render at least a title /
-  // description embed if both fixers unfurl empty.
-  console.log(`[preview] threads fixer fallback ${url}`);
+  // Discord unfurls viewer URLs. The bot intentionally never fetches viewer
+  // HTML, keeping the SSRF boundary limited to the exact official share URL.
+  console.log(`[preview] threads viewer fallback ${canonicalUrl}`);
   return {
-    content: replaceHostFixer(url, FIXER_THREADS),
-    fallbackContent: replaceHostFixer(url, FIXER_THREADS_SECONDARY),
-    recoverUrls: buildThreadsRecoverUrls(url),
-    recoverEmbedOptions: THREADS_RECOVER_OPTIONS,
-    sourceUrl: url,
+    content: viewerUrls[0],
+    fallbackContents: viewerUrls.slice(1),
+    viewerValidation: "threads",
+    embedFallback: buildThreadsLocalFallback(canonicalUrl),
+    sourceUrl: canonicalUrl,
   };
 }
 
-module.exports = { buildThreadsPayload };
+module.exports = {
+  buildThreadsPayload,
+  buildThreadsViewerUrls,
+  buildThreadsLocalFallback,
+};
