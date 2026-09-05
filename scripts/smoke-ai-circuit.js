@@ -57,6 +57,7 @@ const {
 const {
   checkAndIncrement,
   getUsage,
+  todayString,
   resetForTests: resetRateLimiter,
 } = require("../src/ai/rate-limiter");
 
@@ -569,6 +570,37 @@ async function main() {
   it("getUsage returns current count", () => {
     const u = getUsage("g1");
     assert.equal(u.count, 3);
+  });
+  it("day boundary is Taipei midnight, not UTC", () => {
+    // 2026-09-05 16:30Z = 2026-09-06 00:30 in Taipei — already the next day
+    // locally, while UTC still calls it the 5th.
+    assert.equal(todayString(Date.parse("2026-09-05T16:30:00Z")), "2026-09-06");
+    assert.equal(todayString(Date.parse("2026-09-05T15:30:00Z")), "2026-09-05");
+  });
+  it("count resets when the last count was on an earlier Taipei day", () => {
+    resetRateLimiter();
+    const yesterday = Date.parse("2026-09-05T10:00:00Z"); // 09-05 18:00 台灣
+    const today = Date.parse("2026-09-05T16:30:00Z"); //     09-06 00:30 台灣
+    checkAndIncrement("tz-guild", 2, yesterday);
+    checkAndIncrement("tz-guild", 2, yesterday);
+    assert.equal(checkAndIncrement("tz-guild", 2, yesterday).allowed, false);
+    const r = checkAndIncrement("tz-guild", 2, today);
+    assert.equal(r.allowed, true, "new Taipei day should start a fresh count");
+    assert.equal(r.remaining, 1);
+  });
+  it("count survives a restart (persisted to disk)", () => {
+    resetRateLimiter();
+    checkAndIncrement("persist-guild", 3);
+    checkAndIncrement("persist-guild", 3);
+    // resetForTests only drops the in-memory map — the next read reloads the
+    // file, which is what a real process restart does.
+    delete require.cache[require.resolve("../src/ai/rate-limiter")];
+    const reloaded = require("../src/ai/rate-limiter");
+    assert.equal(reloaded.getUsage("persist-guild").count, 2);
+    const r = reloaded.checkAndIncrement("persist-guild", 3);
+    assert.equal(r.allowed, true);
+    assert.equal(r.remaining, 0, "restart must not hand back a fresh quota");
+    assert.equal(reloaded.checkAndIncrement("persist-guild", 3).allowed, false);
   });
   it("reset clears counters", () => {
     resetRateLimiter();
