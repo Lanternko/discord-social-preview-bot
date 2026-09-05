@@ -36,6 +36,8 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.
 - **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](docs/ai-providers.md).
+- **貼圖**：西寶 在回覆裡寫 `[貼圖:名字]` 就會附上貼圖——來源是「所在伺服器的貼圖」（用 sticker id 送，同名優先）＋「她自己的圖庫」`assets/stickers/`（當附件上傳，因為 Discord 沒有 application sticker API）。表只在呼叫端傳 `stickerCatalog` 時才進 prompt（recap/story/voice 不傳），亂編的名字直接吃掉不外洩，送失敗退純文字。詳見 [persona.md](docs/persona.md)。
+- **西寶自己的 emoji 庫**：application emoji（2000 個上限，不吃伺服器 50-100 額度，每個群都能用），`node scripts/app-emoji.js list|upload|delete` 管理。gateway 不會推播，`clientReady` 抓一次 → **上傳後要重啟才看得到**；名字推導不出用途的不會進 prompt 表（上傳時會警告）。
 - **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](docs/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).

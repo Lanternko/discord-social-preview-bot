@@ -53,6 +53,7 @@ Branches covered:
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
 - **Bilibili** — API success → custom embed (no URL) **+ `videoAttachment`** (media.vxbilibili mp4 constructed from the BVID, MIXED-style playable video) / API failure → vxbilibili URL with `recoverUrls`.
 - **Preview dispatcher** ([preview.js](../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
+- **Sticker send** ([mention.js](../src/mention.js) `sendAIReply`) — the `[貼圖:名字]` → outgoing-payload matrix with a mocked `message.reply`: guild sticker → `stickers:[id]` + surviving text / library sticker → `files:[…]` with **no** content / plain reply untouched / a failed sticker send retries text-only (the reply must survive) / an invented name never reaches the channel / a reply that was *only* a bad token falls back to a spoken line. Lives here because the decision is about which send shape goes out, not about a pure return value.
 - **Reaction delete** ([reaction-delete.js](../src/reaction-delete.js)) — `handleReactionDelete` authorization matrix with mocked Discord objects (fetchReference / member fetch / permissionsFor): link poster deletes / random user can't / `ManageMessages` mod can / never deletes a non-西寶 message / ignores non-🗑️ / ignores bot reactors. Lives here (not pure smoke) because the auth path needs async Discord I/O.
 
 **When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder, or any change to `reaction-delete.js` authorization.
@@ -76,5 +77,18 @@ Covered:
 - Real network calls (DeepSeek / Groq / Gemini, fixer hosts, Discord gateway).
 - Discord permission edge cases — exercised manually via the `/debug-perms` command.
 - Playwright probe behaviour against real Threads / Bahamut / PTT pages — exercised manually before merging probe changes.
+
+## scripts/app-emoji.js — 素材庫管理（not a test）
+
+Manages 西寶's application-owned emoji library (the 2000-slot one that doesn't touch any server's 50-100 emoji budget). Talks REST only — no gateway login, so it's safe to run while the bot is up.
+
+```bash
+node scripts/app-emoji.js list                          # 現有 emoji + 用途推導結果
+node scripts/app-emoji.js upload assets/emoji/          # 整個資料夾
+node scripts/app-emoji.js upload a.png b.gif --dry-run  # 先看會發生什麼
+node scripts/app-emoji.js delete Pepe_Cry
+```
+
+Filenames become emoji names (`[A-Za-z0-9_]`, 2-32 chars), ≤256 KB each, existing names are skipped. It warns on any name `emotionForName` can't read a meaning from — those emoji fall out of 西寶's prompt table after the 30-day 【新】 window. **Restart the bot** after an upload; the app-emoji cache is fetched once at `clientReady`. See [persona.md](persona.md).
 
 If a regression slipped past all three smokes, the right move is usually adding a case to one of them — not adding a fourth script. Keep the count to three.

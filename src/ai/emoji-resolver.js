@@ -159,7 +159,12 @@ function isUsableEmoji(name) {
   return true;
 }
 
-function buildEmojiMap(client, guildId = null, trustedGuildIds = []) {
+function buildEmojiMap(
+  client,
+  guildId = null,
+  trustedGuildIds = [],
+  { includeAppEmojis = true } = {},
+) {
   const map = new Map();
   const trustedSet = new Set(trustedGuildIds);
   const sourceGuildIds =
@@ -171,10 +176,22 @@ function buildEmojiMap(client, guildId = null, trustedGuildIds = []) {
         client?.guilds?.cache?.get?.(sourceGuildId)?.emojis?.cache ?? null;
       appendEmojiCache(map, emojiCache);
     }
-    return map;
+  } else {
+    appendEmojiCache(map, client?.emojis?.cache ?? null);
   }
 
-  appendEmojiCache(map, client?.emojis?.cache ?? null);
+  // Application-owned emoji, appended LAST so a guild's own :name: always wins.
+  //
+  // This is the one cross-guild source that doesn't violate the guild-scoping
+  // rule above: those emoji belong to 西寶 herself (up to 2000 per app, uploaded
+  // by the bot owner via scripts/app-emoji.js), not to some other server whose
+  // meme vocabulary would leak in. They're usable in every guild the app can
+  // speak in without eating that guild's 50-100 emoji slots — which is the whole
+  // point of the library.
+  if (includeAppEmojis) {
+    appendEmojiCache(map, client?.application?.emojis?.cache ?? null);
+  }
+
   return map;
 }
 
@@ -380,6 +397,9 @@ function buildEmojiPromptBlock(emojiMap) {
 }
 
 module.exports = {
+  // Exported for scripts/app-emoji.js: an uploaded emoji whose name yields no
+  // hint is invisible in the prompt table, so the upload tool warns about it.
+  emotionForName,
   buildEmojiMap,
   resolveCustomEmojis,
   buildEmojiPromptBlock,

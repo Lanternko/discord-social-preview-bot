@@ -2,7 +2,12 @@ require("dotenv").config();
 
 const { Client, GatewayIntentBits, MessageFlags, Partials } = require("discord.js");
 
-const { DISCORD_TOKEN, AI_TIMEOUT_MS } = require("./config");
+const {
+  DISCORD_TOKEN,
+  AI_TIMEOUT_MS,
+  APP_EMOJI_ENABLED,
+  STICKER_REPLY_ENABLED,
+} = require("./config");
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
 const { buildPreviewPayloads } = require("./preview");
 const {
@@ -19,6 +24,7 @@ const {
 } = require("./discord-io");
 const { isMentioningBot, handleMention } = require("./mention");
 const { handleReactionDelete } = require("./reaction-delete");
+const { loadStickerLibrary } = require("./stickers");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
@@ -74,6 +80,23 @@ client.once("clientReady", async () => {
     await ensureApplicationCommands(client);
   } catch (error) {
     console.error("Failed to register application commands:", error);
+  }
+
+  // Application-owned emoji are NOT pushed by the gateway the way guild emoji
+  // are (there is no GUILD_CREATE equivalent), so the cache stays empty until
+  // something fetches it — and an empty cache silently means 西寶's entire
+  // private emoji library is invisible to the prompt table. Fetch once here.
+  if (APP_EMOJI_ENABLED) {
+    try {
+      const appEmojis = await client.application.emojis.fetch();
+      console.log(`[emoji] 機器人自己的 emoji 庫：${appEmojis.size} 個`);
+    } catch (error) {
+      console.warn(`[emoji] application emoji fetch failed: ${error.message}`);
+    }
+  }
+
+  if (STICKER_REPLY_ENABLED) {
+    console.log(`[sticker] 自帶貼圖庫：${loadStickerLibrary().size} 張`);
   }
 
   startScheduler(client);
