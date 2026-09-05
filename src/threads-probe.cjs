@@ -8,6 +8,12 @@ const PLAYWRIGHT_META_WAIT_TIMEOUT_MS = Number.parseInt(
   process.env.PLAYWRIGHT_META_WAIT_TIMEOUT_MS || "1500",
   10,
 );
+// How long to keep polling for the post's media to mount after the first read
+// came back empty. Bounded so an image-only post costs at most this much.
+const PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS = Number.parseInt(
+  process.env.PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS || "2500",
+  10,
+);
 
 const THREADS_HOSTS = new Set([
   "threads.net",
@@ -153,12 +159,53 @@ async function readThreadsMetadata(page) {
 
   let metadata = await readMetadata();
 
+  // Threads mounts the <video> element ~0.3-1.5s AFTER DOMContentLoaded, and
+  // serves NO og:video — the DOM is the only place a direct mp4 URL exists. The
+  // old code read once and blindly retried +1500ms, so a slow render (the host
+  // is busy, several probes are competing) silently produced videoCount=0 and a
+  // null video, and the post degraded to a still cover frame that LOOKS like a
+  // successful preview. Poll for the media instead of guessing at a delay.
+  //
+  // Only media posts (og:image present / summary_large_image) can wait: a
+  // text-only post has nothing to wait for and must not pay the deadline.
   if (
-    metadata.twitterCard === "summary_large_image" &&
+    (metadata.twitterCard === "summary_large_image" || metadata.image) &&
     !metadata.video &&
     metadata.videoCount === 0
   ) {
-    await page.waitForTimeout(1500).catch(() => null);
+    await page
+      .waitForFunction(
+        () => {
+          const viewportHeight = window.innerHeight;
+          const mediaContainer =
+            document.querySelector("article") || document.body;
+          const inMainPost = (element) => {
+            const rect = element.getBoundingClientRect();
+            if (rect.top >= viewportHeight) return false;
+            return rect.width >= 160 && rect.height >= 160;
+          };
+          // Settle as soon as a playable <video src> exists, or as soon as the
+          // post is provably image-only: Threads renders the video element and
+          // its "video player" aria marker together, so a laid-out cover image
+          // with neither marker nor <video> after the grace period is a real
+          // image post, not a race we should keep waiting on.
+          const video = Array.from(
+            mediaContainer.querySelectorAll("video"),
+          ).filter(inMainPost)[0];
+          if (video?.getAttribute("src")) return true;
+          return Boolean(
+            Array.from(mediaContainer.querySelectorAll('[aria-label]')).find(
+              (element) =>
+                (element.getAttribute("aria-label") || "")
+                  .toLowerCase()
+                  .includes("video player") && inMainPost(element),
+            ),
+          );
+        },
+        null,
+        { timeout: PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS, polling: 150 },
+      )
+      .catch(() => null); // genuine image-only post — fall through and re-read
     metadata = await readMetadata();
   }
 

@@ -228,7 +228,13 @@ module.exports = {
   THREADS_PROBE_SCRIPT:
     process.env.THREADS_PROBE_SCRIPT ||
     path.join(__dirname, "threads-probe.cjs"),
-  THREADS_PROBE_TIMEOUT_MS: parsePositiveIntEnv("THREADS_PROBE_TIMEOUT_MS", 10000),
+  // goto (<=8s) + meta settle (<=1.5s) + media poll (<=2.5s) + evaluate must fit
+  // inside this, or the subprocess is killed and the post falls to the fixer.
+  THREADS_PROBE_TIMEOUT_MS: parsePositiveIntEnv("THREADS_PROBE_TIMEOUT_MS", 15000),
+  THREADS_PROBE_MAX_CONCURRENT: parsePositiveIntEnv(
+    "THREADS_PROBE_MAX_CONCURRENT",
+    3,
+  ),
   THREADS_METADATA_CACHE_TTL_MS: parsePositiveIntEnv(
     "THREADS_METADATA_CACHE_TTL_MS",
     600000,

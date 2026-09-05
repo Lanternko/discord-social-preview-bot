@@ -5,10 +5,31 @@ const {
   THREADS_PROBE_NODE,
   THREADS_PROBE_SCRIPT,
   THREADS_PROBE_TIMEOUT_MS,
+  THREADS_PROBE_MAX_CONCURRENT,
   THREADS_METADATA_CACHE_TTL_MS,
 } = require("./config");
 
 const execFileAsync = promisify(execFile);
+
+// Every probe is a full chromium. Unbounded, a busy channel starts a dozen at
+// once and they starve each other's rendering — the page then reports zero
+// media because the DOM hasn't been laid out yet, and a video post degrades to
+// a still cover frame. Queue instead of racing: waiting a beat for a slot is
+// cheaper than a probe that returns wrong metadata.
+let activeProbes = 0;
+const probeWaiters = [];
+
+async function acquireProbeSlot() {
+  if (activeProbes >= THREADS_PROBE_MAX_CONCURRENT) {
+    await new Promise((resolve) => probeWaiters.push(resolve));
+  }
+  activeProbes += 1;
+}
+
+function releaseProbeSlot() {
+  activeProbes -= 1;
+  probeWaiters.shift()?.();
+}
 
 const threadsMetadataCache = new Map();
 
@@ -22,14 +43,21 @@ function cleanupThreadsMetadataCache() {
 }
 
 async function runProbe(url) {
-  const { stdout, stderr } = await execFileAsync(
-    THREADS_PROBE_NODE,
-    [THREADS_PROBE_SCRIPT, url],
-    {
-      timeout: THREADS_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    },
-  );
+  await acquireProbeSlot();
+  let stdout;
+  let stderr;
+  try {
+    ({ stdout, stderr } = await execFileAsync(
+      THREADS_PROBE_NODE,
+      [THREADS_PROBE_SCRIPT, url],
+      {
+        timeout: THREADS_PROBE_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    ));
+  } finally {
+    releaseProbeSlot();
+  }
   if (stderr && stderr.trim()) {
     console.warn(`[probe] stderr ${url}: ${stderr.trim()}`);
   }

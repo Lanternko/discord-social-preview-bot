@@ -62,7 +62,18 @@ async function readCapped(response, maxBytes) {
 // Download `url` as a Discord-uploadable video attachment, or return null to
 // signal the caller should fall back to the fixer link. Never throws.
 async function fetchVideoAttachment(url, guild) {
-  if (!url || !isGuildVideoAllowed(guild)) return null;
+  // Both of these used to return null silently, which made "the video just
+  // doesn't play" impossible to tell apart from "the probe found no video".
+  if (!url) {
+    console.log("[video] no direct mp4 url from probe → fixer");
+    return null;
+  }
+  if (!isGuildVideoAllowed(guild)) {
+    console.log(
+      `[video] guild not allowed guild=${guild?.id ?? "dm"} → fixer`,
+    );
+    return null;
+  }
   if (inFlight >= VIDEO_ATTACHMENT_MAX_CONCURRENT) {
     console.log(
       `[video] skip (concurrency ${inFlight}/${VIDEO_ATTACHMENT_MAX_CONCURRENT}) → fixer`,
