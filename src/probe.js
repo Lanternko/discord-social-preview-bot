@@ -5,10 +5,58 @@ const {
   THREADS_PROBE_NODE,
   THREADS_PROBE_SCRIPT,
   THREADS_PROBE_TIMEOUT_MS,
+  THREADS_PROBE_MAX_CONCURRENT,
+  THREADS_PROBE_QUEUE_TIMEOUT_MS,
   THREADS_METADATA_CACHE_TTL_MS,
 } = require("./config");
 
 const execFileAsync = promisify(execFile);
+
+// Every probe is a full chromium. Unbounded, a busy channel starts a dozen at
+// once and they starve each other's rendering — the page then reports zero
+// media because the DOM hasn't been laid out yet, and a video post degrades to
+// a still cover frame. Queue instead of racing: waiting a beat for a slot is
+// cheaper than a probe that returns wrong metadata.
+//
+// But the queue must never be the thing that makes a preview late. A probe can
+// take THREADS_PROBE_TIMEOUT_MS, so an unbounded queue would put the 12th link
+// in a burst minutes behind. Waiting past THREADS_PROBE_QUEUE_TIMEOUT_MS runs
+// the probe anyway: under a flood we degrade to the old free-for-all (fast,
+// occasionally wrong) rather than to a preview nobody is still looking at.
+let activeProbes = 0;
+const probeWaiters = new Set();
+
+async function acquireProbeSlot() {
+  if (activeProbes < THREADS_PROBE_MAX_CONCURRENT) {
+    activeProbes += 1;
+    return;
+  }
+
+  const admitted = await new Promise((resolve) => {
+    const waiter = (value) => {
+      if (!probeWaiters.delete(waiter)) return;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => waiter(false), THREADS_PROBE_QUEUE_TIMEOUT_MS);
+    probeWaiters.add(waiter);
+  });
+
+  if (!admitted) {
+    console.warn(
+      `[probe] queue wait exceeded ${THREADS_PROBE_QUEUE_TIMEOUT_MS}ms (active=${activeProbes}) — running over the cap`,
+    );
+  }
+  activeProbes += 1;
+}
+
+function releaseProbeSlot() {
+  activeProbes -= 1;
+  // Hand the slot to the next waiter; `activeProbes` is re-incremented by the
+  // waiter itself, so a timed-out waiter that already left can't double-count.
+  const next = probeWaiters.values().next().value;
+  if (next) next(true);
+}
 
 const threadsMetadataCache = new Map();
 
@@ -22,14 +70,21 @@ function cleanupThreadsMetadataCache() {
 }
 
 async function runProbe(url) {
-  const { stdout, stderr } = await execFileAsync(
-    THREADS_PROBE_NODE,
-    [THREADS_PROBE_SCRIPT, url],
-    {
-      timeout: THREADS_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    },
-  );
+  await acquireProbeSlot();
+  let stdout;
+  let stderr;
+  try {
+    ({ stdout, stderr } = await execFileAsync(
+      THREADS_PROBE_NODE,
+      [THREADS_PROBE_SCRIPT, url],
+      {
+        timeout: THREADS_PROBE_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+      },
+    ));
+  } finally {
+    releaseProbeSlot();
+  }
   if (stderr && stderr.trim()) {
     console.warn(`[probe] stderr ${url}: ${stderr.trim()}`);
   }

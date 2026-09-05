@@ -27,12 +27,15 @@
 | `FIXEMBED_BASE_URL` | `https://fixembed.app/embed?url=` | Generic fallback |
 | `SUPPRESS_ORIGINAL_EMBEDS` | `true` | Needs Manage Messages permission |
 | `REPLY_MODE` | `reply` | `reply` or `send` |
-| `THREADS_PROBE_TIMEOUT_MS` | `10000` | Per-URL subprocess timeout |
+| `THREADS_PROBE_TIMEOUT_MS` | `15000` | Per-URL subprocess timeout。必須容得下 goto(8s) + meta settle(1.5s) + media poll(2.5s) |
+| `THREADS_PROBE_MAX_CONCURRENT` | `3` | 同時執行的 probe 子行程（每個都是一整顆 chromium）。滿了就排隊，不是失敗。無上限時彼此搶 CPU → 頁面還沒 layout 就讀取 → 影片被當成沒有 |
+| `THREADS_PROBE_QUEUE_TIMEOUT_MS` | `8000` | 排隊等位子的上限，超過就無視上限直接跑。避免爆量時預覽遲到好幾分鐘 —— 寧可退化成舊的搶 CPU 行為，也不要一個沒人在看的預覽 |
 | `THREADS_METADATA_CACHE_TTL_MS` | `600000` | 10 min Threads metadata cache |
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `MULTI_IMAGE_PREVIEW_COUNT` | `3` | Threads 多圖 carousel 顯示前 N 張。被截斷時最後一個 embed 的 description 追加 `... 還有 N 張` 提示。clamp 上限 10（Discord 硬上限） |
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
+| `PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS` | `2500` | 第一次讀不到媒體時，最多再輪詢多久等 `<video>` 掛上。Threads 的 video 元素比 DOMContentLoaded 晚 ~0.3–1.5s，且**不吐 og:video**，DOM 是唯一來源。純圖貼文最多多花這麼久 |
 | `VIDEO_ATTACHMENT_ENABLED` | `true` | 主開關。Threads 影片 / 含影片的多圖貼文會下載 mp4 → 當 Discord 附件上傳（可播放）。設 `false` 全關，一律退回 fixer |
 | `VIDEO_ATTACHMENT_GUILD_IDS` | —（空 = 全部） | 逗號分隔白名單。空 = 所有伺服器都能上傳影片（仍受下方上限保護）；填了就只有這些 guild 能用，其餘走 fixer |
 | `VIDEO_ATTACHMENT_MAX_BYTES` | `0`（自動） | `0` = 用該伺服器 boost tier 的 Discord 上傳上限（25 / 50 / 100 MiB）。填正整數再往下 clamp，永遠不超過伺服器上限 |
