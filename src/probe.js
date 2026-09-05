@@ -6,6 +6,7 @@ const {
   THREADS_PROBE_SCRIPT,
   THREADS_PROBE_TIMEOUT_MS,
   THREADS_PROBE_MAX_CONCURRENT,
+  THREADS_PROBE_QUEUE_TIMEOUT_MS,
   THREADS_METADATA_CACHE_TTL_MS,
 } = require("./config");
 
@@ -16,19 +17,45 @@ const execFileAsync = promisify(execFile);
 // media because the DOM hasn't been laid out yet, and a video post degrades to
 // a still cover frame. Queue instead of racing: waiting a beat for a slot is
 // cheaper than a probe that returns wrong metadata.
+//
+// But the queue must never be the thing that makes a preview late. A probe can
+// take THREADS_PROBE_TIMEOUT_MS, so an unbounded queue would put the 12th link
+// in a burst minutes behind. Waiting past THREADS_PROBE_QUEUE_TIMEOUT_MS runs
+// the probe anyway: under a flood we degrade to the old free-for-all (fast,
+// occasionally wrong) rather than to a preview nobody is still looking at.
 let activeProbes = 0;
-const probeWaiters = [];
+const probeWaiters = new Set();
 
 async function acquireProbeSlot() {
-  if (activeProbes >= THREADS_PROBE_MAX_CONCURRENT) {
-    await new Promise((resolve) => probeWaiters.push(resolve));
+  if (activeProbes < THREADS_PROBE_MAX_CONCURRENT) {
+    activeProbes += 1;
+    return;
+  }
+
+  const admitted = await new Promise((resolve) => {
+    const waiter = (value) => {
+      if (!probeWaiters.delete(waiter)) return;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => waiter(false), THREADS_PROBE_QUEUE_TIMEOUT_MS);
+    probeWaiters.add(waiter);
+  });
+
+  if (!admitted) {
+    console.warn(
+      `[probe] queue wait exceeded ${THREADS_PROBE_QUEUE_TIMEOUT_MS}ms (active=${activeProbes}) — running over the cap`,
+    );
   }
   activeProbes += 1;
 }
 
 function releaseProbeSlot() {
   activeProbes -= 1;
-  probeWaiters.shift()?.();
+  // Hand the slot to the next waiter; `activeProbes` is re-incremented by the
+  // waiter itself, so a timed-out waiter that already left can't double-count.
+  const next = probeWaiters.values().next().value;
+  if (next) next(true);
 }
 
 const threadsMetadataCache = new Map();

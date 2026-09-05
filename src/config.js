@@ -235,6 +235,12 @@ module.exports = {
     "THREADS_PROBE_MAX_CONCURRENT",
     3,
   ),
+  // Cap on how long a probe waits for a free slot before running anyway, so a
+  // burst of links degrades to the old uncapped behaviour instead of stalling.
+  THREADS_PROBE_QUEUE_TIMEOUT_MS: parsePositiveIntEnv(
+    "THREADS_PROBE_QUEUE_TIMEOUT_MS",
+    8000,
+  ),
   THREADS_METADATA_CACHE_TTL_MS: parsePositiveIntEnv(
     "THREADS_METADATA_CACHE_TTL_MS",
     600000,

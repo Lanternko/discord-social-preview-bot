@@ -29,6 +29,7 @@
 | `REPLY_MODE` | `reply` | `reply` or `send` |
 | `THREADS_PROBE_TIMEOUT_MS` | `15000` | Per-URL subprocess timeout。必須容得下 goto(8s) + meta settle(1.5s) + media poll(2.5s) |
 | `THREADS_PROBE_MAX_CONCURRENT` | `3` | 同時執行的 probe 子行程（每個都是一整顆 chromium）。滿了就排隊，不是失敗。無上限時彼此搶 CPU → 頁面還沒 layout 就讀取 → 影片被當成沒有 |
+| `THREADS_PROBE_QUEUE_TIMEOUT_MS` | `8000` | 排隊等位子的上限，超過就無視上限直接跑。避免爆量時預覽遲到好幾分鐘 —— 寧可退化成舊的搶 CPU 行為，也不要一個沒人在看的預覽 |
 | `THREADS_METADATA_CACHE_TTL_MS` | `600000` | 10 min Threads metadata cache |
 | `EMBED_CHECK_DELAY_MS` | `5000` | Wait before checking if URL embed unfurled |
 | `MULTI_IMAGE_PREVIEW_COUNT` | `3` | Threads 多圖 carousel 顯示前 N 張。被截斷時最後一個 embed 的 description 追加 `... 還有 N 張` 提示。clamp 上限 10（Discord 硬上限） |
