@@ -16,6 +16,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - **Video** — [video.js](../src/video.js) downloads a Threads mp4 and hands back a Discord attachment, gated by a size cap, a global concurrency cap, a per-fetch timeout, and an optional guild allowlist. Returns null → caller falls back to the fixer chain.
 - **Reaction delete** — [reaction-delete.js](../src/reaction-delete.js) is the `messageReactionAdd` handler: a 🗑️ reaction on one of 西寶's own messages deletes it, authorized by the link poster (via the reply reference) or a `ManageMessages` mod. No persistent state. See [routing.md](routing.md).
 - **Mention** — [mention.js](../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
+- **Stickers** — [stickers.js](../src/stickers.js) is the sticker half that touches Discord + disk: it merges the current guild's stickers (sent by id) with 西寶's own image library under `assets/stickers/` (sent as an attachment, because Discord has no application-owned sticker API) into one catalog, and turns a picked entry into the send payload. The pure prompt/parse half is [ai/sticker-resolver.js](../src/ai/sticker-resolver.js). See [persona.md](persona.md).
 - **Slash commands** — [commands.js](../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, `/schedule`, and the opt-in `/voice`. [tier-store.js](../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
 - **Voice reply** — [voice-reply.js](../src/voice-reply.js) adapts a slash interaction to the existing AI chain but supplies a complete bilingual spoken persona, excludes text-chat history, deliberately disables memory writes, and explicitly keeps DeepSeek V4's regular `high` thinking policy. It still injects familiarity, personal/guild memory, and recent group context, with explicit answer-the-question rules. The public transcript is Traditional Chinese while the semantically equivalent TTS script is natural Japanese; malformed plain Chinese output gets one context-free Japanese translation pass. The transcript is posted first, then [tts-client.js](../src/tts-client.js) calls local Irodori and [voice-message.js](../src/voice-message.js) sends Discord's raw `IS_VOICE_MESSAGE` payload. The existing mention path remains text-only.
 - **AI subsystem** — [ai/](../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
@@ -27,6 +28,8 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - [providers.js](../src/ai/providers.js) — `callDeepSeek` / `callGroq` / `callGemini` + `withAbortTimeout` + `parseRetryAfterMs` + `ok` / `fail` result helpers.
 - [circuit.js](../src/ai/circuit.js) — provider circuit breaker (`isProviderAvailable` / `recordProviderFailure` / cooldown lookup). Stops the chain from re-trying a known-broken provider every call.
 - [group-context.js](../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` user-role context turn for 標準 / 精細 plans.
+- [emoji-resolver.js](../src/ai/emoji-resolver.js) — guild + application-owned custom emoji: name→id map, the prompt table (with meaning inference and the 30-day 【新】 tag), and `:name:` → `<:name:id>` post-processing.
+- [sticker-resolver.js](../src/ai/sticker-resolver.js) — pure sticker prompt table + `[貼圖:名字]` extraction. No discord.js, no fs.
 - [chain.js](../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
 
 ## src/ tree (full)
@@ -54,8 +57,10 @@ src/
 │   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
 │   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
 │   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
+│   ├── sticker-resolver.js # 貼圖 prompt table + [貼圖:名字] extraction (pure)
 │   └── chain.js          # buildAIProviderChain + runProviderChain + generateAIReply
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
+├── stickers.js           # 貼圖 catalog (guild stickers + assets/stickers/) → send payload
 ├── reaction-delete.js    # 🗑️ reaction on 西寶's own message → delete it (poster or ManageMessages)
 ├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
@@ -67,7 +72,7 @@ src/
 
 All scoped — grep one to isolate a subsystem:
 
-`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]`
+`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]` · `[sticker]` · `[emoji]`
 
 ## Smoke tests
 

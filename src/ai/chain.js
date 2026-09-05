@@ -3,6 +3,7 @@ const {
   AI_LONG_TERM_MEMORY_ENABLED,
   AI_FREE_DAILY_LIMIT,
   EMOJI_TRUSTED_GUILD_IDS,
+  APP_EMOJI_ENABLED,
   OPENAI_API_KEY,
   OPENAI_MODEL,
   STORY_OPENAI_TIMEOUT_MS,
@@ -62,6 +63,7 @@ const {
   resolveCustomEmojis,
   buildEmojiPromptBlock,
 } = require("./emoji-resolver");
+const { buildStickerPromptBlock } = require("./sticker-resolver");
 const {
   callGemini,
   callGroq,
@@ -330,6 +332,11 @@ async function generateAIReply(message, userText, options = {}) {
     includeContext = true,
     includeEmojiPrompt = true,
     resolveEmojis = true,
+    // Name→entry map of the stickers 西寶 may post, built by the CALLER
+    // (src/stickers.js) because it needs a guild fetch + a disk read. Only the
+    // paths that can actually attach a sticker pass one; everything else omits
+    // it and she never sees the table, so she never emits [貼圖:…] into a recap.
+    stickerCatalog = null,
     providerOptions = {},
   } = options;
   const tierConfig = getTierConfig(message.guildId);
@@ -356,8 +363,10 @@ async function generateAIReply(message, userText, options = {}) {
     message.client,
     message.guildId,
     EMOJI_TRUSTED_GUILD_IDS,
+    { includeAppEmojis: APP_EMOJI_ENABLED },
   );
   if (includeEmojiPrompt) persona += buildEmojiPromptBlock(emojiMap);
+  if (stickerCatalog) persona += buildStickerPromptBlock(stickerCatalog);
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
   // identity (not topic), so it goes in for ALL tiers including brief — the

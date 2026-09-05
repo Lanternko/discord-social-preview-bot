@@ -337,6 +337,26 @@ module.exports = {
       ? 0
       : parsePositiveIntEnv("PROFILE_SWEEP_INTERVAL_MS", 60 * 60 * 1000),
   EMOJI_TRUSTED_GUILD_IDS: parseCsvEnv("EMOJI_TRUSTED_GUILD_IDS"),
+  // --- 貼圖 / emoji 素材庫 ---
+  // Guild stickers + 西寶's own image library. Off = she never posts a sticker
+  // (the prompt block disappears too, so she won't try).
+  STICKER_REPLY_ENABLED:
+    (process.env.STICKER_REPLY_ENABLED || "true").toLowerCase() === "true",
+  // Absolute by default: the sticker files are deploy content, and resolving
+  // them from cwd would break the same way the data/ stores do in a worktree.
+  STICKER_LIBRARY_DIR:
+    process.env.STICKER_LIBRARY_DIR ||
+    path.join(__dirname, "..", "assets", "stickers"),
+  // Well under the 8MB non-boost guild upload cap — a sticker-sized image has
+  // no business being bigger, and an oversized file would fail at send time.
+  STICKER_LIBRARY_MAX_BYTES: parsePositiveIntEnv(
+    "STICKER_LIBRARY_MAX_BYTES",
+    2 * 1024 * 1024,
+  ),
+  // Application-owned emoji (up to 2000 per app, usable in EVERY guild without
+  // eating that guild's 50-100 emoji slots). Managed with scripts/app-emoji.js.
+  APP_EMOJI_ENABLED:
+    (process.env.APP_EMOJI_ENABLED || "true").toLowerCase() === "true",
   // Bot owners (comma-separated user IDs): may 🗑️-delete ANY of 西寶's
   // messages in any guild, bypassing the poster/ManageMessages checks.
   BOT_OWNER_IDS: parseCsvEnv("BOT_OWNER_IDS"),

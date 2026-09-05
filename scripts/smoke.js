@@ -81,6 +81,19 @@ const {
 } = require("../src/ai/emoji-resolver");
 
 const {
+  extractSticker,
+  buildStickerPromptBlock,
+  resolveStickerEntry,
+} = require("../src/ai/sticker-resolver");
+const {
+  loadStickerLibrary,
+  resetStickerLibraryCache,
+  mergeStickerSources,
+  isPostableGuildSticker,
+  buildStickerSendPayload,
+} = require("../src/stickers");
+
+const {
   HELP_COMMAND,
   buildHelpMessage,
   buildPermissionDebugMessage,
@@ -2785,6 +2798,202 @@ it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph te
   assert.match(prompt, /講完就停/);
   assert.doesNotMatch(prompt, /每個熱門訊息各一小段/);
   assert.doesNotMatch(prompt, /結尾可以有個簡短的感想或期待/);
+});
+
+
+console.log("");
+console.log("app emoji library (機器人自己的 emoji 庫)");
+it("buildEmojiMap includes application-owned emoji in every guild", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([["a", { name: "Good_local", id: "1", animated: false }]]),
+            },
+          },
+        ],
+      ]),
+    },
+    application: {
+      emojis: {
+        cache: new Map([["x", { name: "Pepe_Cry", id: "9", animated: false }]]),
+      },
+    },
+  };
+  const map = buildEmojiMap(fakeClient, "g1");
+  assert.equal(map.has("Good_local"), true);
+  assert.equal(map.has("Pepe_Cry"), true, "app emoji usable outside its own guild");
+});
+it("buildEmojiMap lets a guild's own emoji win over the app library on name clash", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([["a", { name: "Pepe_Cry", id: "guild-id", animated: false }]]),
+            },
+          },
+        ],
+      ]),
+    },
+    application: {
+      emojis: {
+        cache: new Map([["x", { name: "Pepe_Cry", id: "app-id", animated: false }]]),
+      },
+    },
+  };
+  assert.equal(buildEmojiMap(fakeClient, "g1").get("Pepe_Cry").id, "guild-id");
+});
+it("buildEmojiMap can leave the app library out (APP_EMOJI_ENABLED=false)", () => {
+  const fakeClient = {
+    application: {
+      emojis: {
+        cache: new Map([["x", { name: "Pepe_Cry", id: "9", animated: false }]]),
+      },
+    },
+    emojis: { cache: new Map() },
+  };
+  assert.equal(buildEmojiMap(fakeClient, null, [], { includeAppEmojis: false }).size, 0);
+  assert.equal(buildEmojiMap(fakeClient).size, 1);
+});
+
+console.log("");
+console.log("sticker catalog");
+const guildStickerFixture = [
+  { id: "s1", name: "起床重睡", description: "賴床", available: true },
+  { id: "s2", name: "沒圖", description: null, tags: "催圖", available: true },
+  { id: "s3", name: "掉boost了", description: "x", available: false },
+];
+it("isPostableGuildSticker rejects unavailable stickers", () => {
+  assert.equal(isPostableGuildSticker(guildStickerFixture[0]), true);
+  assert.equal(isPostableGuildSticker(guildStickerFixture[2]), false);
+  assert.equal(isPostableGuildSticker({ name: "no id" }), false);
+});
+it("mergeStickerSources keeps guild stickers ahead of the bot's own library", () => {
+  const library = new Map([
+    ["起床重睡", { kind: "library", name: "起床重睡", file: "/x.png", basename: "x.png" }],
+    ["西寶專屬", { kind: "library", name: "西寶專屬", file: "/y.png", basename: "y.png" }],
+  ]);
+  const catalog = mergeStickerSources(guildStickerFixture, library);
+  assert.equal(catalog.get("起床重睡").kind, "guild", "群裡有的就用群裡那張");
+  assert.equal(catalog.get("西寶專屬").kind, "library");
+  assert.equal(catalog.has("掉boost了"), false);
+  assert.equal(catalog.get("沒圖").meaning, "催圖", "falls back to tags for meaning");
+});
+it("buildStickerSendPayload picks sticker id vs file attachment by kind", () => {
+  assert.deepEqual(buildStickerSendPayload({ kind: "guild", id: "s1", name: "a" }), {
+    stickers: ["s1"],
+  });
+  const filePayload = buildStickerSendPayload({
+    kind: "library",
+    name: "b",
+    file: "/tmp/b.png",
+    basename: "b.png",
+  });
+  assert.equal(filePayload.files.length, 1);
+  assert.equal(filePayload.files[0].name, "b.png");
+  assert.equal(buildStickerSendPayload(null), null);
+});
+it("loadStickerLibrary reads images + index.json and skips junk", () => {
+  const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "dspb-stickers-"));
+  fs.writeFileSync(path.join(dir, "wakeup.png"), "x");
+  fs.writeFileSync(path.join(dir, "plain.gif"), "x");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "x");
+  fs.writeFileSync(
+    path.join(dir, "index.json"),
+    JSON.stringify([{ file: "wakeup.png", name: "起床重睡", meaning: "賴床" }]),
+  );
+  resetStickerLibraryCache();
+  const lib = loadStickerLibrary(dir);
+  resetStickerLibraryCache();
+
+  assert.equal(lib.size, 2);
+  assert.equal(lib.get("起床重睡").meaning, "賴床");
+  assert.equal(lib.get("起床重睡").basename, "wakeup.png");
+  assert.equal(lib.has("plain"), true, "no index entry → name from filename");
+  assert.equal(lib.get("plain").meaning, null);
+  assert.equal(lib.has("notes"), false, "non-image ignored");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+it("loadStickerLibrary on a missing folder is empty, not a throw", () => {
+  resetStickerLibraryCache();
+  const lib = loadStickerLibrary("/nonexistent/dspb/stickers");
+  resetStickerLibraryCache();
+  assert.equal(lib.size, 0);
+});
+
+console.log("");
+console.log("extractSticker");
+const catalogFixture = mergeStickerSources(guildStickerFixture, new Map());
+it("pulls [貼圖:name] out of the reply and returns the sticker", () => {
+  const out = extractSticker("欸…好啦我也丟一張 [貼圖:起床重睡]", catalogFixture);
+  assert.equal(out.text, "欸…好啦我也丟一張");
+  assert.equal(out.sticker.id, "s1");
+});
+it("accepts fullwidth brackets and colons", () => {
+  assert.equal(extractSticker("【貼圖：起床重睡】", catalogFixture).sticker.id, "s1");
+  assert.equal(extractSticker("［sticker:起床重睡］", catalogFixture).sticker.id, "s1");
+});
+it("matches NFD-normalized and case-shifted names", () => {
+  const catalog = mergeStickerSources(
+    [{ id: "s9", name: "Cmonbruh", available: true }],
+    new Map(),
+  );
+  assert.equal(extractSticker("[貼圖:cmonBRUH]", catalog).sticker.id, "s9");
+  const nfd = "起床重睡".normalize("NFD");
+  assert.equal(extractSticker(`[貼圖:${nfd}]`, catalogFixture).sticker.id, "s1");
+});
+it("drops an invented sticker name instead of leaking the token", () => {
+  const out = extractSticker("哈哈 [貼圖:我亂編的]", catalogFixture);
+  assert.equal(out.text, "哈哈");
+  assert.equal(out.sticker, null);
+});
+it("keeps only the first sticker and strips the rest", () => {
+  const out = extractSticker("[貼圖:起床重睡][貼圖:沒圖]", catalogFixture);
+  assert.equal(out.sticker.id, "s1");
+  assert.equal(out.text, "");
+});
+it("leaves ordinary text (and the word 貼圖) alone", () => {
+  const plain = "我沒有那個貼圖啦，你們不要排擠我";
+  assert.equal(extractSticker(plain, catalogFixture).text, plain);
+  assert.equal(extractSticker(plain, catalogFixture).sticker, null);
+  assert.equal(extractSticker("普通回覆", catalogFixture).text, "普通回覆");
+});
+it("survives an empty catalog (STICKER_REPLY_ENABLED=false)", () => {
+  const out = extractSticker("嗨 [貼圖:起床重睡]", new Map());
+  assert.equal(out.sticker, null);
+  assert.equal(out.text, "嗨");
+});
+it("resolveCustomEmojis leaves a [貼圖:…] token intact for the sticker pass", () => {
+  const map = new Map([["Pepe_OK", { id: "333", animated: false }]]);
+  assert.equal(
+    resolveCustomEmojis("好啦 :Pepe_OK: [貼圖:起床重睡]", map),
+    "好啦 <:Pepe_OK:333> [貼圖:起床重睡]",
+  );
+});
+
+console.log("");
+console.log("buildStickerPromptBlock");
+it("is empty when there is nothing to post", () => {
+  assert.equal(buildStickerPromptBlock(new Map()), "");
+  assert.equal(buildStickerPromptBlock(null), "");
+});
+it("lists names with meanings and states the one-per-message rule", () => {
+  const block = buildStickerPromptBlock(catalogFixture);
+  assert.match(block, /\[貼圖:起床重睡\] 賴床/);
+  assert.match(block, /\[貼圖:沒圖\] 催圖/);
+  assert.doesNotMatch(block, /掉boost了/);
+  assert.match(block, /一則訊息最多一張/);
+});
+it("resolveStickerEntry returns null for unknown names", () => {
+  assert.equal(resolveStickerEntry("不存在", catalogFixture), null);
+  assert.equal(resolveStickerEntry("", catalogFixture), null);
+  assert.equal(resolveStickerEntry("起床重睡", new Map()), null);
 });
 
 console.log("");

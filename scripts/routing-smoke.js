@@ -52,6 +52,8 @@ const { buildPttPayload } = require("../src/platforms/ptt");
 const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
 const { handleReactionDelete } = require("../src/reaction-delete");
+const { sendAIReply, STICKER_MISS_REPLIES } = require("../src/mention");
+const { mergeStickerSources } = require("../src/stickers");
 const {
   checkAndHandleEmptyEmbeds,
   resolveOutgoing,
@@ -1248,6 +1250,100 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     await handleDeleteMessageContext(interaction, DELETE_CLIENT);
     assert.equal(state.deleted, false);
     assert.equal(replies.length, 1);
+  });
+
+  // === STICKER SEND (mention.js sendAIReply) ===
+  // The catalog→payload path needs a live message.reply to assert against —
+  // pure smoke can only reach extractSticker/buildStickerSendPayload in
+  // isolation, not the "which of the three send shapes goes out" decision.
+  console.log("");
+  console.log("sendAIReply — 貼圖 attachment matrix");
+
+  const STICKER_CATALOG = mergeStickerSources(
+    [{ id: "s1", name: "起床重睡", description: "賴床", available: true }],
+    new Map([
+      [
+        "西寶專屬",
+        {
+          kind: "library",
+          name: "西寶專屬",
+          meaning: "自帶圖庫",
+          file: __filename, // any readable path — AttachmentBuilder is lazy
+          basename: "xibao.png",
+        },
+      ],
+    ]),
+  );
+
+  function makeReplyTarget({ failOnce = false } = {}) {
+    const sent = [];
+    let failed = false;
+    return {
+      sent,
+      message: {
+        reply: async (payload) => {
+          if (failOnce && !failed && (payload.stickers || payload.files)) {
+            failed = true;
+            throw new Error("Unknown Sticker");
+          }
+          sent.push(payload);
+          return { id: "SENT" };
+        },
+      },
+    };
+  }
+
+  await it("attaches a guild sticker by id and keeps the text", async () => {
+    const { message, sent } = makeReplyTarget();
+    await sendAIReply(message, "欸…好啦 [貼圖:起床重睡]", STICKER_CATALOG);
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].stickers, ["s1"]);
+    assert.equal(sent[0].content, "欸…好啦");
+    assert.equal(sent[0].files, undefined);
+  });
+
+  await it("uploads a library sticker as a file, no content when text-free", async () => {
+    const { message, sent } = makeReplyTarget();
+    await sendAIReply(message, "[貼圖:西寶專屬]", STICKER_CATALOG);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].files.length, 1);
+    assert.equal(sent[0].files[0].name, "xibao.png");
+    assert.equal(sent[0].stickers, undefined);
+    assert.equal(sent[0].content, undefined, "sticker-only reply carries no text");
+  });
+
+  await it("plain replies go out untouched", async () => {
+    const { message, sent } = makeReplyTarget();
+    await sendAIReply(message, "我沒有那個貼圖啦", STICKER_CATALOG);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].content, "我沒有那個貼圖啦");
+    assert.equal(sent[0].stickers, undefined);
+    assert.equal(sent[0].files, undefined);
+  });
+
+  await it("a failed sticker send retries as text-only instead of losing the reply", async () => {
+    const { message, sent } = makeReplyTarget({ failOnce: true });
+    await sendAIReply(message, "好啦 [貼圖:起床重睡]", STICKER_CATALOG);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].content, "好啦");
+    assert.equal(sent[0].stickers, undefined, "second attempt drops the sticker");
+  });
+
+  await it("an invented sticker name never reaches the channel", async () => {
+    const { message, sent } = makeReplyTarget();
+    await sendAIReply(message, "哈哈 [貼圖:我亂編的]", STICKER_CATALOG);
+    assert.equal(sent[0].content, "哈哈");
+    assert.equal(sent[0].stickers, undefined);
+  });
+
+  await it("a reply that was ONLY a bad sticker token falls back to a spoken line", async () => {
+    const { message, sent } = makeReplyTarget();
+    await sendAIReply(message, "[貼圖:我亂編的]", STICKER_CATALOG);
+    assert.equal(sent.length, 1);
+    assert.ok(
+      STICKER_MISS_REPLIES.includes(sent[0].content),
+      `expected a STICKER_MISS_REPLIES line, got ${JSON.stringify(sent[0].content)}`,
+    );
   });
 
   console.log("");

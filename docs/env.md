@@ -66,6 +66,10 @@
 | `AI_LONG_TERM_MEMORY_ENABLED` | `true` | Enables user/guild long-term observation extraction and profile prompt blocks |
 | `PROFILE_SWEEP_INTERVAL_MS` | `3600000` | Backlog-sweep cadence for passively-collected pending interactions (1 h). `0` disables the sweep |
 | `EMOJI_TRUSTED_GUILD_IDS` | — | Comma-separated guild IDs whose custom emoji may be shared when the current guild is also trusted |
+| `APP_EMOJI_ENABLED` | `true` | Include 西寶's own application-owned emoji library (up to 2000, usable in every guild) in her emoji table. Managed with `node scripts/app-emoji.js` |
+| `STICKER_REPLY_ENABLED` | `true` | Let 西寶 post stickers (`[貼圖:名字]`). Off = the sticker table never enters the prompt, so she never tries |
+| `STICKER_LIBRARY_DIR` | `<repo>/assets/stickers` | Folder of image files 西寶 can post as her own stickers. Absolute by default so a worktree/cwd change can't silently empty it |
+| `STICKER_LIBRARY_MAX_BYTES` | `2097152` | Per-file cap for the sticker library (2 MB). Oversized files are skipped at load, not at send |
 | `BOT_OWNER_IDS` | — | Comma-separated user IDs with owner privilege: 🗑️ deletes ANY of 西寶's messages in any guild, bypassing the poster / `ManageMessages` checks (works on orphaned previews too) |
 
 **Reply length, memory depth, and DeepSeek model selection are now per-guild AI plan settings** (see [persona.md](persona.md) `/ai-tier` section), not env vars. The legacy `AI_MAX_REPLY_CHARS` / `AI_MEMORY_MAX_TURNS` env vars are no longer read.
