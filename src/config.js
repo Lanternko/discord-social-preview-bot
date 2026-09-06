@@ -289,12 +289,33 @@ module.exports = {
     768,
   ),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+  // gemini-2.0-flash is retired ("no longer available", 404). 3.6 over the
+  // newer 3.8 on purpose: this is the last-resort layer, where availability
+  // beats polish, and 3.8 free-tier returned 503 UNAVAILABLE on 3 of 5 probes
+  // while 3.6 went 5/5 (2026-09-06). Google's own 404 body recommends 3.6.
+  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+  // Gemini counts thinking against maxOutputTokens too, and it thinks HARD:
+  // measured 673-914 thought tokens for a two-sentence reply. Without this
+  // the last-resort layer returns MAX_TOKENS with a half-finished sentence.
+  // Unlike Groq, Gemini's free tier limits requests/day rather than output
+  // tokens per minute, so a generous ceiling costs nothing.
+  GEMINI_REASONING_HEADROOM: parsePositiveIntEnv(
+    "GEMINI_REASONING_HEADROOM",
+    2048,
+  ),
   GROQ_API_KEY: process.env.GROQ_API_KEY,
+  // Both Llama entries were decommissioned (404 model_not_found) and nobody
+  // noticed for weeks — the chain just fell through to a dead Gemini.
+  // qwen3.8-27b is the one model left on this account that answers 繁中 in
+  // voice AND emits no hidden reasoning, which matters because Groq's free
+  // tier caps *output tokens per minute* at 1000 and counts max_tokens as
+  // expected output: a reasoning model here would need headroom that the
+  // OTPM limit then rejects outright ("Request too large ... on output
+  // tokens"). So this layer stays deliberately single and non-reasoning.
   GROQ_MODELS: (
     process.env.GROQ_MODELS ||
     process.env.GROQ_MODEL ||
-    "llama-3.3-70b-versatile,llama-3.1-8b-instant"
+    "qwen/qwen3.8-27b"
   )
     .split(",")
     .map((s) => s.trim())

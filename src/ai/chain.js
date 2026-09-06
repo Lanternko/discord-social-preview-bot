@@ -86,9 +86,11 @@ function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CON
   return groupContextLines.slice(-count);
 }
 
-// Fallback chain shared by all guilds. Luna first: Groq/Gemini models in
-// env are currently 404, and DeepSeek v4-pro chat hits the 25s abort when
-// hidden reasoning runs long (same prompt size, more thinking).
+// Fallback chain shared by all guilds. Luna first because DeepSeek v4-pro
+// chat hits the 25s abort when hidden reasoning runs long (same prompt size,
+// more thinking). The Groq and Gemini layers below it were dead 404s from
+// roughly 2026-08 until 2026-09-06 — model IDs rot silently, and the only
+// symptom is `chain exhausted` in the log.
 function buildFallbackChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;

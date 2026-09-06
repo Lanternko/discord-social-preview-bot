@@ -11,6 +11,11 @@ process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
 process.env.KIMI_API_KEY = process.env.KIMI_API_KEY || "sk-kimi-smoke-dummy";
 process.env.KIMI_ENABLED = "true";
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
+process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || "gsk-groq-smoke-dummy";
+// Assert the shipped default, not whatever the operator has in .env.
+delete process.env.GROQ_MODELS;
+delete process.env.GROQ_MODEL;
+delete process.env.GEMINI_MODEL;
 process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "sk-openai-smoke-dummy";
 process.env.OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 process.env.STORY_OPENAI_TIMEOUT_MS = "45000";
@@ -27,10 +32,12 @@ const {
   fail,
   callDeepSeek,
   callOpenAI,
+  callGemini,
 } = require("../src/ai/providers");
 const {
   DEEPSEEK_REASONING_HEADROOM,
   OPENAI_REASONING_HEADROOM,
+  GEMINI_REASONING_HEADROOM,
 } = require("../src/config");
 const {
   getCooldownMs,
@@ -137,6 +144,26 @@ async function main() {
   console.log("chat fallback chain");
   it("puts OpenAI Luna first in the shared fallback", () => {
     assert.equal(FALLBACK_CHAIN[0].label, "openai:gpt-5.6-luna");
+  });
+  // The whole fallback tail was 404 for weeks. These pin the models that were
+  // actually verified live against each provider on 2026-09-06.
+  it("carries no decommissioned model ids", () => {
+    const labels = FALLBACK_CHAIN.map((p) => p.label);
+    for (const dead of ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemini-2.0-flash"]) {
+      assert.ok(
+        !labels.some((l) => l.includes(dead)),
+        `${dead} returns 404 model_not_found — fallback would be silently dead`,
+      );
+    }
+  });
+  it("uses a single non-reasoning Groq model", () => {
+    const groq = FALLBACK_CHAIN.filter((p) => p.label.startsWith("groq:"));
+    // Groq's free tier caps output tokens per minute at 1000 and counts
+    // max_tokens as expected output, so a reasoning model here cannot be
+    // given headroom without tripping "Request too large ... on output
+    // tokens". Keep this layer to one model that emits no hidden reasoning.
+    assert.equal(groq.length, 1, `expected exactly one Groq layer, got ${groq.map((p) => p.label)}`);
+    assert.equal(groq[0].label, "groq:qwen/qwen3.8-27b");
   });
 
   console.log("daily recap provider policy");
@@ -710,6 +737,31 @@ async function main() {
       assert.ok(
         !requestBody.thinking || requestBody.thinking.type !== "disabled",
         "headroom 0 is only valid when thinking is explicitly disabled",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+  await itAsync("callGemini reserves reasoning headroom", async () => {
+    let requestBody;
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          candidates: [{ content: { parts: [{ text: "嗨" }] }, finishReason: "STOP" }],
+          usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, thoughtsTokenCount: 700 },
+        }),
+      };
+    };
+    try {
+      await callGemini([{ role: "user", content: "hi" }], "persona", 180);
+      assert.equal(
+        requestBody.generationConfig.maxOutputTokens,
+        180 + GEMINI_REASONING_HEADROOM,
+        "Gemini bills thoughtsTokenCount against maxOutputTokens too",
       );
     } finally {
       global.fetch = originalFetch;
