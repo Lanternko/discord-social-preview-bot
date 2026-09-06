@@ -3,6 +3,7 @@ const {
   OPENAI_API_KEY,
   OPENAI_MODEL,
   OPENAI_BASE_URL,
+  OPENAI_REASONING_HEADROOM,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -275,10 +276,14 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
   const model = overrides.model || OPENAI_MODEL;
   const apiKey = overrides.apiKey || OPENAI_API_KEY;
   const url = overrides.baseUrl || OPENAI_BASE_URL;
+  // maxTokens is a *display* budget. OpenAI bills reasoning against
+  // max_completion_tokens as well, so without headroom a thinking model can
+  // spend the entire budget before emitting a single visible character.
+  const headroom = overrides.reasoningHeadroom ?? OPENAI_REASONING_HEADROOM;
   const body = {
     model,
     messages: buildOpenAIMessages(turns, persona),
-    max_completion_tokens: maxTokens,
+    max_completion_tokens: maxTokens + headroom,
   };
   const label = `openai:${model}`;
 

@@ -292,7 +292,13 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
     call: (turns, persona, maxTokens) =>
       callDeepSeek(turns, persona, maxTokens, {
         model: DEEPSEEK_MODEL_FREE,
-        reasoningHeadroom: 0,
+        // v4-flash thinks too — the tier system shipped assuming only v4-pro
+        // did, so this entry alone ran with no headroom. It burned the whole
+        // display budget on reasoning and returned empty on 42% of calls
+        // (413/414 were finish_reason=length with completion == reasoning).
+        // Headroom 0 is only correct alongside thinking:{type:"disabled"},
+        // which is how the recap/story chains use it.
+        reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
         ...deepSeekOptions,
       }),
   };
