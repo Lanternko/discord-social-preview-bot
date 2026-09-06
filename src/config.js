@@ -280,6 +280,14 @@ module.exports = {
     "STORY_OPENAI_TIMEOUT_MS",
     45000,
   ),
+  // gpt-5.6-luna reasons too, and OpenAI counts those hidden tokens against
+  // max_completion_tokens — so the same starvation that hit DeepSeek applies
+  // here (111 empty finish_reason=length calls, all completion == reasoning).
+  // Measured reasoning on successful calls: p50 75, p99 379, max 512.
+  OPENAI_REASONING_HEADROOM: parsePositiveIntEnv(
+    "OPENAI_REASONING_HEADROOM",
+    768,
+  ),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-2.0-flash",
   GROQ_API_KEY: process.env.GROQ_API_KEY,

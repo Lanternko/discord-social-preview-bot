@@ -21,7 +21,17 @@ process.env.RECAP_DEEPSEEK_MAX_TOKENS = "1600";
 process.env.RECAP_GEMINI_TIMEOUT_MS = "45000";
 delete process.env.AI_PROVIDER;
 
-const { parseRetryAfterMs, ok, fail, callDeepSeek } = require("../src/ai/providers");
+const {
+  parseRetryAfterMs,
+  ok,
+  fail,
+  callDeepSeek,
+  callOpenAI,
+} = require("../src/ai/providers");
+const {
+  DEEPSEEK_REASONING_HEADROOM,
+  OPENAI_REASONING_HEADROOM,
+} = require("../src/config");
 const {
   getCooldownMs,
   isProviderAvailable,
@@ -183,7 +193,12 @@ async function main() {
       assert.equal(result.ok, true);
       assert.match(String(requestUrl), /api\.openai\.com/);
       assert.equal(requestBody.model, "gpt-5.6-luna");
-      assert.equal(requestBody.max_completion_tokens, 900);
+      // 900 is the display budget; Luna's hidden reasoning is billed against
+      // the same ceiling, so the headroom rides on top of it.
+      assert.equal(
+        requestBody.max_completion_tokens,
+        900 + OPENAI_REASONING_HEADROOM,
+      );
     } finally {
       global.fetch = originalFetch;
     }
@@ -656,6 +671,71 @@ async function main() {
       assert.deepEqual(requestBody.thinking, { type: "enabled" });
       assert.equal(requestBody.reasoning_effort, "high");
       assert.equal(requestBody.max_tokens, 2148);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  // Regression guard for the 42% empty-reply bug (2026-06-01 → 2026-09-06):
+  // the free flash entry ran with reasoningHeadroom 0 while thinking stayed
+  // ON, so v4-flash spent the whole display budget on hidden reasoning and
+  // returned finish_reason=length with no content.
+  await itAsync("free flash entry reserves reasoning headroom", async () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    let requestBody;
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "嗨" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 12 },
+        }),
+      };
+    };
+    try {
+      const { chain } = buildGuildChain("free-headroom-guild", briefTier);
+      const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
+      assert.ok(dsEntry.label.includes("flash"));
+      await dsEntry.call([{ role: "user", content: "hi" }], "persona", 180);
+      assert.equal(
+        requestBody.max_tokens,
+        180 + DEEPSEEK_REASONING_HEADROOM,
+        "flash must get display budget + headroom, not the bare display budget",
+      );
+      assert.ok(
+        !requestBody.thinking || requestBody.thinking.type !== "disabled",
+        "headroom 0 is only valid when thinking is explicitly disabled",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+  await itAsync("callOpenAI reserves reasoning headroom", async () => {
+    let requestBody;
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "嗨" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 12 },
+        }),
+      };
+    };
+    try {
+      await callOpenAI([{ role: "user", content: "hi" }], "persona", 180);
+      assert.equal(
+        requestBody.max_completion_tokens,
+        180 + OPENAI_REASONING_HEADROOM,
+        "OpenAI bills reasoning against max_completion_tokens too",
+      );
     } finally {
       global.fetch = originalFetch;
     }
