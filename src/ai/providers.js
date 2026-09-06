@@ -6,6 +6,7 @@ const {
   OPENAI_REASONING_HEADROOM,
   GEMINI_API_KEY,
   GEMINI_MODEL,
+  GEMINI_REASONING_HEADROOM,
   GROQ_API_KEY,
   KIMI_API_KEY,
   KIMI_MODEL,
@@ -138,10 +139,17 @@ async function callGemini(turns, persona, maxTokens, overrides = {}) {
     GEMINI_MODEL,
   )}:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
 
+  // maxOutputTokens covers thinking as well (usageMetadata.thoughtsTokenCount),
+  // so the display budget alone leaves nothing for the visible answer.
+  const headroom = overrides.reasoningHeadroom ?? GEMINI_REASONING_HEADROOM;
   const body = {
     system_instruction: { parts: [{ text: persona }] },
     contents: buildGeminiContents(turns),
-    generationConfig: { temperature: 0.9, topP: 0.95, maxOutputTokens: maxTokens },
+    generationConfig: {
+      temperature: 0.9,
+      topP: 0.95,
+      maxOutputTokens: maxTokens + headroom,
+    },
   };
 
   const label = `gemini:${GEMINI_MODEL}`;
