@@ -226,10 +226,18 @@ async function readBahamutMetadata(page) {
       bodyText.includes("如要閱覽請先登入") ||
       bodyText.includes("兒少保護");
 
+    // The post header is a block of chrome — 樓主 / 暱稱 / 自訂頭銜 / 帳號 /
+    // GP / BP — and its textContent glues all of it into one line. Discord
+    // renders that above the title, so it eats more vertical space than the
+    // article itself. Pull the two fields that identify the poster and drop
+    // the rest.
+    const header = document.querySelector(".c-post__header__author");
+    const username = header?.querySelector(".username")?.textContent?.trim() || null;
+    const userid = header?.querySelector(".userid")?.textContent?.trim() || null;
     const author =
-      document.querySelector(".c-article__content .userid")?.textContent?.trim() ||
-      document.querySelector(".c-post__header__author")?.textContent?.trim() ||
-      null;
+      (username && userid && username !== userid
+        ? `${username} (${userid})`
+        : username || userid) || null;
 
     const articleText =
       document.querySelector(".c-article__content")?.innerText ||
@@ -243,8 +251,21 @@ async function readBahamutMetadata(page) {
       return rect.width >= 160 && rect.height >= 160;
     });
 
+    // og:title is the browser-tab title: "<標題> @<板名> 哈啦板 - 巴哈姆特".
+    // The footer already says 巴哈姆特, so that tail only makes the title wrap
+    // an extra line. Require the site suffix before cutting, so a title that
+    // legitimately ends in "@某某" survives.
+    const stripSiteSuffix = (title) => {
+      if (!title) return null;
+      const trimmed = title
+        .replace(/\s*@[^@]{1,80}?[-–—]\s*巴哈姆特\s*$/, "")
+        .replace(/\s*[-–—]\s*巴哈姆特\s*$/, "")
+        .trim();
+      return trimmed || title;
+    };
+
     return {
-      title: getMeta("property", "og:title") || document.title || null,
+      title: stripSiteSuffix(getMeta("property", "og:title") || document.title),
       description:
         getMeta("property", "og:description") ||
         getMeta("name", "description") ||
@@ -348,7 +369,13 @@ async function main() {
 
       metadata.title = trimText(metadata.title, 256);
       metadata.description = trimText(metadata.description, 4000);
-      metadata.author = trimText(metadata.author, 256);
+          // Discord's embed author is a single line; anything multi-line arrives
+      // as one run-on string. Collapse here so a site layout change can't
+      // smuggle a whole header block back into the preview.
+      metadata.author = trimText(
+        metadata.author ? metadata.author.replace(/\s+/g, " ") : null,
+        256,
+      );
       process.stdout.write(JSON.stringify(metadata));
     } finally {
       await page.close();
