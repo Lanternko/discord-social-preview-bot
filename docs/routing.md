@@ -49,7 +49,7 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 | Pixiv | pixiv.net | `FIXER_PIXIV` | `phixiv.net` |
 | Bluesky | bsky.app | `FIXER_BLUESKY` | `bskx.app` |
 | Facebook | facebook.com, m.facebook.com, fb.watch | `FIXER_FACEBOOK` | `facebed.com` |
-| Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via playwright probe; restricted board → public-summary embed with login notice |
+| Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via playwright probe. Embed image = 文章第一張圖（GIF 會動）, og:image 只在文章沒圖時墊底；文章有 YouTube 嵌入時第一支影片網址當 message content，讓 Discord 自己 unfurl 出播放器（bot embed 塞不了播放器）。標題砍掉「@板名 哈啦板 - 巴哈姆特」尾巴、author 只留「暱稱 (帳號)」。restricted board → public-summary embed with login notice |
 | PTT | ptt.cc | — | Custom embed via playwright probe |
 
 除 Threads 與 Instagram 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback）仍可帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 與 Instagram 刻意不做 bot-side viewer fetch，改走 local canonical embed。

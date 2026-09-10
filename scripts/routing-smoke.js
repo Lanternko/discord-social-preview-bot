@@ -785,6 +785,47 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasContent, false);
   });
 
+  await it("bahamut article media wins over og:image, video rides as content", async () => {
+    _mockPageMetadata = {
+      title: "x",
+      description: "y",
+      image: "https://i1.ytimg.com/vi/ID/hqdefault.jpg",
+      images: ["https://meee.com.tw/abc.gif", "https://truth.bahamut.com.tw/a.JPG"],
+      videoUrls: ["https://www.youtube.com/watch?v=ID"],
+      restricted: false,
+    };
+    const p = await buildBahamutPayload("https://forum.gamer.com.tw/x/1");
+    assert.equal(
+      p.embeds[0].data?.image?.url,
+      "https://meee.com.tw/abc.gif",
+      "the GIF the author posted beats the still og:image thumbnail",
+    );
+    assert.equal(
+      p.content,
+      "https://www.youtube.com/watch?v=ID",
+      "video URL must ride as content so Discord unfurls a real player",
+    );
+    // embeds + content together keep this off the empty-embed delete path
+    assert.equal(shapeOf(p).embedCount, 1);
+  });
+
+  await it("bahamut without article media keeps og:image and stays content-free", async () => {
+    _mockPageMetadata = {
+      title: "x",
+      description: "y",
+      image: "https://i1.ytimg.com/vi/ID/hqdefault.jpg",
+      images: [],
+      videoUrls: [],
+      restricted: false,
+    };
+    const p = await buildBahamutPayload("https://forum.gamer.com.tw/x/1");
+    assert.equal(
+      p.embeds[0].data?.image?.url,
+      "https://i1.ytimg.com/vi/ID/hqdefault.jpg",
+    );
+    assert.equal(shapeOf(p).hasContent, false);
+  });
+
   await it("bahamut restricted with public title/desc → embed with login notice", async () => {
     _mockPageMetadata = {
       title: "x",
