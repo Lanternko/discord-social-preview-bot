@@ -8,6 +8,28 @@ function hasUsableMetadata(metadata) {
   return Boolean(metadata?.title || metadata?.description);
 }
 
+// og:image is whatever the site advertises — for a post built around a YouTube
+// embed that's a still thumbnail, and for a post built around a GIF it's
+// nothing. The picture the author actually put in the article is the better
+// preview (and a GIF keeps animating inside an embed), so it wins when present.
+function withArticleMedia(metadata) {
+  const articleImage = metadata.images?.[0];
+  if (!articleImage) return metadata;
+  return { ...metadata, image: articleImage };
+}
+
+// A bot-built embed can't hold a player, so the only way to make the article's
+// video playable in Discord is to let Discord unfurl the video URL itself:
+// send it as message content alongside our embed. Content that isn't unfurled
+// still reads as a plain clickable link, so this can't leave the preview worse
+// off than the embed alone.
+function withVideoContent(payload, metadata) {
+  const videoUrl = metadata.videoUrls?.[0];
+  if (!videoUrl) return payload;
+  console.log(`[preview] bahamut-video ${videoUrl}`);
+  return { ...payload, content: videoUrl };
+}
+
 async function buildBahamutPayload(url) {
   try {
     const metadata = await fetchPageProbeMetadata(url);
@@ -29,7 +51,11 @@ async function buildBahamutPayload(url) {
       return { content: buildFallbackUrl(url), sourceUrl: url };
     }
     console.log(`[preview] bahamut-custom ${url}`);
-    return { embeds: [buildBahamutEmbed(url, metadata)] };
+    const enriched = withArticleMedia(metadata);
+    return withVideoContent(
+      { embeds: [buildBahamutEmbed(url, enriched)] },
+      metadata,
+    );
   } catch (error) {
     console.warn(`Could not fetch Bahamut metadata for ${url}:`, error.message);
   }

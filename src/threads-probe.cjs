@@ -244,6 +244,32 @@ async function readBahamutMetadata(page) {
       document.querySelector("#BH-master")?.innerText ||
       bodyText;
 
+    // The article's own media never reaches og:*: a post with a YouTube embed
+    // advertises the video thumbnail, and a post whose punchline is a GIF
+    // advertises nothing at all. Read both out of the article so the preview
+    // can show the picture people actually posted (an animated GIF stays
+    // animated in an embed) and hand the video URL to Discord's own player.
+    const article = document.querySelector(".c-article__content");
+    const articleImages = Array.from(article?.querySelectorAll("img") || [])
+      .map((img) =>
+        (img.getAttribute("data-src") || img.getAttribute("src") || "").trim(),
+      )
+      // Emoticons and avatars are chrome, not content.
+      .filter((src) => /^https?:\/\//.test(src) && !/\/(?:emotion|avatar)\//i.test(src));
+
+    const videoUrls = Array.from(
+      new Set(
+        Array.from(article?.querySelectorAll("iframe") || [])
+          .map((frame) =>
+            (frame.getAttribute("src") || frame.getAttribute("data-src") || "").match(
+              /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([\w-]{6,20})/,
+            )?.[1],
+          )
+          .filter(Boolean)
+          .map((id) => `https://www.youtube.com/watch?v=${id}`),
+      ),
+    );
+
     const candidateImage = Array.from(document.querySelectorAll("img")).find((img) => {
       const src = img.getAttribute("src") || "";
       if (!src) return false;
@@ -276,6 +302,8 @@ async function readBahamutMetadata(page) {
         getMeta("name", "thumbnail") ||
         candidateImage?.getAttribute("src") ||
         null,
+      images: articleImages.slice(0, 10),
+      videoUrls: videoUrls.slice(0, 3),
       author,
       restricted,
       metaTagCount: document.head.querySelectorAll("meta").length,
