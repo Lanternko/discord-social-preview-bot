@@ -21,6 +21,16 @@ DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback
 5. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
 6. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
 
+### 尖峰時段降級（`AI_PEAK_PREFER_FALLBACK`，預設開）
+
+DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 owner key 的 DeepSeek entry 會被移到鏈尾**，改由 flat-rate 的 fallback（luna）先跑。DeepSeek 沒有被移除——上面全掛了還是會打到它，只是不再是預設花錢的那一層。
+
+- **時段以 UTC 為準**：`Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday`（[DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing)）。換算台北是平日 09:00–12:00 與 14:00–18:00，但實作**刻意不寫死本地時間**：計費依據是 UTC，寫成本地時間會在主機時區改變時無聲飄掉。判斷在 [src/ai/peak-hours.js](../src/ai/peak-hours.js)。
+- **自帶 key 的 guild 不降級**。那把 key 是他們自己付錢、自己選 DeepSeek 的，尖峰加價是他們的決定，不是我們的成本。只有 owner key（入門 tier 的 flash、以及 `DEEPSEEK_PREMIUM_GUILD_IDS` 白名單的 pro）會被移到鏈尾。
+- **降級期間不扣 `AI_FREE_DAILY_LIMIT`**。額度是用來付「我們真的打算打的呼叫」；entry 在鏈尾幾乎不會被叫到，先扣會把免費 guild 一天 20 次燒在什麼都沒發生上。代價是尖峰若真的一路 fallback 全掛、打到鏈尾的 DeepSeek，那次不計入當日額度——極罕見，用額度精準度換不浪費。
+- log 只在**狀態切換時**各印一行（`[ai] deepseek peak window on/off`），不是每則回覆都印。
+- 排程任務（daily recap / bedtime story / morning greeting）走的是 module-level 的 `AI_PROVIDER_CHAIN` / `STORY_PROVIDER_CHAIN`，**不受影響**；它們的排程時間（台北 08:00 / 19:00 / 22:00 → UTC 00:00 / 11:00 / 14:00）本來就全部落在離峰。
+
 If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
 
 ## Call shape
