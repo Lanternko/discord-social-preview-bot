@@ -338,6 +338,11 @@ module.exports = {
   KIMI_API_KEY: process.env.KIMI_API_KEY,
   KIMI_ENABLED:
     (process.env.KIMI_ENABLED || "true").toLowerCase() === "true",
+  // During DeepSeek's peak window its tokens cost double, so the interactive
+  // chain puts the flat-rate fallback (luna) first and keeps DeepSeek as the
+  // tail. Set false to always lead with DeepSeek regardless of the clock.
+  AI_PEAK_PREFER_FALLBACK:
+    (process.env.AI_PEAK_PREFER_FALLBACK || "true").toLowerCase() === "true",
   KIMI_MODEL: process.env.KIMI_MODEL || "kimi-k2.6",
   KIMI_BASE_URL:
     process.env.KIMI_BASE_URL ||

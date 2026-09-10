@@ -700,6 +700,71 @@ async function main() {
     const r = checkAndIncrement("rate-test-guild", 1);
     assert.equal(r.allowed, false);
   });
+  // DeepSeek's peak window (UTC Mon-Fri 01-04 / 06-10) bills double, so the
+  // owner-key entry drops behind the flat-rate fallback for those hours.
+  const PEAK = new Date("2026-09-10T07:00:00Z");   // 週四 15:00 台北 — 尖峰
+  const OFF_PEAK = new Date("2026-09-10T13:00:00Z"); // 週四 21:00 台北 — 離峰
+
+  it("off-peak keeps DeepSeek at the head of the chain", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const { chain } = buildGuildChain("free-guild-offpeak", briefTier, {}, OFF_PEAK);
+    assert.ok(chain[0].label.startsWith("deepseek:"), `expected DeepSeek first, got ${chain[0].label}`);
+  });
+
+  it("peak demotes the owner-key DeepSeek entry to the tail", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const { chain } = buildGuildChain("free-guild-peak", briefTier, {}, PEAK);
+    // KIMI_ENABLED differs between prod and this smoke env, so assert the
+    // contract (DeepSeek no longer leads, and the flat-rate fallback runs
+    // before it) rather than a fixed head label.
+    assert.ok(
+      !chain[0].label.startsWith("deepseek:"),
+      `DeepSeek must not lead at peak, got ${chain[0].label}`,
+    );
+    assert.ok(
+      chain.findIndex((e) => e.label.startsWith("openai:")) <
+        chain.findIndex((e) => e.label.startsWith("deepseek:")),
+      "the flat-rate fallback must be tried before DeepSeek at peak",
+    );
+    assert.ok(
+      chain[chain.length - 1].label.startsWith("deepseek:"),
+      `DeepSeek must stay reachable at the tail, got ${chain[chain.length - 1].label}`,
+    );
+    assert.equal(
+      chain.filter((e) => e.label.startsWith("deepseek:")).length,
+      1,
+      "demotion must move the entry, not duplicate it",
+    );
+  });
+
+  it("peak does not burn the free guild's daily DeepSeek quota", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    for (let i = 0; i < 25; i += 1) {
+      buildGuildChain("quota-guild", briefTier, {}, PEAK);
+    }
+    // The counter is untouched, so the guild still has its full allowance the
+    // moment peak ends.
+    assert.equal(checkAndIncrement("quota-guild", 20).allowed, true);
+  });
+
+  it("a guild's OWN key is never demoted at peak", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    setGuildApiKey("peak-keyed-guild", "sk-guildkey");
+    const { chain } = buildGuildChain("peak-keyed-guild", standardTier, {}, PEAK);
+    assert.ok(
+      chain[0].label.includes(":guild"),
+      `a guild paying with its own key keeps DeepSeek first, got ${chain[0].label}`,
+    );
+  });
+
   it("guild with own key on standard tier gets pro model with :guild label", () => {
     resetKeyCache();
     resetRateLimiter();

@@ -2,6 +2,7 @@ const {
   AI_PROVIDER_FORCE,
   AI_LONG_TERM_MEMORY_ENABLED,
   AI_FREE_DAILY_LIMIT,
+  AI_PEAK_PREFER_FALLBACK,
   EMOJI_TRUSTED_GUILD_IDS,
   APP_EMOJI_ENABLED,
   OPENAI_API_KEY,
@@ -26,6 +27,7 @@ const {
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
+const { isDeepSeekPeak } = require("./peak-hours");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
@@ -116,6 +118,32 @@ function buildFallbackChain() {
 }
 
 const FALLBACK_CHAIN = buildFallbackChain();
+
+// Logged on transition only: peak lasts hours, so a per-request line would
+// double the [ai] log for a third of every weekday.
+let loggedPeakState = null;
+
+// During DeepSeek's peak window the owner's key costs double per token, so the
+// chain leads with the flat-rate fallback and keeps DeepSeek at the tail —
+// still reachable if everything above it fails, just no longer the default
+// spend. A guild's OWN key is never demoted: that guild chose and pays for
+// DeepSeek, so the peak surcharge is theirs to make.
+function ownerDeepSeekIsDemoted(now) {
+  const demoted = AI_PEAK_PREFER_FALLBACK && isDeepSeekPeak(now);
+  if (demoted !== loggedPeakState) {
+    console.log(
+      demoted
+        ? "[ai] deepseek peak window on — 尖峰改由 fallback 先跑，DeepSeek 移到鏈尾"
+        : "[ai] deepseek peak window off — 恢復 DeepSeek 優先",
+    );
+    loggedPeakState = demoted;
+  }
+  return demoted;
+}
+
+function placeOwnerDeepSeek(entry, tail, demoted) {
+  return demoted ? [...tail, entry] : [entry, ...tail];
+}
 
 function buildAIProviderChain() {
   const chain = [];
@@ -225,7 +253,7 @@ const STORY_PROVIDER_CHAIN = buildStoryProviderChain();
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
 // whitelisted guilds use the owner's key; free guilds (brief only) use the
 // owner's key with a daily rate limit.
-function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
+function buildGuildChain(guildId, tierConfig, providerOptions = {}, now = new Date()) {
   const only = AI_PROVIDER_FORCE;
   const deepSeekOptions = providerOptions.deepSeek || {};
 
@@ -242,6 +270,7 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
 
+  const demoted = ownerDeepSeekIsDemoted(now);
   const tierKey = tierConfig?.tier || "brief";
   const needsPro = TIER_REQUIRES_KEY[tierKey];
   const hasOwnKey = hasGuildApiKey(guildId);
@@ -269,7 +298,10 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
         call: (turns, persona, maxTokens) =>
           callDeepSeek(turns, persona, maxTokens, deepSeekOptions),
       };
-      return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
+      return {
+        chain: placeOwnerDeepSeek(entry, [...kimiSecondary, ...FALLBACK_CHAIN], demoted),
+        rateLimited: false,
+      };
     }
     // No key and not whitelisted — shouldn't happen (command blocks it),
     // but fall through to flash as safety net
@@ -281,7 +313,10 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
   }
 
   // Free guild (brief) — check daily rate limit
-  if (!hasOwnKey && !isWhitelisted) {
+  // The daily counter pays for calls we actually intend to make. While the
+  // entry sits at the tail it is a last resort that almost never runs, so
+  // charging the guild's 20/day up front would burn the quota on nothing.
+  if (!hasOwnKey && !isWhitelisted && !demoted) {
     const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
     if (!rateCheck.allowed) {
       console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
@@ -304,7 +339,10 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}) {
         ...deepSeekOptions,
       }),
   };
-  return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
+  return {
+    chain: placeOwnerDeepSeek(entry, [...kimiSecondary, ...FALLBACK_CHAIN], demoted),
+    rateLimited: false,
+  };
 }
 
 async function runProviderChain(chain, turns, persona, maxTokens) {
