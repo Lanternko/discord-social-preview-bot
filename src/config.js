@@ -224,6 +224,21 @@ module.exports = {
   SUPPRESS_ORIGINAL_EMBEDS:
     (process.env.SUPPRESS_ORIGINAL_EMBEDS || "true").toLowerCase() === "true",
   REPLY_MODE: (process.env.REPLY_MODE || "reply").toLowerCase(),
+  // GraphQL fast path (see src/threads-graphql.js). Off switch is here rather
+  // than in the module so a bad doc_id can be worked around from .env alone:
+  // Meta rotates doc_id occasionally, and when it does every call errors out and
+  // we silently degrade to the (slower, race-prone) Playwright probe.
+  THREADS_GRAPHQL_ENABLED:
+    (process.env.THREADS_GRAPHQL_ENABLED || "true").toLowerCase() === "true",
+  THREADS_GRAPHQL_DOC_ID:
+    process.env.THREADS_GRAPHQL_DOC_ID || "7448594591874178",
+  THREADS_GRAPHQL_APP_ID:
+    process.env.THREADS_GRAPHQL_APP_ID || "238260118697367",
+  THREADS_GRAPHQL_LSD: process.env.THREADS_GRAPHQL_LSD || "hgmSkqDnLNFckqa7t1vJdn",
+  THREADS_GRAPHQL_TIMEOUT_MS: parsePositiveIntEnv(
+    "THREADS_GRAPHQL_TIMEOUT_MS",
+    6000,
+  ),
   THREADS_PROBE_NODE: process.env.THREADS_PROBE_NODE || process.execPath,
   THREADS_PROBE_SCRIPT:
     process.env.THREADS_PROBE_SCRIPT ||

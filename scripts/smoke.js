@@ -33,6 +33,13 @@ const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 const { isThreadsLoginWall } = require("../src/probe");
 
 const {
+  codeToPostId,
+  extractPostCode,
+  findThread,
+  buildMetadata,
+} = require("../src/threads-graphql");
+
+const {
   isGuildVideoAllowed,
   uploadLimitBytes,
   effectiveMaxBytes,
@@ -2994,6 +3001,145 @@ it("resolveStickerEntry returns null for unknown names", () => {
   assert.equal(resolveStickerEntry("不存在", catalogFixture), null);
   assert.equal(resolveStickerEntry("", catalogFixture), null);
   assert.equal(resolveStickerEntry("起床重睡", new Map()), null);
+});
+
+console.log("");
+console.log("threads-graphql");
+it("decodes a shortcode into the numeric post id Meta's API wants", () => {
+  // Base-64 over the Instagram alphabet: "B" is digit 1, so "BA" == 1*64 + 0.
+  assert.equal(codeToPostId("BA"), "64");
+  assert.equal(codeToPostId("A"), "0");
+  assert.equal(codeToPostId("DdC2uuQk5DD"), "3981985725826699459");
+});
+it("rejects codes with characters outside the alphabet", () => {
+  assert.equal(codeToPostId("!!!"), null);
+  assert.equal(codeToPostId(""), null);
+  assert.equal(codeToPostId(null), null);
+});
+it("extracts the shortcode only from canonical post URLs", () => {
+  assert.equal(
+    extractPostCode("https://www.threads.com/@victor31429/post/DdC2uuQk5DD"),
+    "DdC2uuQk5DD",
+  );
+  assert.equal(
+    extractPostCode("https://www.threads.net/@a/post/ABC?xmt=1"),
+    "ABC",
+  );
+  // Share links are canonicalised by resolveThreadsUrl before we are called;
+  // anything still non-canonical here must be a miss, not a bad API call.
+  assert.equal(extractPostCode("https://www.threads.com/share/GghmtW2ch/"), null);
+  assert.equal(extractPostCode("https://www.threads.com/@a"), null);
+  assert.equal(extractPostCode("not a url"), null);
+});
+it("shapes a video-only post so buildThreadsPayload takes the video branch", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "victor31429" },
+      caption: { text: "哈哈哈哈" },
+      video_versions: [{ url: "https://cdn.example/v.mp4" }],
+      image_versions2: { candidates: [{ url: "https://cdn.example/cover.jpg" }] },
+    },
+    "DdC2uuQk5DD",
+  );
+  assert.equal(metadata.video, "https://cdn.example/v.mp4");
+  assert.equal(metadata.videoCount, 1);
+  assert.equal(metadata.imageCount, 1);
+  assert.equal(metadata.twitterCard, "summary_large_image");
+  assert.equal(metadata.title, "@victor31429 on Threads");
+});
+it("keeps a MIXED carousel at imageCount > 1 so it stays a gallery", () => {
+  // Load-bearing: buildThreadsPayload checks imageCount > 1 BEFORE video, so a
+  // video slide must still contribute its cover frame to `images`.
+  const metadata = buildMetadata(
+    {
+      user: { username: "zynxyzouo", full_name: "阿佐" },
+      caption: { text: "#5年前" },
+      carousel_media: [
+        {
+          video_versions: [{ url: "https://cdn.example/v.mp4" }],
+          image_versions2: { candidates: [{ url: "https://cdn.example/1.jpg" }] },
+        },
+        { image_versions2: { candidates: [{ url: "https://cdn.example/2.jpg" }] } },
+      ],
+    },
+    "DdF69WtkupI",
+  );
+  assert.equal(metadata.imageCount, 2);
+  assert.equal(metadata.videoCount, 1);
+  assert.deepEqual(metadata.images, [
+    "https://cdn.example/1.jpg",
+    "https://cdn.example/2.jpg",
+  ]);
+  assert.equal(metadata.title, "阿佐 (@zynxyzouo) on Threads");
+});
+it("marks a text-only post summary so it renders as a compact embed", () => {
+  const metadata = buildMetadata(
+    { user: { username: "pido" }, caption: { text: "蔣介石其實是個0" } },
+    "DdDL1aTGp4v",
+  );
+  assert.equal(metadata.twitterCard, "summary");
+  assert.equal(metadata.image, null);
+  assert.equal(metadata.video, null);
+  assert.equal(metadata.imageCount, 0);
+  assert.equal(metadata.videoCount, 0);
+  assert.equal(metadata.description, "蔣介石其實是個0");
+});
+it("treats everything before the linked post as reply context", () => {
+  const thread = findThread(
+    {
+      data: {
+        data: {
+          edges: [
+            {
+              node: {
+                thread_items: [
+                  {
+                    post: {
+                      code: "ROOT",
+                      user: { username: "star_wars9fu" },
+                      caption: { text: "Bruh" },
+                    },
+                  },
+                  {
+                    post: {
+                      code: "REPLY",
+                      user: { username: "5jcl40_" },
+                      caption: { text: "甲亢哥遇到假唱哥" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    },
+    "REPLY",
+  );
+  assert.equal(thread.post.code, "REPLY");
+  assert.deepEqual(thread.ancestors, [
+    { author: "star_wars9fu", text: "Bruh" },
+  ]);
+});
+it("misses rather than previewing the root when the linked post is absent", () => {
+  // Rendering the root instead would silently show the wrong content, so this
+  // has to fall through to the probe.
+  const json = {
+    data: { data: { edges: [{ node: { thread_items: [{ post: { code: "ROOT" } }] } }] } },
+  };
+  assert.equal(findThread(json, "MISSING"), null);
+  assert.equal(findThread({}, "ROOT"), null);
+});
+it("ignores non-http media urls rather than passing them to Discord", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "a" },
+      image_versions2: { candidates: [{ url: "data:image/png;base64,xx" }] },
+    },
+    "ABC",
+  );
+  assert.equal(metadata.image, null);
+  assert.equal(metadata.imageCount, 0);
 });
 
 console.log("");

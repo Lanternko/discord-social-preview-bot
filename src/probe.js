@@ -1,7 +1,10 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 
+const { fetchThreadsGraphqlMetadata } = require("./threads-graphql");
+
 const {
+  THREADS_GRAPHQL_ENABLED,
   THREADS_PROBE_NODE,
   THREADS_PROBE_SCRIPT,
   THREADS_PROBE_TIMEOUT_MS,
@@ -113,28 +116,9 @@ function isThreadsLoginWall(metadata) {
   );
 }
 
-async function fetchThreadsMetadata(url) {
-  cleanupThreadsMetadataCache();
-
-  const cached = threadsMetadataCache.get(url);
-  if (cached) {
-    console.log(`[threads-meta] cache-hit ${url}`);
-    return cached.metadata;
-  }
-
-  const metadata = await runProbe(url);
-
-  if (isThreadsLoginWall(metadata)) {
-    throw new Error(
-      `Threads served a logged-out login wall (no public metadata) for ${url}`,
-    );
-  }
-
-  console.log(
-    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} ancestors=${metadata.ancestors?.length ?? 0} source=playwright-subprocess`,
-  );
-
-  const result = {
+// The single shape buildThreadsPayload reads, whichever source produced it.
+function normalizeThreadsMetadata(metadata) {
+  return {
     title: metadata.title,
     description: metadata.description,
     image: metadata.image,
@@ -146,6 +130,56 @@ async function fetchThreadsMetadata(url) {
     ancestors: metadata.ancestors || [],
     postText: metadata.postText || null,
   };
+}
+
+function logThreadsMetadata(metadata, source, extra = "") {
+  console.log(
+    `[threads-meta]${extra} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} ancestors=${metadata.ancestors?.length ?? 0} source=${source}`,
+  );
+}
+
+async function fetchThreadsMetadataViaProbe(url) {
+  const metadata = await runProbe(url);
+
+  if (isThreadsLoginWall(metadata)) {
+    throw new Error(
+      `Threads served a logged-out login wall (no public metadata) for ${url}`,
+    );
+  }
+
+  logThreadsMetadata(
+    metadata,
+    "playwright-subprocess",
+    ` metaTags=${metadata.metaTagCount}`,
+  );
+  return normalizeThreadsMetadata(metadata);
+}
+
+// GraphQL first, chromium second. The fast path returns null (never throws) on
+// any miss — a walled post, a rotated doc_id, a share link we couldn't
+// canonicalise — so the probe stays the safety net rather than being replaced.
+async function resolveThreadsMetadata(url) {
+  if (THREADS_GRAPHQL_ENABLED) {
+    const metadata = await fetchThreadsGraphqlMetadata(url);
+    if (metadata) {
+      logThreadsMetadata(metadata, "graphql");
+      return normalizeThreadsMetadata(metadata);
+    }
+    console.log(`[threads-meta] graphql miss → playwright ${url}`);
+  }
+  return fetchThreadsMetadataViaProbe(url);
+}
+
+async function fetchThreadsMetadata(url) {
+  cleanupThreadsMetadataCache();
+
+  const cached = threadsMetadataCache.get(url);
+  if (cached) {
+    console.log(`[threads-meta] cache-hit ${url}`);
+    return cached.metadata;
+  }
+
+  const result = await resolveThreadsMetadata(url);
 
   threadsMetadataCache.set(url, { metadata: result, cachedAt: Date.now() });
   return result;
@@ -157,6 +191,7 @@ async function fetchPageProbeMetadata(url) {
 
 module.exports = {
   runProbe,
+  normalizeThreadsMetadata,
   fetchThreadsMetadata,
   fetchPageProbeMetadata,
   isThreadsLoginWall,
