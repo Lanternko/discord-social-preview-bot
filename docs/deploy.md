@@ -76,21 +76,25 @@ grep 'chain exhausted' bot.log   # AI chain drained for every mention
 
 ### Shadow-deploy a branch (test before merge)
 
+Run it from a **worktree**, never by checking the branch out in the main checkout — that folder *is* prod, and its HEAD is shared by every process pointed at it. Worktree rules and traps: [worktrees.md](worktrees.md).
+
 ```bash
-cd ~/side_projects/apps/discord-social-preview-bot
-git fetch origin
-git checkout <branch-name>
-pkill -f 'src/index.js' && sleep 1
-nohup node src/index.js > bot.log 2>&1 &
+cd ~/side_projects/apps
+git -C discord-social-preview-bot worktree add ../dspb-shadow <branch-name>
+ln -sf ~/side_projects/apps/discord-social-preview-bot/.env dspb-shadow/.env
+ln -sf ~/side_projects/apps/discord-social-preview-bot/node_modules dspb-shadow/node_modules
+cd dspb-shadow && nohup node src/index.js > bot.log 2>&1 &
 sleep 3 && tail -20 bot.log
 ```
 
-To roll back:
+⚠️ **Two processes on one token both answer every message.** The `.env` symlink above shares prod's token, so stop prod first — comment out the watchdog cron, then `kill "$(pgrep -xf 'node src/index.js')"` — or give the shadow its own test token instead of the symlink.
+
+Tear down:
 
 ```bash
-git checkout main
-pkill -f 'src/index.js' && sleep 1
-nohup node src/index.js > bot.log 2>&1 &
+kill <shadow-pid>
+git -C ~/side_projects/apps/discord-social-preview-bot worktree remove ../dspb-shadow
+# re-enable the watchdog cron if you disabled it
 ```
 
 ## Secrets
@@ -99,16 +103,18 @@ nohup node src/index.js > bot.log 2>&1 &
 
 ## Auto-restart watchdog
 
-A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSPC, reboot). Script: [scripts/bot-watchdog.sh](../scripts/bot-watchdog.sh), installed as `* * * * *` in the user crontab. Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
-
-**Current status (2026-06): the watchdog cron line is commented out — no auto-restart is active.** If the bot dies it will NOT relaunch on its own; restart it manually via the redeploy steps above. The commented crontab line also still points at the old pre-`apps/` flat path, so it would fail even if uncommented as-is. It's left disabled pending a decision on whether the watchdog should run — **do not re-enable it without confirming that's intended.** If you do re-enable it, first correct the path to the new `apps/` location:
+A cron watchdog relaunches the bot within ~1 min whenever its process is gone — crash, ENOSPC, reboot, or a deliberate `kill`. Script: [scripts/bot-watchdog.sh](../scripts/bot-watchdog.sh), installed in the user crontab as:
 
 ```cron
 * * * * * /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh
 ```
 
-- The watchdog matches the process with `pgrep -f '[n]ode src/index.js'` — the `[n]` bracket trick stops the pattern from matching the watchdog's own shell. (Plain `pkill -f 'src/index.js'` from an interactive shell self-matches and can kill the shell — prefer `pgrep -f 'node src/index.js'` → `kill <pid>` for manual ops.)
-- **To stop the bot for maintenance, comment out the cron line first** — otherwise the watchdog relaunches it within a minute.
+**Status: enabled and firing.** Verified 2026-08-29 — the line is in `crontab -l` and `/tmp/bot_watchdog.log` records a restart the same day. (This section previously claimed the cron was commented out; it was not.)
+
+- `REPO` is hardcoded to the main checkout — that is *why* prod is whatever branch that folder is on (see [Production deployment](#production-deployment)).
+- Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
+- The watchdog finds its target with `pgrep -f '[n]ode src/index.js'` — the `[n]` bracket trick stops the pattern from matching the watchdog's own shell. For manual ops use `pgrep -xf 'node src/index.js'` → `kill <pid>`; plain `pkill -f 'src/index.js'` also matches Claude Code's tool shells.
+- **To stop the bot for maintenance, comment out the cron line first** — otherwise it is back within a minute.
 
 ## Future hardening (not yet done)
 
