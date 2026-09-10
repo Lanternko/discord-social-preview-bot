@@ -36,6 +36,10 @@ const {
   callGemini,
 } = require("../src/ai/providers");
 const {
+  DEEPSEEK_VISION_MODEL,
+  VISION_MAX_IMAGES,
+  VISION_MAX_BYTES,
+  VISION_TIMEOUT_MS,
   DEEPSEEK_REASONING_HEADROOM,
   OPENAI_REASONING_HEADROOM,
   GEMINI_REASONING_HEADROOM,
@@ -60,6 +64,14 @@ const {
 const {
   fetchGroupContext,
 } = require("../src/ai/group-context");
+const {
+  resolveImageType,
+  collectVisionImages,
+  loadVisionImages,
+  buildImageNote,
+  attachImagesToTurns,
+} = require("../src/ai/vision");
+const { buildUserTurn } = require("../src/ai/persona");
 const {
   subtractScheduleMinute,
   recapNotBeforeMs,
@@ -910,6 +922,220 @@ async function main() {
         180 + OPENAI_REASONING_HEADROOM,
         "OpenAI bills reasoning against max_completion_tokens too",
       );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  // ── vision (DeepSeek multimodal) ───────────────────────────────────
+  console.log("vision");
+
+  const imageAttachment = (over = {}) => ({
+    url: "https://cdn.discordapp.com/attachments/1/2/cat.png",
+    contentType: "image/png",
+    name: "cat.png",
+    size: 1024,
+    ...over,
+  });
+  const fakeMessage = (attachments) => ({
+    attachments: new Map(attachments.map((a, i) => [String(i), a])),
+  });
+
+  it("accepts the four formats DeepSeek supports, rejects the rest", () => {
+    assert.equal(resolveImageType(imageAttachment()), "image/png");
+    assert.equal(
+      resolveImageType(imageAttachment({ contentType: "image/jpeg; charset=binary" })),
+      "image/jpeg",
+    );
+    // Known image type outside DeepSeek's list must NOT be rescued by its
+    // extension — sending it 400s the whole reply.
+    assert.equal(
+      resolveImageType(imageAttachment({ contentType: "image/svg+xml", name: "a.png" })),
+      null,
+    );
+    // contentType can be null on attachments from a fetched/partial message.
+    assert.equal(
+      resolveImageType(imageAttachment({ contentType: null, name: "photo.WEBP" })),
+      "image/webp",
+    );
+    assert.equal(resolveImageType(imageAttachment({ contentType: null, name: "clip.mp4" })), null);
+  });
+
+  it("skips oversized attachments instead of stalling the call", () => {
+    const images = collectVisionImages(
+      fakeMessage([imageAttachment({ size: VISION_MAX_BYTES + 1 })]),
+    );
+    assert.deepEqual(images, []);
+  });
+
+  it("caps how many images ride along", () => {
+    const many = Array.from({ length: VISION_MAX_IMAGES + 3 }, () => imageAttachment());
+    assert.equal(collectVisionImages(fakeMessage(many)).length, VISION_MAX_IMAGES);
+  });
+
+  it("falls back to the replied-to message's image, but only when the @ has none", () => {
+    const referenced = fakeMessage([imageAttachment({ url: "https://cdn/ref.png" })]);
+    const own = fakeMessage([imageAttachment({ url: "https://cdn/own.png" })]);
+    assert.equal(collectVisionImages(own, referenced)[0].url, "https://cdn/own.png");
+    assert.equal(collectVisionImages(fakeMessage([]), referenced)[0].url, "https://cdn/ref.png");
+    assert.deepEqual(collectVisionImages(fakeMessage([]), null), []);
+  });
+
+  it("tells blind providers not to pretend they can see", () => {
+    const note = buildImageNote(2);
+    assert.match(note, /2 張圖片/);
+    assert.match(note, /看不到/);
+    assert.equal(buildImageNote(0), "");
+  });
+
+  it("swaps the blind note for the seeing note on the vision turn only", () => {
+    const turn = buildUserTurn(
+      { author: { username: "阿翔" } },
+      "這張是什麼",
+      buildImageNote(1),
+    );
+    const turns = [
+      { role: "user", content: "群組脈絡" },
+      { role: "assistant", content: "嗯…" },
+      { role: "user", content: turn },
+    ];
+    const withImages = attachImagesToTurns(turns, [{ url: "https://cdn/cat.png" }]);
+
+    // History stays untouched: re-sending old images would re-bill them.
+    assert.equal(withImages[0].content, "群組脈絡");
+    assert.equal(withImages[1].content, "嗯…");
+
+    const content = withImages[2].content;
+    assert.equal(content[0].type, "text");
+    assert.match(content[0].text, /這張是什麼/);
+    assert.ok(!content[0].text.includes("看不到"), "vision turn must drop the blind note");
+    assert.match(content[0].text, /直接看圖/);
+    assert.deepEqual(content[1], {
+      type: "image_url",
+      image_url: { url: "https://cdn/cat.png" },
+    });
+  });
+
+  it("leaves turns as plain strings when there is no image", () => {
+    const turns = [{ role: "user", content: "哈囉" }];
+    assert.equal(attachImagesToTurns(turns, [])[0].content, "哈囉");
+    assert.equal(attachImagesToTurns(turns, undefined)[0].content, "哈囉");
+  });
+
+  it("puts the vision entry at the head and keeps the blind chain behind it", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const images = [{ url: "https://cdn/cat.png", type: "image/png" }];
+    const { chain } = buildGuildChain("vision-guild", briefTier, {}, OFF_PEAK, images);
+    assert.equal(chain[0].label, `deepseek:${DEEPSEEK_VISION_MODEL}:vision`);
+    assert.equal(chain[0].options.timeoutMs, VISION_TIMEOUT_MS);
+    // Thinking on burns the budget on reasoning_content and returns empty.
+    assert.deepEqual(chain[0].options.thinking, { type: "disabled" });
+    assert.equal(chain[0].options.reasoningHeadroom, 0);
+    assert.ok(chain.length > 1, "text providers must remain as blind fallbacks");
+  });
+
+  it("keeps vision first even at peak, where text DeepSeek is demoted", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const images = [{ url: "https://cdn/cat.png", type: "image/png" }];
+    const { chain } = buildGuildChain("vision-peak-guild", briefTier, {}, PEAK, images);
+    assert.equal(chain[0].label, `deepseek:${DEEPSEEK_VISION_MODEL}:vision`);
+  });
+
+  it("adds no vision entry when the message has no image", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const { chain } = buildGuildChain("no-image-guild", briefTier, {}, OFF_PEAK, []);
+    assert.ok(!chain[0].label.endsWith(":vision"));
+  });
+
+  await itAsync("inlines downloaded bytes as base64, never the CDN link", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      headers: { get: () => null },
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+    });
+    try {
+      const images = await loadVisionImages(fakeMessage([imageAttachment()]));
+      assert.equal(images.length, 1);
+      assert.equal(images[0].dataUrl, "data:image/png;base64,AQID");
+      const content = attachImagesToTurns(
+        [{ role: "user", content: "看圖" }],
+        images,
+      )[0].content;
+      assert.equal(content[1].image_url.url, "data:image/png;base64,AQID");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await itAsync("a failed download costs her eyes, not the reply", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: false, status: 403, headers: { get: () => null } });
+    try {
+      const images = await loadVisionImages(fakeMessage([imageAttachment()]));
+      // No bytes → no vision entry → the blind text chain answers as usual.
+      assert.deepEqual(images, []);
+      const { chain } = buildGuildChain("dl-fail-guild", briefTier, {}, OFF_PEAK, images);
+      assert.ok(!chain[0].label.endsWith(":vision"));
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await itAsync("drops a body that lies about its size", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      headers: { get: () => null }, // no content-length
+      arrayBuffer: async () => new Uint8Array(VISION_MAX_BYTES + 1).buffer,
+    });
+    try {
+      assert.deepEqual(await loadVisionImages(fakeMessage([imageAttachment()])), []);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await itAsync("sends image_url blocks to the vision model", async () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const images = [
+      { url: "https://cdn/cat.png", type: "image/png", dataUrl: "data:image/png;base64,AQID" },
+    ];
+    const { chain } = buildGuildChain("vision-call-guild", briefTier, {}, OFF_PEAK, images);
+    const originalFetch = global.fetch;
+    let requestBody;
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "是貓咪…" }, finish_reason: "stop" }],
+        }),
+      };
+    };
+    try {
+      const result = await chain[0].call(
+        [{ role: "user", content: buildUserTurn({ author: { username: "阿翔" } }, "這張是什麼", buildImageNote(1)) }],
+        "persona",
+        180,
+      );
+      assert.equal(result.ok, true);
+      assert.equal(requestBody.model, DEEPSEEK_VISION_MODEL);
+      const content = requestBody.messages.at(-1).content;
+      assert.ok(Array.isArray(content), "vision turn must be a content-block array");
+      assert.equal(content.at(-1).image_url.url, "data:image/png;base64,AQID");
+      assert.deepEqual(requestBody.thinking, { type: "disabled" });
+      // System persona still goes as a plain string.
+      assert.equal(typeof requestBody.messages[0].content, "string");
     } finally {
       global.fetch = originalFetch;
     }

@@ -16,6 +16,7 @@ const {
   DEEPSEEK_REASONING_HEADROOM,
 } = require("../config");
 const { buildOpenAIMessages, buildGeminiContents } = require("./persona");
+const { attachImagesToTurns } = require("./vision");
 
 function ok(text, extra = {}) {
   return { ok: true, text, ...extra };
@@ -341,9 +342,14 @@ async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
   const apiKey = overrides.apiKey || DEEPSEEK_API_KEY;
   const headroom = overrides.reasoningHeadroom ?? DEEPSEEK_REASONING_HEADROOM;
 
+  // Images ride on the LAST user turn as OpenAI-style content blocks. They are
+  // passed as an override rather than baked into `turns` because the same turns
+  // array is handed to every provider below this one in the chain, and a
+  // text-only endpoint 400s on array content.
+  const images = overrides.images || [];
   const body = {
     model,
-    messages: buildOpenAIMessages(turns, persona),
+    messages: buildOpenAIMessages(attachImagesToTurns(turns, images), persona),
     temperature: 0.9,
     top_p: 0.95,
     max_tokens: maxTokens + headroom,
@@ -352,9 +358,12 @@ async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
   if (overrides.reasoningEffort) {
     body.reasoning_effort = overrides.reasoningEffort;
   }
-  const label = `deepseek:${model}`;
+  const label = overrides.label || `deepseek:${model}`;
 
   const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;
+  if (images.length > 0) {
+    console.log(`[vision] deepseek model=${model} images=${images.length}`);
+  }
   return withAbortTimeout(timeoutMs, label, async (signal) => {
     const response = await fetch("https://api.deepseek.com/chat/completions", {
       method: "POST",

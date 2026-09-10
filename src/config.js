@@ -351,6 +351,34 @@ module.exports = {
   DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-chat",
   DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-v4-flash",
   DEEPSEEK_PREMIUM_GUILD_IDS: parseCsvEnv("DEEPSEEK_PREMIUM_GUILD_IDS"),
+  // DeepSeek's only multimodal endpoint (2026-08-21). It is explicitly
+  // experimental ("-exp"): the id can be renamed or retired without notice, and
+  // when that happens the vision entry 404s and the chain silently falls back
+  // to the blind text providers — grep `[vision] http 4` / `provider failed
+  // label=deepseek:...:vision`. Text quality matches v4-flash, images bill at
+  // up to 384 tokens each at flash rates.
+  DEEPSEEK_VISION_MODEL:
+    process.env.DEEPSEEK_VISION_MODEL || "deepseek-v4-flash-vision-exp",
+  VISION_ENABLED:
+    (process.env.VISION_ENABLED || "true").toLowerCase() === "true",
+  // Each image costs ~384 tokens; four is a full Discord image grid and still
+  // under 1.6k tokens of picture per reply.
+  VISION_MAX_IMAGES: parsePositiveIntEnv("VISION_MAX_IMAGES", 4),
+  VISION_MAX_BYTES: parsePositiveIntEnv("VISION_MAX_BYTES", 8 * 1024 * 1024),
+  // Total across all images in one call. DeepSeek's request body ceiling is
+  // 48 MiB and base64 inflates by 4/3, so this keeps the worst case (4 × 8 MB)
+  // from building a body it will reject.
+  VISION_TOTAL_MAX_BYTES: parsePositiveIntEnv(
+    "VISION_TOTAL_MAX_BYTES",
+    16 * 1024 * 1024,
+  ),
+  // Downloading the attachment ourselves, NOT handing DeepSeek the CDN link:
+  // its fetcher failed on a plain public image URL in testing (2026-09-10), and
+  // a Discord CDN link is signed and expiring on top of that.
+  VISION_FETCH_TIMEOUT_MS: parsePositiveIntEnv("VISION_FETCH_TIMEOUT_MS", 10000),
+  // DeepSeek fetches the Discord CDN URL itself before it can answer, so a
+  // vision call is structurally slower than the 8 s text budget allows.
+  VISION_TIMEOUT_MS: parsePositiveIntEnv("VISION_TIMEOUT_MS", 25000),
   AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 20),
   // deepseek-v4-pro is a reasoning model: it spends most of its token budget on
   // hidden reasoning_content before emitting any visible answer. The tier's
