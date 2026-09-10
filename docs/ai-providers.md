@@ -33,6 +33,25 @@ DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 o
 
 If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
 
+## 圖片辨識（DeepSeek vision）
+
+DeepSeek 在 2026-08-21 開了第一個多模態 endpoint `deepseek-v4-flash-vision-exp`（[docs](https://api-docs.deepseek.com/guides/vision/)）。實作在 [src/ai/vision.js](../src/ai/vision.js)，鏈的組裝在 `buildVisionEntry`（[chain.js](../src/ai/chain.js)）。
+
+**vision 是插在鏈頭，不是取代鏈。** 只有這個 endpoint 看得到圖，底下每一層都是瞎的，所以：
+
+- 圖片以 OpenAI 相容的 content block（`{type:"image_url", image_url:{url}}`）掛在**最後一個 user turn** 上，而且只用 `overrides.images` 傳進 `callDeepSeek`——`turns` 本身永遠是純字串，否則同一個陣列丟給下游純文字 endpoint 會直接 400。
+- **我們自己下載圖，送 base64 data URL，不把連結丟給 DeepSeek。** DeepSeek 是支援外部 URL，但它得自己去抓：實測（2026-09-10）連一個普通的公開圖片 URL 都回 `Failed to download image`，而 Discord CDN 連結還多了簽章與過期。連結路徑會用我們看不到也重試不了的方式壞掉。下載失敗 → 那張不送 → 全部失敗就等於沒有圖，退回瞎的文字鏈。
+- **thinking 一律關（`thinking:{type:"disabled"}` + headroom 0）。** 實測同一張圖：thinking 開著時燒掉 300+ 個 `reasoning_content` token 然後回**空字串**；關掉之後 1.8 s 正確描述。看圖是用看的，不是用想的。
+- 歷史 turn 不重掛圖：舊圖已經在她自己的回覆裡被描述過，重送等於每一輪重新計費。
+- user turn 會多一行「附了 N 張圖片，但你這次看不到內容，別假裝看得到」的註記；vision entry 在送出前把它換成「內容就在下面」。**這行是給瞎的那幾層看的**——沒有它，模型會很開心地編出圖片內容。這行也會進短期記憶，所以她記得剛才有張她沒看到的圖。
+- vision 模型死掉/改名 → 該次回覆退回瞎的文字鏈，聲音不變、只是看不到。Ops signal：`[vision] deepseek model=… images=N` 有出現但 `provider failed label=deepseek:…:vision`。
+
+**圖片從哪來**：@ 她的那則訊息的附件；那則沒附件時，取**被回覆訊息**的附件——「@西寶 這張是什麼」去回覆別人的照片是最常見的送圖方式，而那則訊息自己一張圖都沒有。只吃 DeepSeek 支援的四種格式（jpeg/png/gif/webp），其他格式、超過 `VISION_MAX_BYTES` 的直接跳過（`[vision] skip oversized attachment`）。貼圖片**連結**（embed）目前不算。
+
+**成本與時段**：一張圖最多 384 tokens、flash 費率。vision entry **尖峰也留在鏈頭**——`AI_PEAK_PREFER_FALLBACK` 是拿來省文字錢的，而再怎麼降級，瞎的 provider 也回答不了「這張是什麼」。但免費 guild 燒完 `AI_FREE_DAILY_LIMIT` 之後連 vision 也不給（額度就是用來擋 owner key 的花費，而圖是比較貴的那半）。
+
+**timeout 另計**：`VISION_FETCH_TIMEOUT_MS`（10 s）管我們抓 Discord CDN 那段，`VISION_TIMEOUT_MS`（25 s）管送給 DeepSeek 那段——兩段網路加起來本來就不該塞進文字用的 `AI_TIMEOUT_MS`（8 s）。
+
 ## Call shape
 
 - All providers use `withAbortTimeout()` for timeout + error handling.

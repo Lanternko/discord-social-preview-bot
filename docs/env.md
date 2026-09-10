@@ -54,6 +54,13 @@
 | `DEEPSEEK_API_KEY` | — | Optional. Primary provider (paid, reliable) |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | `deepseek-chat` for V3.2, `deepseek-reasoner` for R1, `deepseek-v4-pro` for V4 (reasoning model) |
 | `DEEPSEEK_MODEL_FREE` | `deepseek-v4-flash` | Model used by the 入門 `/ai-tier` plan when the owner DeepSeek key is available |
+| `DEEPSEEK_VISION_MODEL` | `deepseek-v4-flash-vision-exp` | DeepSeek 唯一吃圖的 endpoint（2026-08-21 上線，**實驗性**，id 可能被改名/下架）。文字能力等同 v4-flash，每張圖最多 384 tokens、以 flash 費率計 |
+| `VISION_ENABLED` | `true` | 設 `false` 後 @西寶 附圖只會走純文字鏈（她會說看不到） |
+| `VISION_MAX_IMAGES` | `4` | 一次最多送幾張（一整排 Discord 圖片牆 ≈ 4 張，約 1.6k tokens） |
+| `VISION_MAX_BYTES` | `8388608` | 單張上限。圖是我們自己下載後轉 base64 送出，太大的圖等於慢下載 + 肥 request |
+| `VISION_TOTAL_MAX_BYTES` | `16777216` | 一次呼叫所有圖的總上限（base64 會膨脹 4/3，DeepSeek request body 上限 48 MiB） |
+| `VISION_FETCH_TIMEOUT_MS` | `10000` | 我們去 Discord CDN 抓圖的逾時 |
+| `VISION_TIMEOUT_MS` | `25000` | vision 呼叫本身的逾時，比文字的 `AI_TIMEOUT_MS` 長 |
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_PEAK_PREFER_FALLBACK` | `true` | 尖峰時段（UTC 平日 01–04、06–10）把 owner key 的 DeepSeek 移到鏈尾，改由 luna 先跑；設 `false` 則永遠 DeepSeek 優先 |
 | `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |

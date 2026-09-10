@@ -20,6 +20,9 @@ const {
   DEEPSEEK_MODEL_FREE,
   DEEPSEEK_PREMIUM_GUILD_IDS,
   DEEPSEEK_REASONING_HEADROOM,
+  DEEPSEEK_VISION_MODEL,
+  VISION_ENABLED,
+  VISION_TIMEOUT_MS,
   RECAP_KIMI_TIMEOUT_MS,
   RECAP_DEEPSEEK_TIMEOUT_MS,
   RECAP_DEEPSEEK_REASONING_HEADROOM,
@@ -66,6 +69,7 @@ const {
   buildEmojiPromptBlock,
 } = require("./emoji-resolver");
 const { buildStickerPromptBlock } = require("./sticker-resolver");
+const { loadVisionImages, buildImageNote } = require("./vision");
 const {
   callGemini,
   callGroq,
@@ -253,7 +257,7 @@ const STORY_PROVIDER_CHAIN = buildStoryProviderChain();
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
 // whitelisted guilds use the owner's key; free guilds (brief only) use the
 // owner's key with a daily rate limit.
-function buildGuildChain(guildId, tierConfig, providerOptions = {}, now = new Date()) {
+function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = new Date()) {
   const only = AI_PROVIDER_FORCE;
   const deepSeekOptions = providerOptions.deepSeek || {};
 
@@ -345,6 +349,67 @@ function buildGuildChain(guildId, tierConfig, providerOptions = {}, now = new Da
   };
 }
 
+// Vision rides in FRONT of the text chain, not instead of it. Only DeepSeek's
+// experimental multimodal endpoint can see the picture; everything below stays
+// blind and answers from the「附了 N 張圖片」note, so a dead/renamed vision model
+// costs 西寶 her eyes for that reply, never her voice.
+//
+// It stays at the head even inside DeepSeek's peak window (where owner-key text
+// calls get demoted for cost): an image is ~384 tokens at flash rates, and no
+// amount of demotion makes a blind provider able to answer「這張是什麼」.
+function buildVisionEntry(guildId, images) {
+  if (!VISION_ENABLED || !Array.isArray(images) || images.length === 0) return null;
+  const only = AI_PROVIDER_FORCE;
+  if (only && only !== "deepseek") return null;
+  if (!DEEPSEEK_VISION_MODEL) return null;
+
+  const guildKey = hasGuildApiKey(guildId) ? getGuildApiKey(guildId) : null;
+  const apiKey = guildKey || DEEPSEEK_API_KEY;
+  if (!apiKey) return null;
+
+  const label = `deepseek:${DEEPSEEK_VISION_MODEL}:vision`;
+  // Longer timeout than a text call: DeepSeek fetches each Discord CDN URL
+  // itself before the model sees anything.
+  const options = {
+    apiKey,
+    model: DEEPSEEK_VISION_MODEL,
+    images,
+    label,
+    timeoutMs: VISION_TIMEOUT_MS,
+    // Thinking OFF, headroom 0 — the pairing this codebase already trusts
+    // (recap :direct, story). Measured on the live endpoint 2026-09-10: with
+    // thinking on, one sticker-sized image burned 300+ tokens of
+    // reasoning_content and returned EMPTY content; with it off the same call
+    // answered correctly in 1.8 s. A picture needs looking at, not deliberating.
+    thinking: { type: "disabled" },
+    reasoningHeadroom: 0,
+  };
+  return {
+    label,
+    options,
+    call: (turns, persona, maxTokens) =>
+      callDeepSeek(turns, persona, maxTokens, options),
+  };
+}
+
+function buildGuildChain(
+  guildId,
+  tierConfig,
+  providerOptions = {},
+  now = new Date(),
+  images = [],
+) {
+  const result = buildTextGuildChain(guildId, tierConfig, providerOptions, now);
+  // A free guild that has burned its daily DeepSeek quota does not get to spend
+  // the owner's key on pictures either — the quota exists to cap owner spend,
+  // and vision is the more expensive half of it.
+  if (result.rateLimited && !hasGuildApiKey(guildId)) return result;
+
+  const vision = buildVisionEntry(guildId, images);
+  if (!vision) return result;
+  return { ...result, chain: [vision, ...result.chain], vision: true };
+}
+
 async function runProviderChain(chain, turns, persona, maxTokens) {
   for (const provider of chain) {
     if (!isProviderAvailable(provider.label)) {
@@ -368,6 +433,22 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
   return null;
 }
 
+// Discord reply reference: when the @ is itself a reply to a specific message,
+// that message is the explicit referent of "你剛剛說的" / "這張圖". Resolving it is
+// crucial for replies to her OWN scheduled posts (daily recap / bedtime story),
+// which never enter conv memory and are filtered out of group context.
+async function fetchReferencedMessage(message) {
+  if (!message?.reference?.messageId) return null;
+  if (typeof message.fetchReference !== "function") return null;
+  try {
+    return await message.fetchReference();
+  } catch (err) {
+    // Referenced message deleted / unfetchable — skip silently.
+    console.log(`[ai] reply reference unresolved: ${err.message}`);
+    return null;
+  }
+}
+
 async function generateAIReply(message, userText, options = {}) {
   const {
     personaOverride = null,
@@ -386,13 +467,22 @@ async function generateAIReply(message, userText, options = {}) {
     providerOptions = {},
   } = options;
   const tierConfig = getTierConfig(message.guildId);
+
+  // Resolved once, used twice: the referenced message supplies both the reply
+  // context block (further down) and — when the @ itself carries no attachment
+  // —— the image 西寶 is being asked about.
+  const referenced = includeContext ? await fetchReferencedMessage(message) : null;
+  const images = await loadVisionImages(message, referenced);
+
   const { chain: guildChain, rateLimited } = buildGuildChain(
     message.guildId,
     tierConfig,
     providerOptions,
+    new Date(),
+    images,
   );
   if (guildChain.length === 0) return null;
-  const userTurn = buildUserTurn(message, userText);
+  const userTurn = buildUserTurn(message, userText, buildImageNote(images.length));
   const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
   let turns = [...history, { role: "user", content: userTurn }];
 
@@ -506,36 +596,22 @@ async function generateAIReply(message, userText, options = {}) {
     }
   }
 
-  // Discord reply reference: when the @ is itself a reply to a specific message,
-  // that message is the explicit referent of "你剛剛說的" / "這個". Resolve it so
-  // 西寶 can see what's being replied to — crucial for replies to her OWN
-  // scheduled posts (daily recap / bedtime story), which never enter conv memory
-  // and are filtered out of group context (it drops the bot's own messages).
+  // Reply context (the reference itself was resolved at the top of the call).
   let replyBlock = "";
-  if (
-    includeContext &&
-    message.reference?.messageId &&
-    typeof message.fetchReference === "function"
-  ) {
-    try {
-      const ref = await message.fetchReference();
-      const refContent = (ref.content || "").trim();
-      if (refContent) {
-        const isSelf = ref.author?.id === message.client?.user?.id;
-        const authorName = sanitizeName(
-          ref.member?.displayName ||
-            ref.author?.globalName ||
-            ref.author?.username,
-        );
-        replyBlock = buildReplyContextBlock({
-          content: trimDescription(refContent, 500),
-          authorName,
-          isSelf,
-        });
-      }
-    } catch (err) {
-      // Referenced message deleted / unfetchable — skip silently.
-      console.log(`[ai] reply reference unresolved: ${err.message}`);
+  if (referenced) {
+    const refContent = (referenced.content || "").trim();
+    if (refContent) {
+      const isSelf = referenced.author?.id === message.client?.user?.id;
+      const authorName = sanitizeName(
+        referenced.member?.displayName ||
+          referenced.author?.globalName ||
+          referenced.author?.username,
+      );
+      replyBlock = buildReplyContextBlock({
+        content: trimDescription(refContent, 500),
+        authorName,
+        isSelf,
+      });
     }
   }
 
@@ -587,7 +663,7 @@ async function generateAIReply(message, userText, options = {}) {
     }
     const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {
@@ -640,6 +716,8 @@ module.exports = {
   buildRecapProviderChain,
   buildStoryProviderChain,
   buildGuildChain,
+  buildVisionEntry,
+  fetchReferencedMessage,
   getPersonalMemoryContextEntries,
   runProviderChain,
   generateAIReply,
