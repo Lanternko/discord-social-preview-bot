@@ -380,6 +380,83 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.hasComponents, false);
   });
 
+  await it("reply post → quotes the ancestor above the reply", async () => {
+    _mockThreadsMetadata = {
+      image: null,
+      title: "someone (@kid) on Threads",
+      description: "punchline",
+      postText: "punchline",
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      video: false,
+      ancestors: [{ author: "op", text: "setup line 1\nsetup line 2" }],
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    const description = p.embeds[0].data.description;
+    assert.ok(
+      description.includes("> **@op**"),
+      `names the quoted author, got: ${description}`,
+    );
+    assert.ok(
+      description.includes("> setup line 1") &&
+        description.includes("> setup line 2"),
+      `every quoted line keeps its > prefix, got: ${description}`,
+    );
+    assert.ok(
+      description.includes("↳ punchline"),
+      `the reply itself is still shown, got: ${description}`,
+    );
+    assert.ok(
+      description.indexOf("> **@op**") < description.indexOf("↳ punchline"),
+      "setup must come before the punchline",
+    );
+  });
+
+  await it("deep reply chain → keeps root + direct parent, marks the gap", async () => {
+    _mockThreadsMetadata = {
+      image: null,
+      title: "t",
+      description: "d",
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      video: false,
+      ancestors: [
+        { author: "root", text: "root text" },
+        { author: "mid", text: "mid text" },
+        { author: "parent", text: "parent text" },
+      ],
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    const description = p.embeds[0].data.description;
+    assert.ok(description.includes("@root"), "keeps the thread's root post");
+    assert.ok(description.includes("@parent"), "keeps the direct parent");
+    assert.ok(!description.includes("@mid"), "drops the middle of a long chain");
+    assert.ok(
+      description.includes("還有 1 則"),
+      `says how many were skipped, got: ${description}`,
+    );
+  });
+
+  await it("non-reply post → description untouched", async () => {
+    _mockThreadsMetadata = {
+      image: null,
+      title: "t",
+      description: "plain body",
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      video: false,
+      ancestors: [],
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    assert.equal(p.embeds[0].data.description, "plain body");
+  });
+
   await it("twitterCard=summary even with image → compact embed only", async () => {
     _mockThreadsMetadata = {
       image: "https://x/y.jpg",

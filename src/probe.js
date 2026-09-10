@@ -131,7 +131,7 @@ async function fetchThreadsMetadata(url) {
   }
 
   console.log(
-    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
+    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} ancestors=${metadata.ancestors?.length ?? 0} source=playwright-subprocess`,
   );
 
   const result = {
@@ -143,6 +143,8 @@ async function fetchThreadsMetadata(url) {
     video: metadata.video,
     imageCount: metadata.imageCount || 0,
     videoCount: metadata.videoCount || 0,
+    ancestors: metadata.ancestors || [],
+    postText: metadata.postText || null,
   };
 
   threadsMetadataCache.set(url, { metadata: result, cachedAt: Date.now() });

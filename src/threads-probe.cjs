@@ -119,6 +119,71 @@ async function readThreadsMetadata(page) {
         return rect.width >= 160 && rect.height >= 160;
       };
 
+      // A shared Threads link very often points at a REPLY, and og:description
+      // then carries only the punchline — the post it answers is nowhere in the
+      // preview. The thread page renders every ancestor post above the target
+      // in DOM order, so locate the target by its own permalink (the page
+      // auto-scrolls it to the top, but that scroll is async — position would
+      // be a race, the permalink is not) and take everything before it as the
+      // ancestor chain.
+      const postContainers = Array.from(
+        document.querySelectorAll('div[data-pressable-container="true"]'),
+      );
+      const permalinkOf = (container) => {
+        const href = container
+          .querySelector("time")
+          ?.closest("a")
+          ?.getAttribute("href");
+        return href ? href.split("?")[0].replace(/\/$/, "") : null;
+      };
+      const handleOf = (container) =>
+        permalinkOf(container)?.match(/^\/@([A-Za-z0-9._]+)\//)?.[1] || null;
+      // Threads' class names are obfuscated and rotate per build, so identify
+      // the post body by role instead: it is the only dir="auto" span that is
+      // neither inside a link (author name), nor a timestamp wrapper (that span
+      // is the PARENT of its <a>, so closest("a") misses it), nor inside an
+      // interaction button (the like/repost counters).
+      const bodyTextOf = (container) => {
+        const spans = Array.from(
+          container.querySelectorAll('span[dir="auto"]'),
+        ).filter(
+          (span) =>
+            !span.closest("a") &&
+            !span.closest('[role="button"]') &&
+            !span.querySelector("time"),
+        );
+        const outermost = spans.filter(
+          (span) =>
+            !spans.some((other) => other !== span && other.contains(span)),
+        );
+        // innerText would be ideal but a body span also holds the "Translate" /
+        // "See more" buttons; walk instead so those subtrees can be dropped
+        // while <br> still becomes a real line break.
+        const collect = (node) => {
+          if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+          if (node.nodeType !== Node.ELEMENT_NODE) return "";
+          if (node.getAttribute("role") === "button") return "";
+          if (node.tagName === "BR") return "\n";
+          return Array.from(node.childNodes).map(collect).join("");
+        };
+        return (
+          outermost.map(collect).join("\n").replace(/\n{3,}/g, "\n\n").trim() ||
+          null
+        );
+      };
+
+      const targetPath = location.pathname.replace(/\/$/, "");
+      const targetIndex = postContainers.findIndex(
+        (container) => permalinkOf(container) === targetPath,
+      );
+      const ancestors =
+        targetIndex > 0
+          ? postContainers.slice(0, targetIndex).map((container) => ({
+              author: handleOf(container),
+              text: bodyTextOf(container),
+            }))
+          : [];
+
       const candidateVideos = Array.from(
         mediaContainer.querySelectorAll("video"),
       ).filter(inMainPost);
@@ -147,6 +212,9 @@ async function readThreadsMetadata(page) {
           getMeta("name", "twitter:player:stream") ||
           candidateVideos[0]?.getAttribute("src") ||
           null,
+        ancestors,
+        postText:
+          targetIndex >= 0 ? bodyTextOf(postContainers[targetIndex]) : null,
         images: candidateImages.map((img) => getBestSrc(img)).filter(Boolean),
         imageCount: candidateImages.length,
         videoCount: Math.max(
