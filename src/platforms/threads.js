@@ -17,6 +17,54 @@ function buildTailHint(hiddenImages, hasVideo) {
   return `... ${parts.join(" + ")}`;
 }
 
+// A shared Threads link often points at a reply, and Threads' og:description
+// then carries the punchline alone — the post being answered never reaches the
+// preview, so the reply reads as a non-sequitur. The probe hands back the
+// ancestor chain; render it as a quote above the reply.
+const MAX_QUOTED_ANCESTORS = 2;
+const ANCESTOR_TEXT_LIMIT = 500;
+
+function quoteAncestor(ancestor) {
+  const header = ancestor.author ? `**@${ancestor.author}**` : "**原貼文**";
+  const body = ancestor.text
+    ? trimDescription(ancestor.text, ANCESTOR_TEXT_LIMIT)
+    : "（無文字內容）";
+  return [header, ...body.split("\n")].map((line) => `> ${line}`).join("\n");
+}
+
+function buildReplyDescription(metadata) {
+  const ancestors = (metadata.ancestors || []).filter(
+    (ancestor) => ancestor && (ancestor.text || ancestor.author),
+  );
+  if (!ancestors.length) return null;
+
+  // A deep chain would bury the reply itself, so keep the root (what the
+  // thread is about) and the direct parent (what the reply answers).
+  const quoted =
+    ancestors.length > MAX_QUOTED_ANCESTORS
+      ? [ancestors[0], ancestors[ancestors.length - 1]]
+      : ancestors;
+  const skipped = ancestors.length - quoted.length;
+
+  const blocks = [];
+  quoted.forEach((ancestor, index) => {
+    blocks.push(quoteAncestor(ancestor));
+    if (index === 0 && skipped > 0) {
+      blocks.push(`> ⋯（中間還有 ${skipped} 則）`);
+    }
+  });
+
+  const ownText = metadata.description || metadata.postText;
+  blocks.push(ownText ? `↳ ${ownText}` : "↳ （這則回覆沒有文字）");
+  return blocks.join("\n\n");
+}
+
+function withReplyContext(metadata) {
+  const description = buildReplyDescription(metadata);
+  if (!description) return metadata;
+  return { ...metadata, description };
+}
+
 function buildThreadsViewerUrls(url) {
   return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
@@ -41,7 +89,13 @@ async function buildThreadsPayload(url) {
   const viewerUrls = buildThreadsViewerUrls(canonicalUrl);
 
   try {
-    const metadata = await fetchThreadsMetadata(canonicalUrl);
+    const rawMetadata = await fetchThreadsMetadata(canonicalUrl);
+    const metadata = withReplyContext(rawMetadata);
+    if (metadata !== rawMetadata) {
+      console.log(
+        `[preview] threads-reply-context ancestors=${rawMetadata.ancestors.length} ${canonicalUrl}`,
+      );
+    }
     const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
     const isTextOnly = !metadata.image && !hasVideo;
 
@@ -152,6 +206,7 @@ async function buildThreadsPayload(url) {
 
 module.exports = {
   buildThreadsPayload,
+  buildReplyDescription,
   buildThreadsViewerUrls,
   buildThreadsLocalFallback,
 };

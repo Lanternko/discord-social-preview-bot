@@ -16,6 +16,10 @@ Threads 的 `/share/<token>` 會先由 [src/threads-url.js](../src/threads-url.j
 | Probe error | 依序嘗試 `THREADS_VIEWER_HOSTS` → local canonical `embedFallback` |
 | Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same ordered viewer chain → local fallback |
 
+**回覆貼文的上文（reply context）**：分享出來的 Threads 連結很常是一則**回覆**，而 Threads 的 `og:description` 只帶那則回覆本身的文字——梗的鋪陳（被回覆的原貼文）完全不會進預覽。Probe 因此另外抓 `ancestors`：thread 頁面會把所有祖先貼文依 DOM 順序排在目標貼文之前，用**目標貼文自己的 permalink**（`<time>` 的 `<a href>`）定位目標，其前面的 `div[data-pressable-container]` 就是祖先鏈。**刻意不用捲動位置判斷**——頁面會自動把目標捲到頂端，但那是非同步的，用位置會踩到跟 media race 同一類的競態；permalink 不會。貼文內文則靠 role 辨識（`span[dir="auto"]` 且不在 `<a>`／`[role="button"]` 內、本身也不包 `<time>`），因為 Threads 的 class name 每次 build 都會換。
+
+輸出格式（[src/platforms/threads.js](../src/platforms/threads.js) 的 `buildReplyDescription`）：祖先以 Discord 引言（`> `）呈現、標上 `**@作者**`，回覆本身在下方以 `↳ ` 開頭。鏈太深時只留 root（這串在講什麼）＋直接被回覆者（這則在回什麼），中間標 `⋯（中間還有 N 則）`。非回覆貼文 `ancestors` 為空、description 原封不動。三個 case 都由 routing smoke 釘住。
+
 **Order is load-bearing.** See [src/platforms/threads.js](../src/platforms/threads.js) — the `if` ladder order determines which branch a mixed (image+video) post falls into. Hard-asserted by [scripts/routing-smoke.js](../scripts/routing-smoke.js):
 
 - **MIXED case** (multi-image AND video → carousel gallery kept AND carries `videoAttachment` for a real uploaded video — NOT dropped to a bare video fixer that loses the images)
