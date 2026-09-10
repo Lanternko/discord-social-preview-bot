@@ -7,7 +7,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - **Bootstrap** — [index.js](../src/index.js) wires Discord client, intents, and the `messageCreate` dispatcher. ~150 lines, no business logic of its own.
 - **Config** — [config.js](../src/config.js) reads every env var and exports the constants (`FIXER_*`, `AI_*`, timeouts, default persona). One source of truth; nothing else touches `process.env`.
 - **URL plumbing** — [url-routing.js](../src/url-routing.js) handles host sets, `normalizeUrl`, `extractSupportedUrls`, `isXxxUrl` predicates, and `replaceHostFixer` / `buildFallbackUrl`. [utils.js](../src/utils.js) holds `trimDescription` / `pickRandom`.
-- **Probe** — [probe.js](../src/probe.js) wraps the Playwright subprocess via `execFile` and caches Threads metadata. The actual browser code lives in [threads-probe.cjs](../src/threads-probe.cjs) — kept CommonJS because it must run in its own process (Playwright's `chromium.launch` blocks the Discord event loop).
+- **Probe** — [probe.js](../src/probe.js) owns the Threads metadata chain: [threads-graphql.js](../src/threads-graphql.js) first (Meta's own GraphQL endpoint — no browser, no DOM race), Playwright subprocess second, both normalized to one shape and cached. It wraps that subprocess via `execFile`. The actual browser code lives in [threads-probe.cjs](../src/threads-probe.cjs) — kept CommonJS because it must run in its own process (Playwright's `chromium.launch` blocks the Discord event loop).
 - **Embeds** — [embeds.js](../src/embeds.js) is the single home for `EmbedBuilder` factories (Threads / Bahamut / PTT / Bilibili).
 - **OG fallback** — [og-fallback.js](../src/og-fallback.js) is the lightweight HTTP fetch + OG meta parser, plus a generic embed builder. Used by `checkAndHandleEmptyEmbeds` as the last layer before delete. No Playwright — plain `fetch` + regex over `<head>`. Streams responses with a `</head>` early-bail to keep latency low.
 - **Platforms** — [platforms/](../src/platforms/) holds one builder per platform (`threads.js`, `instagram.js`, `bilibili.js`, `bahamut.js`, `ptt.js`). Each returns a `{ content?, embeds?, fallbackContent?, embedFallback?, recoverUrls?, recoverEmbedOptions?, sourceUrl? }` payload. `recoverUrls` is the OG-fallback layer — list of URLs whose HTML to fetch + parse for OG tags when both primary and secondary fixer unfurl empty.
@@ -40,7 +40,8 @@ src/
 ├── config.js             # All env vars + constants
 ├── url-routing.js        # Host sets, normalizeUrl, extractSupportedUrls, isXxxUrl, fixers
 ├── utils.js              # trimDescription, pickRandom
-├── probe.js              # Playwright subprocess wrapper + Threads metadata cache
+├── probe.js              # Threads metadata chain (graphql → playwright) + cache
+├── threads-graphql.js    # Threads metadata via Meta's GraphQL API (fast path)
 ├── embeds.js             # All EmbedBuilder factories
 ├── platforms/
 │   ├── threads.js        # buildThreadsPayload — multi-image, video, single, fallback
@@ -72,7 +73,7 @@ src/
 
 All scoped — grep one to isolate a subsystem:
 
-`[preview]` · `[threads-meta]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]` · `[sticker]` · `[emoji]`
+`[preview]` · `[threads-meta]` · `[threads-gql]` · `[ai]` · `[group-context]` · `[probe]` · `[permissions]` · `[mention]` · `[commands]` · `[delete]` · `[sticker]` · `[emoji]`
 
 ## Smoke tests
 

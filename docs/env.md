@@ -27,6 +27,11 @@
 | `FIXEMBED_BASE_URL` | `https://fixembed.app/embed?url=` | Generic fallback |
 | `SUPPRESS_ORIGINAL_EMBEDS` | `true` | Needs Manage Messages permission |
 | `REPLY_MODE` | `reply` | `reply` or `send` |
+| `THREADS_GRAPHQL_ENABLED` | `true` | Threads metadata 走 Meta 自家 GraphQL 的快路徑（見 `src/threads-graphql.js`）。設 `false` 就整條關掉、只用 Playwright probe |
+| `THREADS_GRAPHQL_DOC_ID` | `7448594591874178` | GraphQL persisted query id。**Meta 會不定期換掉**，換掉後每次呼叫都回 `The GraphQL document with ID ... was not found.`，會無聲退回 probe（慢、且有 DOM 競態）。log 出現 `[threads-gql] api error` 連續刷就是該更新這個值 |
+| `THREADS_GRAPHQL_APP_ID` | `238260118697367` | `X-Ig-App-Id`，Threads web 的固定值 |
+| `THREADS_GRAPHQL_LSD` | `hgmSkqDnLNFckqa7t1vJdn` | `X-Fb-Lsd` token。未登入請求不驗這個值，只要求存在且與 body 的 `lsd` 一致 |
+| `THREADS_GRAPHQL_TIMEOUT_MS` | `6000` | 單次 GraphQL 請求逾時。超時＝miss，退回 probe |
 | `THREADS_PROBE_TIMEOUT_MS` | `15000` | Per-URL subprocess timeout。必須容得下 goto(8s) + meta settle(1.5s) + media poll(2.5s) |
 | `THREADS_PROBE_MAX_CONCURRENT` | `3` | 同時執行的 probe 子行程（每個都是一整顆 chromium）。滿了就排隊，不是失敗。無上限時彼此搶 CPU → 頁面還沒 layout 就讀取 → 影片被當成沒有 |
 | `THREADS_PROBE_QUEUE_TIMEOUT_MS` | `8000` | 排隊等位子的上限，超過就無視上限直接跑。避免爆量時預覽遲到好幾分鐘 —— 寧可退化成舊的搶 CPU 行為，也不要一個沒人在看的預覽 |
