@@ -251,8 +251,21 @@ async function readBahamutMetadata(page) {
       return rect.width >= 160 && rect.height >= 160;
     });
 
+    // og:title is the browser-tab title: "<標題> @<板名> 哈啦板 - 巴哈姆特".
+    // The footer already says 巴哈姆特, so that tail only makes the title wrap
+    // an extra line. Require the site suffix before cutting, so a title that
+    // legitimately ends in "@某某" survives.
+    const stripSiteSuffix = (title) => {
+      if (!title) return null;
+      const trimmed = title
+        .replace(/\s*@[^@]{1,80}?[-–—]\s*巴哈姆特\s*$/, "")
+        .replace(/\s*[-–—]\s*巴哈姆特\s*$/, "")
+        .trim();
+      return trimmed || title;
+    };
+
     return {
-      title: getMeta("property", "og:title") || document.title || null,
+      title: stripSiteSuffix(getMeta("property", "og:title") || document.title),
       description:
         getMeta("property", "og:description") ||
         getMeta("name", "description") ||
