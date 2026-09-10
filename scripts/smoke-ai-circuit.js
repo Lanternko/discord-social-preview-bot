@@ -28,6 +28,7 @@ delete process.env.AI_PROVIDER;
 
 const {
   parseRetryAfterMs,
+  classifyHttpFailure,
   ok,
   fail,
   callDeepSeek,
@@ -398,6 +399,30 @@ async function main() {
       fail("rate_limit", { status: 429, retryAfterMs: 1000 }),
       { ok: false, kind: "rate_limit", status: 429, retryAfterMs: 1000 },
     );
+  });
+
+  console.log("classifyHttpFailure");
+  const httpResponse = (status) => ({ status, headers: { get: () => null } });
+  it("402 insufficient balance is auth, not unknown", () => {
+    // A dead balance does not heal on its own — it must land on auth's long
+    // cooldown, otherwise the chain retries a provably dead provider twice a
+    // minute and pays the round-trip on every reply.
+    const failure = classifyHttpFailure(httpResponse(402), "Insufficient Balance");
+    assert.equal(failure.kind, "auth");
+    assert.equal(getCooldownMs(failure), 600000);
+  });
+  it("401/403 stay auth", () => {
+    assert.equal(classifyHttpFailure(httpResponse(401), "").kind, "auth");
+    assert.equal(classifyHttpFailure(httpResponse(403), "").kind, "auth");
+  });
+  it("other 4xx stay unknown on the short cooldown", () => {
+    const failure = classifyHttpFailure(httpResponse(404), "");
+    assert.equal(failure.kind, "unknown");
+    assert.equal(getCooldownMs(failure), 30000);
+  });
+  it("429 and 5xx are unaffected", () => {
+    assert.equal(classifyHttpFailure(httpResponse(429), "").kind, "rate_limit");
+    assert.equal(classifyHttpFailure(httpResponse(503), "").kind, "server");
   });
 
   console.log("getCooldownMs");

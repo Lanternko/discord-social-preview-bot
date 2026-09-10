@@ -45,7 +45,13 @@ function parseRetryAfterMs(response) {
 function classifyHttpFailure(response, errText) {
   const status = response.status;
   const detail = (errText ?? "").slice(0, 200);
-  if (status === 401 || status === 403) {
+  // 402 = insufficient balance. It shares auth's defining property: the call
+  // cannot succeed again until a human does something (top up / fix the key),
+  // so it belongs on auth's 10-minute cooldown rather than the 30 s `unknown`
+  // default. Left as `unknown` it retried a provably dead provider twice a
+  // minute for 18 hours (2026-09-09 DeepSeek balance ran dry), paying the
+  // round-trip on every single reply and burying the log.
+  if (status === 401 || status === 402 || status === 403) {
     return fail("auth", { status, detail });
   }
   if (status === 429) {
