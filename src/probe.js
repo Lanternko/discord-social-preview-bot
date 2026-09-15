@@ -137,10 +137,18 @@ function logThreadsMetadata(metadata, source, extra = "") {
   );
 }
 
-// A walled post still hydrates its media into the logged-out DOM even though
-// every meta tag is the login interstitial. The fixers get the same wall (vx
-// unfurls "Threads • Log in"), so keep the media and drop the wall's text.
-// Returns null when there is no media worth keeping.
+// A walled post usually REDIRECTS a logged-out browser to the home feed, and
+// that feed's DOM holds other people's media — salvaging it previewed random
+// posts (2026-09-15: all three salvages that day were feed media). Treat any
+// probe that ended up off a /post/ permalink as a miss.
+function isRedirectedOffPost(metadata) {
+  return metadata?.onPostPage === false;
+}
+
+// If a walled page does stay on the permalink, its media is the post's own
+// even though every meta tag is the login interstitial. The fixers get the
+// same wall (vx unfurls "Threads • Log in"), so keep the media and drop the
+// wall's text. Returns null when there is no media worth keeping.
 function salvageLoginWallMedia(metadata, url) {
   const images = metadata.images || [];
   const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
@@ -159,6 +167,12 @@ function salvageLoginWallMedia(metadata, url) {
 
 async function fetchThreadsMetadataViaProbe(url) {
   const metadata = await runProbe(url);
+
+  if (isRedirectedOffPost(metadata)) {
+    throw new Error(
+      `Threads redirected the probe off the post (walled / unavailable logged-out) for ${url}`,
+    );
+  }
 
   if (isThreadsLoginWall(metadata)) {
     const salvaged = salvageLoginWallMedia(metadata, url);
@@ -219,5 +233,6 @@ module.exports = {
   fetchThreadsMetadata,
   fetchPageProbeMetadata,
   isThreadsLoginWall,
+  isRedirectedOffPost,
   salvageLoginWallMedia,
 };
