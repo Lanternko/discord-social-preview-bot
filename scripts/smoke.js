@@ -30,7 +30,11 @@ const {
 
 const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 
-const { isThreadsLoginWall, salvageLoginWallMedia } = require("../src/probe");
+const {
+  isThreadsLoginWall,
+  isRedirectedOffPost,
+  salvageLoginWallMedia,
+} = require("../src/probe");
 
 const {
   codeToPostId,
@@ -556,6 +560,16 @@ it("isThreadsLoginWall does NOT trigger on a real post", () => {
     false,
   );
 });
+// Regression (2026-09-15, threads.com/@gu2224466591nn/post/DdRlir8k3AS): the
+// walled post redirected to "/", and the home feed's @tigers video + covers were
+// previewed as if they were this post.
+it("isRedirectedOffPost rejects a probe that landed on the home feed", () => {
+  assert.equal(isRedirectedOffPost({ onPostPage: false }), true);
+  assert.equal(isRedirectedOffPost({ onPostPage: true }), false);
+  // older probe output without the field must not be rejected
+  assert.equal(isRedirectedOffPost({}), false);
+});
+
 it("salvageLoginWallMedia keeps walled media, drops the wall's text", () => {
   const salvaged = salvageLoginWallMedia(
     {

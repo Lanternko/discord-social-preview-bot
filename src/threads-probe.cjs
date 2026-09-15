@@ -212,6 +212,10 @@ async function readThreadsMetadata(page) {
           getMeta("name", "twitter:player:stream") ||
           candidateVideos[0]?.getAttribute("src") ||
           null,
+        // A walled post redirects a logged-out browser to the home feed ("/"),
+        // whose DOM is full of OTHER people's media. Anything read off a page
+        // that isn't a post permalink must not be attributed to this link.
+        onPostPage: /\/post\//.test(location.pathname),
         ancestors,
         postText:
           targetIndex >= 0 ? bodyTextOf(postContainers[targetIndex]) : null,
