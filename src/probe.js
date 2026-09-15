@@ -102,10 +102,9 @@ async function runProbe(url) {
 }
 
 // Threads serves a logged-out interstitial ("Threads • Log in" + a generic
-// "Join Threads to share ideas..." description, no media) when it walls a probe
-// — common on sensitive / flagged posts. Treat it as a probe failure so
-// buildThreadsPayload falls through to the fixer chain (which CAN fetch the real
-// content) instead of rendering a useless "Threads • Log in" card.
+// "Join Threads to share ideas...") when it walls a probe — common on sensitive
+// / flagged posts. Never render that text: salvage the media if the DOM still
+// has it, otherwise treat it as a probe failure (fixer chain + OG recovery).
 function isThreadsLoginWall(metadata) {
   if (!metadata) return false;
   const title = (metadata.title || "").trim();
@@ -138,13 +137,38 @@ function logThreadsMetadata(metadata, source, extra = "") {
   );
 }
 
+// A walled post still hydrates its media into the logged-out DOM even though
+// every meta tag is the login interstitial. The fixers get the same wall (vx
+// unfurls "Threads • Log in"), so keep the media and drop the wall's text.
+// Returns null when there is no media worth keeping.
+function salvageLoginWallMedia(metadata, url) {
+  const images = metadata.images || [];
+  const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
+  if (!images.length && !hasVideo) return null;
+
+  const handle = url.match(/\/@([A-Za-z0-9._]+)\/post\//)?.[1];
+  return {
+    ...metadata,
+    title: handle ? `@${handle} 的 Threads 貼文` : "Threads 貼文",
+    description: null,
+    image: images[0] || null,
+    twitterCard: images.length ? "summary_large_image" : null,
+    imageCount: Math.max(metadata.imageCount || 0, images.length),
+  };
+}
+
 async function fetchThreadsMetadataViaProbe(url) {
   const metadata = await runProbe(url);
 
   if (isThreadsLoginWall(metadata)) {
-    throw new Error(
-      `Threads served a logged-out login wall (no public metadata) for ${url}`,
-    );
+    const salvaged = salvageLoginWallMedia(metadata, url);
+    if (!salvaged) {
+      throw new Error(
+        `Threads served a logged-out login wall (no public metadata) for ${url}`,
+      );
+    }
+    logThreadsMetadata(salvaged, "playwright-subprocess", " login-wall-salvaged");
+    return normalizeThreadsMetadata(salvaged);
   }
 
   logThreadsMetadata(
@@ -195,4 +219,5 @@ module.exports = {
   fetchThreadsMetadata,
   fetchPageProbeMetadata,
   isThreadsLoginWall,
+  salvageLoginWallMedia,
 };
