@@ -366,9 +366,15 @@ async function readBahamutMetadata(page) {
       return trimmed || title;
     };
 
+    // og:description flattens the post onto one line; the article's own
+    // innerText keeps the author's line breaks (each <div> is a line), so it
+    // wins. Runs of blank lines are collapsed later by trimText.
+    const articleBody = article?.innerText?.trim() || null;
+
     return {
       title: stripSiteSuffix(getMeta("property", "og:title") || document.title),
       description:
+        articleBody ||
         getMeta("property", "og:description") ||
         getMeta("name", "description") ||
         articleText ||
