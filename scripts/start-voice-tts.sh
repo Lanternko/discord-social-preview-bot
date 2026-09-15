@@ -1,34 +1,41 @@
 #!/usr/bin/env bash
+# 西寶語音走阿拉蕾那顆共用 Irodori（127.0.0.1:8055，ref_id=xibao）。
+# 不再另起 8056。8055 已掛 xibao embed 就離開；否則去叫阿拉蕾 start script。
 set -eu
 
 project_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-arale_server_default=$(CDPATH= cd -- "$project_root/../arale-persona-bot" 2>/dev/null && pwd)/server/tts_server_irodori.py
+arale_start=$(CDPATH= cd -- "$project_root/../arale-persona-bot" 2>/dev/null && pwd)/server/start_tts_irodori.sh
+pilotfish_embed=$HOME/side_projects/apps/dspb-pilotfish/data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors
+local_embed=$project_root/data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors
 
-tts_server_script=${XIBAO_TTS_SERVER_SCRIPT:-$arale_server_default}
-voice_embed=${XIBAO_VOICE_EMBED:-$project_root/data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors}
-
-if [ ! -f "$tts_server_script" ]; then
-  echo "找不到 Arale Irodori TTS server：$tts_server_script" >&2
-  echo "請用 XIBAO_TTS_SERVER_SCRIPT 指向 tts_server_irodori.py。" >&2
-  exit 1
+if [ -n "${XIBAO_VOICE_EMBED:-}" ]; then
+  voice_embed=$XIBAO_VOICE_EMBED
+elif [ -f "$local_embed" ]; then
+  voice_embed=$local_embed
+else
+  voice_embed=$pilotfish_embed
 fi
+
 if [ ! -f "$voice_embed" ]; then
   echo "找不到西寶 speaker embedding：$voice_embed" >&2
   echo "請用 XIBAO_VOICE_EMBED 指向 checkpoint_final.speaker.safetensors。" >&2
   exit 1
 fi
 
-export TTS_PORT=${TTS_PORT:-8056}
-export TTS_IRODORI_DEFAULT_EMBED=$voice_embed
-# Isolate mood lookup from Arale's own data directory. The shared server tries
-# mood-specific names before its default; without this, mood=shy can silently
-# select Arale's si_shy_gold instead of Xibao's checkpoint.
-export TTS_IRODORI_EMBED_DIR=$(dirname -- "$voice_embed")
-export TTS_TEMPO_SLOW=${TTS_TEMPO_SLOW:-1.0}
-# The listening audit found this seed preserves Xibao's shy timbre most
-# reliably. A fixed seed also makes the shared server stop after one candidate
-# instead of rerolling up to CAND_MAX candidates by roughness alone.
-export TTS_IRODORI_SEED=${XIBAO_IRODORI_SEED:-${TTS_IRODORI_SEED:-1082616115}}
+shared_url=${TTS_SERVER_URL:-http://127.0.0.1:8055}
+if health=$(curl -fsS --max-time 5 "$shared_url/health" 2>/dev/null); then
+  if printf '%s' "$health" | grep -q '"xibao"'; then
+    echo "[xibao-tts] shared $shared_url already has xibao embed"
+    exit 0
+  fi
+  echo "[xibao-tts] $shared_url 在跑但沒有 xibao embed，重啟共用 server" >&2
+fi
 
-irodori_python=${XIBAO_IRODORI_PYTHON:-$HOME/side_projects/reference-repos/Irodori-TTS/.venv/bin/python}
-exec "$irodori_python" "$tts_server_script"
+if [ ! -x "$arale_start" ] && [ ! -f "$arale_start" ]; then
+  echo "找不到阿拉蕾 start_tts_irodori.sh：$arale_start" >&2
+  exit 1
+fi
+
+export XIBAO_VOICE_EMBED=$voice_embed
+export TTS_PORT=${TTS_PORT:-8055}
+exec bash "$arale_start"
