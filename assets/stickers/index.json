@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "file": "xibao_surprised.png",
+    "name": "西寶驚訝",
+    "meaning": "驚訝／傻眼／震驚"
+  },
+  {
+    "file": "xibao_eyes_closed.png",
+    "name": "西寶閉眼",
+    "meaning": "害羞／尷尬／不忍直視"
+  }
+]
