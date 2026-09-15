@@ -30,7 +30,7 @@ const {
 
 const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 
-const { isThreadsLoginWall } = require("../src/probe");
+const { isThreadsLoginWall, salvageLoginWallMedia } = require("../src/probe");
 
 const {
   codeToPostId,
@@ -270,6 +270,12 @@ it("accepts only canonical Threads post Locations and strips known tracking", ()
       "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM?xmt=AQGz&slof=1",
     ),
     "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM",
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@bb725_/post/DdRdTaSk-0U/media?xmt=AQG0",
+    ),
+    "https://www.threads.com/@bb725_/post/DdRdTaSk-0U",
   );
   assert.equal(
     canonicalizeThreadsPostUrl(
@@ -548,6 +554,35 @@ it("isThreadsLoginWall does NOT trigger on a real post", () => {
       description: "⤴️ Replying to @mi1hxxsy",
     }),
     false,
+  );
+});
+it("salvageLoginWallMedia keeps walled media, drops the wall's text", () => {
+  const salvaged = salvageLoginWallMedia(
+    {
+      title: "Threads • Log in",
+      description: "Join Threads to share ideas",
+      image: "https://static.cdninstagram.com/login.webp",
+      twitterCard: "summary",
+      images: ["https://cdn/a.jpg", "https://cdn/b.jpg"],
+      imageCount: 2,
+      video: "https://cdn/v.mp4",
+      videoCount: 1,
+    },
+    "https://www.threads.com/@bb725_/post/DdRdTaSk-0U",
+  );
+  assert.equal(salvaged.title, "@bb725_ 的 Threads 貼文");
+  assert.equal(salvaged.description, null);
+  assert.equal(salvaged.image, "https://cdn/a.jpg");
+  assert.equal(salvaged.twitterCard, "summary_large_image");
+  assert.equal(salvaged.video, "https://cdn/v.mp4");
+});
+it("salvageLoginWallMedia returns null when the wall hides everything", () => {
+  assert.equal(
+    salvageLoginWallMedia(
+      { title: "Threads • Log in", images: [], imageCount: 0, videoCount: 0 },
+      "https://www.threads.com/@a/post/1",
+    ),
+    null,
   );
 });
 it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {

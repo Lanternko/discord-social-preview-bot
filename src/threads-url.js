@@ -7,7 +7,7 @@ const THREADS_ORIGIN_HOSTS = new Set([
 
 const SHARE_PATH_PATTERN = /^\/share\/[A-Za-z0-9_-]{1,128}\/?$/;
 const POST_PATH_PATTERN =
-  /^\/@[A-Za-z0-9._]{1,64}\/post\/[A-Za-z0-9_-]{1,128}\/?$/;
+  /^\/@[A-Za-z0-9._]{1,64}\/post\/[A-Za-z0-9_-]{1,128}(?:\/media)?\/?$/;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const RESOLVE_TIMEOUT_MS = 2500;
 const RESOLVE_MAX_CONCURRENT = 4;
@@ -78,6 +78,9 @@ function canonicalizeThreadsPostUrl(rawUrl) {
   if ([...parsed.searchParams.keys()].length > 0) return null;
   parsed.search = "";
   parsed.hash = "";
+  // `/media` is the lightbox view of the same post; its page carries no
+  // author/text (title is a bare "Threads"), so always probe the post itself.
+  parsed.pathname = parsed.pathname.replace(/\/media\/?$/, "");
   return parsed.toString();
 }
 
