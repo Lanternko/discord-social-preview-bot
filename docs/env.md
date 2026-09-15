@@ -4,12 +4,12 @@
 
 | Variable | Default | Notes |
 |---|---|---|
-| `TTS_SERVER_URL` | `http://127.0.0.1:8056` | Local service compatible with Arale Irodori `/tts` and `/warmup` |
+| `TTS_SERVER_URL` | `http://127.0.0.1:8055` | Shared Arale Irodori `/tts` and `/warmup` (one process, both voices) |
 | `TTS_REQUEST_TIMEOUT_MS` | `60000` | Per-request timeout, including a cold model start |
-| `TTS_DEFAULT_REF_ID` | *(empty)* | Optional speaker embedding name/path; leave empty when the service has a default |
+| `TTS_DEFAULT_REF_ID` | `xibao` | Must stay `xibao` on the shared server, or mood lookup would pick Arale's SI |
 | `VOICE_MAX_REPLY_CHARS` | `60` | Transcript cap before sending text to TTS |
 
-`scripts/start-voice-tts.sh` also accepts `XIBAO_VOICE_EMBED`, `XIBAO_TTS_SERVER_SCRIPT`, `XIBAO_IRODORI_PYTHON`, `XIBAO_IRODORI_SEED`, and `TTS_PORT`. The launcher isolates the shared server's mood lookup directory so `mood=shy` cannot accidentally select Arale's own embedding. It fixes the production seed to the listening-test winner `1082616115` by default; set `XIBAO_IRODORI_SEED` to override it. A fixed seed intentionally disables the server's random roughness-only candidate rerolls. These settings affect only `/voice`; mentions, scheduled posts, and the existing text persona remain text-only.
+`scripts/start-voice-tts.sh` no longer starts a second Irodori on 8056. It checks that `8055` already exposes the `xibao` extra embed; if not, it calls Arale's `start_tts_irodori.sh` (bf16, extra embed + seed `1082616115`, no Arale mood tempo). Override the checkpoint with `XIBAO_VOICE_EMBED`. These settings affect only `/voice`; mentions, scheduled posts, and the existing text persona remain text-only.
 
 | Variable | Default | Notes |
 |---|---|---|

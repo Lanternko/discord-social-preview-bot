@@ -68,16 +68,27 @@ function makeInteraction(text = "今天過得怎麼樣？") {
 
 async function main() {
   console.log("voice prompt and sanitizer");
-  await it("pins the listening-test winner seed in the Xibao TTS launcher", () => {
+  // 西寶語音掛在阿拉蕾那顆共用 Irodori 上（8055, ref_id=xibao）；聽測勝出的
+  // seed 由阿拉蕾的 start_tts_irodori.sh 以 TTS_VOICE_SEEDS=xibao=… 設定。
+  await it("Xibao TTS launcher reuses the shared 8055 server instead of a second Irodori", () => {
     const launcher = fs.readFileSync(
       path.join(__dirname, "start-voice-tts.sh"),
       "utf8",
     );
-    assert.match(
-      launcher,
-      /TTS_IRODORI_SEED=\$\{XIBAO_IRODORI_SEED:-\$\{TTS_IRODORI_SEED:-1082616115\}\}/,
+    assert.match(launcher, /TTS_PORT=\$\{TTS_PORT:-8055\}/);
+    assert.match(launcher, /exec bash "\$arale_start"/);
+    assert.doesNotMatch(launcher, /TTS_PORT:-8056/);
+
+    const araleStart = path.join(
+      __dirname,
+      "../../arale-persona-bot/server/start_tts_irodori.sh",
     );
-    assert.match(launcher, /TTS_TEMPO_SLOW=\$\{TTS_TEMPO_SLOW:-1\.0\}/);
+    if (fs.existsSync(araleStart)) {
+      assert.match(
+        fs.readFileSync(araleStart, "utf8"),
+        /TTS_VOICE_SEEDS="\$\{TTS_VOICE_SEEDS:-xibao=1082616115\}"/,
+      );
+    }
   });
   await it("uses a standalone bilingual spoken persona", () => {
     assert.match(VOICE_PERSONA, /台湾で自然に使う繁體中文/);
