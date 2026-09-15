@@ -32,10 +32,21 @@ require.cache[probeModulePath].exports.fetchThreadsMetadata = async (url) => {
   if (_mockProbeError) throw _mockProbeError;
   return _mockThreadsMetadata;
 };
-require.cache[probeModulePath].exports.fetchPageProbeMetadata = async () => {
+let _pageProbeCalls = [];
+require.cache[probeModulePath].exports.fetchPageProbeMetadata = async (url, options) => {
+  _pageProbeCalls.push({ url, options });
   if (_mockProbeError) throw _mockProbeError;
-  return _mockPageMetadata;
+  return typeof _mockPageMetadata === "function"
+    ? _mockPageMetadata(options)
+    : _mockPageMetadata;
 };
+
+// 巴哈登入 session：預設未設定帳號（null），個別案例再換
+const bahaSessionModulePath = require.resolve("../src/bahamut-session");
+require(bahaSessionModulePath);
+let _mockBahaSession = async () => null;
+require.cache[bahaSessionModulePath].exports.getBahamutSessionCookies = (opts) =>
+  _mockBahaSession(opts);
 
 // Mock global fetch for Bilibili API + b23.tv expansion + Instagram display name
 const _origFetch = global.fetch;
@@ -1025,6 +1036,68 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const s = shapeOf(p);
     assert.equal(s.embedCount, 0);
     assert.equal(s.contentStartsWithHttp, true);
+  });
+
+  await it("bahamut 兒少保護 wall text is not passed off as a summary", async () => {
+    _mockPageMetadata = {
+      title: "兒少保護警示",
+      description: "您將進入的頁面，有不適合兒少瀏覽的內容，需年滿 15 歲、完成「手機認證」且開啟「顯示敏感內容」設定才可閱覽。",
+      image: "https://i2.bahamut.com.tw/child-protection.png",
+      restricted: true,
+    };
+    const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+    assert.equal(shapeOf(p).embedCount, 0, "the wall must not render as the post");
+    assert.equal(shapeOf(p).contentStartsWithHttp, true);
+  });
+
+  await it("bahamut with a login session → probe carries the session cookies", async () => {
+    _pageProbeCalls = [];
+    _mockBahaSession = async () => ({ BAHAENUR: "a", BAHARUNE: "b" });
+    _mockPageMetadata = { title: "場外文", description: "內文", restricted: false };
+    try {
+      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      assert.equal(shapeOf(p).embedCount, 1);
+      assert.equal(_pageProbeCalls.length, 1);
+      const names = _pageProbeCalls[0].options.cookies.map((c) => `${c.name}@${c.domain}`);
+      assert.deepEqual(names, ["BAHAENUR@.gamer.com.tw", "BAHARUNE@.gamer.com.tw"]);
+    } finally {
+      _mockBahaSession = async () => null;
+    }
+  });
+
+  await it("bahamut walled despite session → forced re-login, retry succeeds", async () => {
+    _pageProbeCalls = [];
+    const stale = { BAHAENUR: "old", BAHARUNE: "old" };
+    const renewed = { BAHAENUR: "new", BAHARUNE: "new" };
+    _mockBahaSession = async (opts) => (opts?.force ? renewed : stale);
+    _mockPageMetadata = (options) =>
+      options.cookies[0].value === "new"
+        ? { title: "場外文", description: "內文", restricted: false }
+        : { title: "兒少保護警示", description: "您將進入的頁面…", restricted: true };
+    try {
+      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      assert.equal(_pageProbeCalls.length, 2);
+      assert.equal(p.embeds[0].data?.title?.includes("場外文"), true);
+    } finally {
+      _mockBahaSession = async () => null;
+    }
+  });
+
+  await it("bahamut walled, re-login gives same session → no second probe", async () => {
+    _pageProbeCalls = [];
+    const same = { BAHAENUR: "a", BAHARUNE: "b" };
+    _mockBahaSession = async () => same;
+    _mockPageMetadata = { title: "兒少保護警示", description: "您將進入的頁面…", restricted: true };
+    const origWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      assert.equal(_pageProbeCalls.length, 1);
+      assert.equal(shapeOf(p).embedCount, 0);
+    } finally {
+      console.warn = origWarn;
+      _mockBahaSession = async () => null;
+    }
   });
 
   await it("bahamut probe error → fallback fixer URL", async () => {

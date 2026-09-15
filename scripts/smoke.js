@@ -3192,5 +3192,121 @@ it("ignores non-http media urls rather than passing them to Discord", () => {
 });
 
 console.log("");
-console.log(`Result: ${pass} passed, ${fail} failed`);
-process.exit(fail > 0 ? 1 : 0);
+console.log("bahamut-session");
+let bahamutSessionAsyncCases;
+{
+  // config 在 require 時讀 env，所以要換 env 就得重新 require 兩個模組
+  const freshSession = (env) => {
+    for (const key of ["BAHA_USER_ID", "BAHA_PASSWORD"]) {
+      if (env[key] === undefined) delete process.env[key];
+      else process.env[key] = env[key];
+    }
+    delete require.cache[require.resolve("../src/config")];
+    delete require.cache[require.resolve("../src/bahamut-session")];
+    return require("../src/bahamut-session");
+  };
+  const loginResponse = (setCookies, body = "{}") => ({
+    status: 200,
+    headers: { getSetCookie: () => setCookies },
+    text: async () => body,
+  });
+
+  it("pickSessionCookies needs both BAHAENUR and BAHARUNE", () => {
+    const { pickSessionCookies } = freshSession({});
+    assert.deepEqual(
+      pickSessionCookies(["BAHAENUR=a; Path=/", "BAHARUNE=b; domain=.gamer.com.tw", "ckAPP_VCODE=deleted"]),
+      { BAHAENUR: "a", BAHARUNE: "b" },
+    );
+    assert.equal(pickSessionCookies(["BAHAENUR=a", "BAHAENUR=c"]), null);
+    assert.equal(pickSessionCookies(["BAHAENUR=deleted", "BAHARUNE=b"]), null);
+  });
+
+  it("toProbeCookies scopes to .gamer.com.tw so forum. and m. both get them", () => {
+    const { toProbeCookies } = freshSession({});
+    assert.deepEqual(toProbeCookies({ BAHAENUR: "a" }), [
+      { name: "BAHAENUR", value: "a", domain: ".gamer.com.tw", path: "/" },
+    ]);
+    assert.equal(toProbeCookies(null), null);
+  });
+
+  const origFetch = global.fetch;
+  const withFetch = async (impl, fn) => {
+    global.fetch = impl;
+    try {
+      await fn();
+    } finally {
+      global.fetch = origFetch;
+    }
+  };
+
+  const asyncCases = [
+    ["unconfigured → null without touching the network", async () => {
+      const { getBahamutSessionCookies } = freshSession({});
+      await withFetch(async () => { throw new Error("must not fetch"); }, async () => {
+        assert.equal(await getBahamutSessionCookies(), null);
+      });
+    }],
+    ["logs in once, caches, sends the app vcode cookie", async () => {
+      const { getBahamutSessionCookies } = freshSession({ BAHA_USER_ID: "u", BAHA_PASSWORD: "p" });
+      const calls = [];
+      await withFetch(async (url, init) => {
+        calls.push({ url, init });
+        return loginResponse(["BAHAENUR=a; Path=/", "BAHARUNE=b; Path=/"]);
+      }, async () => {
+        const [first, second] = await Promise.all([getBahamutSessionCookies(), getBahamutSessionCookies()]);
+        assert.deepEqual(first, { BAHAENUR: "a", BAHARUNE: "b" });
+        assert.equal(second, first);
+        assert.deepEqual(await getBahamutSessionCookies(), first);
+        // 剛登入過的 force 不重登（帳號沒資格時別每個連結都撞登入 API）
+        assert.equal(await getBahamutSessionCookies({ force: true }), first);
+      });
+      assert.equal(calls.length, 1);
+      assert.match(calls[0].url, /api\.gamer\.com\.tw\/mobile_app\/user\/v3\/do_login\.php/);
+      assert.equal(calls[0].init.headers.cookie, "ckAPP_VCODE=9487");
+      assert.equal(calls[0].init.body.get("uid"), "u");
+    }],
+    ["bad password → null, then cooldown stops retry storms", async () => {
+      const { getBahamutSessionCookies } = freshSession({ BAHA_USER_ID: "u", BAHA_PASSWORD: "bad" });
+      let calls = 0;
+      const origWarn = console.warn;
+      console.warn = () => {};
+      try {
+        await withFetch(async () => {
+          calls += 1;
+          return loginResponse(["ckAPP_VCODE=deleted"], '{"code":0,"message":"帳號、密碼或驗證碼錯誤！"}');
+        }, async () => {
+          assert.equal(await getBahamutSessionCookies(), null);
+          assert.equal(await getBahamutSessionCookies(), null);
+        });
+      } finally {
+        console.warn = origWarn;
+      }
+      assert.equal(calls, 1);
+    }],
+  ];
+  bahamutSessionAsyncCases = { asyncCases, reset: () => freshSession({}) };
+}
+
+// `it` 是同步的；需要 await 的案例收在這裡最後跑
+async function itAsync(name, fn) {
+  try {
+    await fn();
+    pass++;
+    console.log(`  ✓ ${name}`);
+  } catch (err) {
+    fail++;
+    console.error(`  ✗ ${name}`);
+    console.error(`    ${err.message}`);
+  }
+}
+
+(async () => {
+  for (const [name, fn] of bahamutSessionAsyncCases.asyncCases) {
+    await itAsync(name, fn);
+  }
+  bahamutSessionAsyncCases.reset();
+
+  console.log("");
+  console.log(`Result: ${pass} passed, ${fail} failed`);
+  process.exit(fail > 0 ? 1 : 0);
+})();
