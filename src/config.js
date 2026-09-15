@@ -24,10 +24,22 @@ const DEFAULT_THREADS_VIEWER_HOSTS = [
   "fzthreads.com",
   "fixthreads.seria.moe",
 ];
+// Ordered by bot.log outcomes since 2026-08-31 (264 previews): instagram7 won
+// ~68%, deinstagram 23, fxig only 9 — so fxig was dropped for oginstagram,
+// which sits behind a Cloudflare challenge for our host but lets Discord's
+// unfurler through (a Discord-side viewer only).
 const DEFAULT_INSTAGRAM_VIEWER_HOSTS = [
   "instagram7.com",
-  "fxig.seria.moe",
+  "oginstagram.com",
   "deinstagram.com",
+];
+// Hosts the bot itself fetches for OG recovery once every viewer unfurl came
+// back empty. Ordered by what our host gets back: instagram7 has @user +
+// caption + likes; deinstagram / fxig only a generic title + cover image.
+const INSTAGRAM_OG_RECOVERY_HOSTS = [
+  "instagram7.com",
+  "deinstagram.com",
+  "fxig.seria.moe",
 ];
 
 function isPlainDnsHostname(value) {
@@ -201,6 +213,7 @@ module.exports = {
   loadInstagramViewerHosts,
   DEFAULT_INSTAGRAM_VIEWER_HOSTS,
   INSTAGRAM_VIEWER_HOSTS,
+  INSTAGRAM_OG_RECOVERY_HOSTS,
   DISCORD_TOKEN: process.env.DISCORD_TOKEN,
   FIXEMBED_BASE_URL:
     process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=",

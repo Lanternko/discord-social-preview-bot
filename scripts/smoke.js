@@ -372,7 +372,7 @@ it("normalizes Instagram posts/reels and strips query tracking", () => {
 it("uses the tested Instagram viewer order and supports legacy aliases", () => {
   assert.deepEqual(DEFAULT_INSTAGRAM_VIEWER_HOSTS, [
     "instagram7.com",
-    "fxig.seria.moe",
+    "oginstagram.com",
     "deinstagram.com",
   ]);
   assert.deepEqual(
