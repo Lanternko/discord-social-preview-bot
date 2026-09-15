@@ -24,11 +24,13 @@ const DEFAULT_THREADS_VIEWER_HOSTS = [
   "fzthreads.com",
   "fixthreads.seria.moe",
 ];
-// oginstagram sits behind a Cloudflare challenge for our host but lets
-// Discord's unfurler through — it's a Discord-side viewer only.
+// Ordered by bot.log outcomes since 2026-08-31 (264 previews): instagram7 won
+// ~68%, deinstagram 23, fxig only 9 — so fxig was dropped for oginstagram,
+// which sits behind a Cloudflare challenge for our host but lets Discord's
+// unfurler through (a Discord-side viewer only).
 const DEFAULT_INSTAGRAM_VIEWER_HOSTS = [
+  "instagram7.com",
   "oginstagram.com",
-  "fxig.seria.moe",
   "deinstagram.com",
 ];
 // Hosts the bot itself fetches for OG recovery once every viewer unfurl came
