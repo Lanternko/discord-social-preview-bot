@@ -47,6 +47,17 @@
 | `VIDEO_ATTACHMENT_MAX_CONCURRENT` | `2` | 全域同時下載上限。滿了時新的影片貼文直接退回 fixer，不排隊、不堆積 |
 | `VIDEO_ATTACHMENT_TIMEOUT_MS` | `20000` | 單支影片下載逾時 → 退回 fixer |
 
+## 巴哈姆特登入（場外 bsn=60076）
+
+場外整板掛「兒少保護警示」，未登入的 probe 只拿得到警示頁。設了帳密就用手機 App 登入 API（`api.gamer.com.tw/mobile_app/user/v3/do_login.php`，vcode 固定 `9487`，復刻 [ermiana](https://github.com/canaria3406/ermiana)）換 `BAHAENUR`/`BAHARUNE` cookie，塞進 probe 的 browser context。**帳號本身要滿 15 歲、完成手機認證、開啟「顯示敏感內容」**，否則登入了照樣被牆（log `[baha-session] still walled while logged in`）。建議開小帳，別用主帳。
+
+| Variable | Default | Notes |
+|---|---|---|
+| `BAHA_USER_ID` | — | 巴哈帳號。和密碼都有才啟用；沒設 = 維持未登入行為 |
+| `BAHA_PASSWORD` | — | 巴哈密碼 |
+| `BAHA_SESSION_TTL_MS` | `259200000`（3 天） | session 快取多久後主動重登（in-memory，重啟會重登一次） |
+| `BAHA_LOGIN_COOLDOWN_MS` | `600000` | 登入失敗後多久不再嘗試；也是「剛登入過、被牆也不強制重登」的窗口，免得每個場外連結都去撞登入 API |
+
 ## AI provider keys
 
 | Variable | Default | Notes |

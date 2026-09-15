@@ -65,6 +65,10 @@ async function openPage(browser, url) {
     ]);
   }
 
+  if (process.env.PROBE_COOKIES) {
+    await context.addCookies(JSON.parse(process.env.PROBE_COOKIES));
+  }
+
   const page = await context.newPage();
   await page.goto(url, {
     waitUntil: "domcontentloaded",

@@ -252,6 +252,10 @@ module.exports = {
     "THREADS_GRAPHQL_TIMEOUT_MS",
     6000,
   ),
+  BAHA_USER_ID: process.env.BAHA_USER_ID || "",
+  BAHA_PASSWORD: process.env.BAHA_PASSWORD || "",
+  BAHA_SESSION_TTL_MS: parsePositiveIntEnv("BAHA_SESSION_TTL_MS", 3 * 24 * 60 * 60 * 1000),
+  BAHA_LOGIN_COOLDOWN_MS: parsePositiveIntEnv("BAHA_LOGIN_COOLDOWN_MS", 10 * 60 * 1000),
   THREADS_PROBE_NODE: process.env.THREADS_PROBE_NODE || process.execPath,
   THREADS_PROBE_SCRIPT:
     process.env.THREADS_PROBE_SCRIPT ||

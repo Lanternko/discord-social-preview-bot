@@ -72,7 +72,9 @@ function cleanupThreadsMetadataCache() {
   }
 }
 
-async function runProbe(url) {
+// cookies: Playwright addCookies entries for a logged-in fetch. They ride in
+// the child's env rather than argv so a session token never shows up in `ps`.
+async function runProbe(url, { cookies } = {}) {
   await acquireProbeSlot();
   let stdout;
   let stderr;
@@ -83,6 +85,9 @@ async function runProbe(url) {
       {
         timeout: THREADS_PROBE_TIMEOUT_MS,
         maxBuffer: 1024 * 1024,
+        env: cookies?.length
+          ? { ...process.env, PROBE_COOKIES: JSON.stringify(cookies) }
+          : process.env,
       },
     ));
   } finally {
@@ -223,8 +228,8 @@ async function fetchThreadsMetadata(url) {
   return result;
 }
 
-async function fetchPageProbeMetadata(url) {
-  return runProbe(url);
+async function fetchPageProbeMetadata(url, options) {
+  return runProbe(url, options);
 }
 
 module.exports = {
