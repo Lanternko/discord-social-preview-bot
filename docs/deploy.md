@@ -107,7 +107,7 @@ A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSP
 * * * * * /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh
 ```
 
-- The watchdog matches the process with `pgrep -f '[n]ode src/index.js'` — the `[n]` bracket trick stops the pattern from matching the watchdog's own shell. (Plain `pkill -f 'src/index.js'` from an interactive shell self-matches and can kill the shell — prefer `pgrep -f 'node src/index.js'` → `kill <pid>` for manual ops.)
+- The watchdog counts a process as the bot only if its cwd is the repo, its exe is node, and argv is exactly `node src/index.js` — so a shell whose command merely *mentions* that string is not a live bot (a substring match once hid a dead bot for minutes and could kill such shells as "duplicates"). Launch the bot with exactly that argv or the watchdog won't see it. A `flock` on `/tmp/bot_watchdog.lock` stops a manual run and the cron tick from double-launching.
 - **To stop the bot for maintenance, comment out the cron line first** — otherwise the watchdog relaunches it within a minute.
 
 ## Future hardening (not yet done)
