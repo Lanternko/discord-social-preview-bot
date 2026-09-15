@@ -54,10 +54,19 @@ async function fetchBahamutMetadata(url) {
 // embed that's a still thumbnail, and for a post built around a GIF it's
 // nothing. The picture the author actually put in the article is the better
 // preview (and a GIF keeps animating inside an embed), so it wins when present.
+//
+// A text-only post has no picture of its own, and its og:image is just the
+// site-wide Bahamut logo — a big orange card that says nothing about the post.
+// Show no image rather than that.
+const SITE_DEFAULT_IMAGE = /\/bahaLOGO[^/]*\.(?:jpe?g|png)$/i;
+
 function withArticleMedia(metadata) {
   const articleImage = metadata.images?.[0];
-  if (!articleImage) return metadata;
-  return { ...metadata, image: articleImage };
+  if (articleImage) return { ...metadata, image: articleImage };
+  if (SITE_DEFAULT_IMAGE.test(metadata.image || "")) {
+    return { ...metadata, image: null };
+  }
+  return metadata;
 }
 
 // A bot-built embed can't hold a player, so the only way to make the article's

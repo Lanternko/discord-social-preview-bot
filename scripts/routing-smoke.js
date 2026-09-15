@@ -1010,6 +1010,20 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(shapeOf(p).hasContent, false);
   });
 
+  await it("bahamut text-only post drops the site-wide logo og:image", async () => {
+    _mockPageMetadata = {
+      title: "x",
+      description: "第一行\n第二行",
+      image: "https://i2.bahamut.com.tw/bahaLOGO_1200x630.jpg",
+      images: [],
+      videoUrls: [],
+      restricted: false,
+    };
+    const p = await buildBahamutPayload("https://forum.gamer.com.tw/Co.php?bsn=60076&sn=1");
+    assert.equal(p.embeds[0].data?.image, undefined, "no picture beats the Bahamut logo");
+    assert.equal(p.embeds[0].data?.description, "第一行\n第二行", "line breaks survive");
+  });
+
   await it("bahamut restricted with public title/desc → embed with login notice", async () => {
     _mockPageMetadata = {
       title: "x",
