@@ -1,5 +1,8 @@
 const { EmbedBuilder } = require("discord.js");
-const { INSTAGRAM_VIEWER_HOSTS } = require("../config");
+const {
+  INSTAGRAM_VIEWER_HOSTS,
+  INSTAGRAM_OG_RECOVERY_HOSTS,
+} = require("../config");
 const {
   isInstagramStoryUrl,
   extractInstagramStoryOwner,
@@ -59,7 +62,11 @@ async function buildInstagramPayload(url) {
     content: viewerUrls[0],
     fallbackContents: viewerUrls.slice(1),
     viewerValidation: "instagram",
-    embedFallback: { embeds: [localFallback] },
+    recoverUrls: INSTAGRAM_OG_RECOVERY_HOSTS.map((host) =>
+      replaceHostFixer(canonicalUrl, host),
+    ),
+    recoverEmbedOptions: { color: 0xe1306c },
+    placeholderFallback: { embeds: [localFallback] },
     sourceUrl: canonicalUrl,
   };
 }

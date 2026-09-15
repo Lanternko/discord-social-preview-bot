@@ -365,7 +365,7 @@ it("normalizes Instagram posts/reels and strips query tracking", () => {
 });
 it("uses the tested Instagram viewer order and supports legacy aliases", () => {
   assert.deepEqual(DEFAULT_INSTAGRAM_VIEWER_HOSTS, [
-    "instagram7.com",
+    "oginstagram.com",
     "fxig.seria.moe",
     "deinstagram.com",
   ]);
@@ -561,7 +561,7 @@ it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {
 it("instagram -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.instagram.com/p/ABC/"),
-    "https://instagram7.com/p/ABC/",
+    "https://oginstagram.com/p/ABC/",
   );
 });
 it("reddit -> rxddit", () => {

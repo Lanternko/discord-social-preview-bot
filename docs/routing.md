@@ -36,9 +36,11 @@ Viewer 由 `THREADS_VIEWER_HOSTS` 設定，格式為最多三個逗號分隔的�
 ## Instagram
 
 - **Stories** (`/stories/<username>/`): no fixer works — bot immediately replies with owner username in 西寶 voice; skips embed-check pipeline entirely.
-- **Posts / Reels**: [src/instagram-url.js](../src/instagram-url.js) first normalizes `instagram.com` / `www.instagram.com`, singularizes `/reels/` to `/reel/`, removes query tracking, and validates the post shortcode. Discord then tries `INSTAGRAM_VIEWER_HOSTS` in order (default `instagram7.com,fxig.seria.moe,deinstagram.com`). Empty embeds, login walls, unavailable/not-found cards, and generic no-media cards advance to the next viewer; the first meaningful text/media embed wins. All viewers failing produces a local embed linked to the canonical Instagram URL.
+- **Posts / Reels**: [src/instagram-url.js](../src/instagram-url.js) first normalizes `instagram.com` / `www.instagram.com`, singularizes `/reels/` to `/reel/`, removes query tracking, and validates the post shortcode. Discord then tries `INSTAGRAM_VIEWER_HOSTS` in order (default `oginstagram.com,fxig.seria.moe,deinstagram.com`). Empty embeds, login walls, unavailable/not-found cards, and generic no-media cards advance to the next viewer; the first meaningful text/media embed wins. All viewers failing → **OG recovery** from `INSTAGRAM_OG_RECOVERY_HOSTS` (`instagram7.com,deinstagram.com,fxig.seria.moe`, bot-side fetch) → local placeholder embed linked to the canonical Instagram URL (`placeholderFallback`).
 
-Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXER_INSTAGRAM` / `FIXER_INSTAGRAM_SECONDARY` compatibility. Instagram payloads intentionally omit `recoverUrls`, so the bot process never fetches third-party viewer HTML.
+Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXER_INSTAGRAM` / `FIXER_INSTAGRAM_SECONDARY` compatibility.
+
+**Why the two lists differ (2026-09-15):** a reel failed on all three Discord-side viewers while another bot's `oginstagram.com` unfurled fine. oginstagram serves our host a Cloudflare challenge (403) but lets Discord's crawler through, so it is a Discord-side viewer only. Conversely, fetched from our host, instagram7 has the richest OG (@user + likes + caption + thumbnail) while fxig / deinstagram only give a generic title + cover — so instagram7 leads the OG recovery list. The placeholder ranks *below* OG recovery because it carries no post content.
 
 ## Bilibili
 
@@ -56,7 +58,7 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 | Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via playwright probe. Embed image = 文章第一張圖（GIF 會動）, og:image 只在文章沒圖時墊底；文章有 YouTube 嵌入時第一支影片網址當 message content，讓 Discord 自己 unfurl 出播放器（bot embed 塞不了播放器）。標題砍掉「@板名 哈啦板 - 巴哈姆特」尾巴、author 只留「暱稱 (帳號)」。restricted board → public-summary embed with login notice |
 | PTT | ptt.cc | — | Custom embed via playwright probe |
 
-除 Threads 與 Instagram 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback）仍可帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 與 Instagram 刻意不做 bot-side viewer fetch，改走 local canonical embed。
+除 Threads 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Instagram）都帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 刻意不做 bot-side viewer fetch，改走 local canonical embed。
 
 **Reddit short links** (`redd.it/<id>`) now correctly route to `rxddit.com/<id>` (was: falling into FixEmbed wrapper because `buildFallbackUrl` only matched `reddit.com` / `www.reddit.com`).
 
@@ -68,8 +70,9 @@ For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then r
 2. **`fallbackContents`**（任意長度的 ordered viewer list；舊 `fallbackContent` 自動相容成單一元素）— 每次 edit 後等待 `EMBED_CHECK_DELAY_MS`，第一個有效 unfurl 即停止 ✓
 3. **`embedFallback`** (pre-built embed payload) — edit message, no further waiting needed. Done ✓
 4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../src/og-fallback.js). Done ✓
+5. **`placeholderFallback`** (content-less link card, e.g. Instagram「預覽目前無法載入」) — edit message. Ranks below OG recovery, unlike `embedFallback` which holds real metadata. Done ✓
 
-Only if all four fail (or each is null/missing) → delete message + reply failure message. Threads payload 永遠提供 local `embedFallback`，所以 viewer 全失敗時仍保留 canonical click-through；其他平台維持原有 OG recovery / apology 行為。Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
+Only if all five fail (or each is null/missing) → delete message + reply failure message. Threads payload 永遠提供 local `embedFallback`，所以 viewer 全失敗時仍保留 canonical click-through；其他平台維持原有 OG recovery / apology 行為。Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
 
 This is the "至少要顯示 description" guarantee: as long as at least one fixer host (or the original platform URL for non-auth-walled cases) returns OG tags, the user gets at least a title/description embed.
 

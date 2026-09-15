@@ -201,7 +201,9 @@ function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
   if (meta.title) {
     embed.setTitle(trimDescription(meta.title, 256));
   }
-  if (meta.author) {
+  // Some viewers (instagram7) put the profile URL in `author` — a raw URL is
+  // noise as an author name, so skip it.
+  if (meta.author && !/^https?:\/\//i.test(meta.author)) {
     embed.setAuthor({ name: trimDescription(meta.author, 256) });
   }
   if (meta.description) {

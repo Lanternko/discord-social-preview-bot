@@ -822,6 +822,102 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
+  await it("Instagram viewers all empty → OG recovery wins over the placeholder", async () => {
+    const edits = [];
+    const target = {
+      id: "instagram-og-recover",
+      embeds: [],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        return this;
+      },
+      async delete() {
+        assert.fail("OG recovery must prevent deletion");
+      },
+    };
+    _mockFetch = async (url) => {
+      if (url.startsWith("https://og-one.example/")) {
+        return new Response("forbidden", { status: 403 });
+      }
+      return new Response(
+        '<html><head><meta property="og:title" content="@creator"/><meta property="og:image" content="https://cdn.example/cover.jpg"/></head></html>',
+        { status: 200, headers: { "content-type": "text/html" } },
+      );
+    };
+    try {
+      const result = await checkAndHandleEmptyEmbeds(
+        { reply: async () => assert.fail("must not apologize") },
+        [
+          {
+            sentMessage: target,
+            isUrlOnly: true,
+            fallbackContents: ["https://viewer-two.example/reel/1"],
+            viewerValidation: "instagram",
+            embedFallback: null,
+            recoverUrls: [
+              "https://og-one.example/reel/1",
+              "https://og-two.example/reel/1",
+            ],
+            recoverEmbedOptions: { color: 0xe1306c },
+            placeholderFallback: { embeds: [{ title: "Instagram 貼文" }] },
+            sourceUrl: "https://www.instagram.com/reel/1/",
+          },
+        ],
+      );
+      assert.equal(result.allSucceeded, true);
+      const last = edits.at(-1);
+      assert.equal(last.content, "");
+      assert.equal(last.embeds[0].data.title, "@creator");
+      assert.equal(last.embeds[0].data.url, "https://www.instagram.com/reel/1/");
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("Instagram OG recovery fails → placeholder instead of delete", async () => {
+    const edits = [];
+    const placeholder = { title: "Instagram 貼文" };
+    const target = {
+      id: "instagram-placeholder",
+      embeds: [],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        return this;
+      },
+      async delete() {
+        assert.fail("placeholder must prevent deletion");
+      },
+    };
+    _mockFetch = async () => new Response("forbidden", { status: 403 });
+    try {
+      const result = await checkAndHandleEmptyEmbeds(
+        { reply: async () => assert.fail("must not apologize") },
+        [
+          {
+            sentMessage: target,
+            isUrlOnly: true,
+            fallbackContents: [],
+            viewerValidation: "instagram",
+            embedFallback: null,
+            recoverUrls: ["https://og-one.example/reel/1"],
+            placeholderFallback: { embeds: [placeholder] },
+            sourceUrl: "https://www.instagram.com/reel/1/",
+          },
+        ],
+      );
+      assert.equal(result.allSucceeded, true);
+      assert.deepEqual(edits.at(-1).embeds, [placeholder]);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
   await it("successful video attachment removes the entire viewer fallback chain", async () => {
     const outgoing = await resolveOutgoing(
       {
@@ -974,7 +1070,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   // === INSTAGRAM CASES ===
   console.log("buildInstagramPayload");
 
-  await it("instagram reel → canonical ordered viewers + local fallback", async () => {
+  await it("instagram reel → canonical ordered viewers + OG recovery + placeholder", async () => {
     const p = await buildInstagramPayload(
       "https://instagram.com/reels/DcA0yXWMF4E/?igsh=tracking",
     );
@@ -982,19 +1078,23 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.contentStartsWithHttp, true);
     assert.equal(
       s.contentText,
-      "https://instagram7.com/reel/DcA0yXWMF4E/",
+      "https://oginstagram.com/reel/DcA0yXWMF4E/",
     );
     assert.deepEqual(p.fallbackContents, [
       "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
     ]);
     assert.equal(p.viewerValidation, "instagram");
-    assert.equal(s.hasEmbedFallback, true);
+    assert.equal(s.hasEmbedFallback, false);
+    assert.deepEqual(p.recoverUrls, [
+      "https://instagram7.com/reel/DcA0yXWMF4E/",
+      "https://deinstagram.com/reel/DcA0yXWMF4E/",
+      "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
+    ]);
     assert.equal(
-      p.embedFallback.embeds[0].data.url,
+      p.placeholderFallback.embeds[0].data.url,
       "https://www.instagram.com/reel/DcA0yXWMF4E/",
     );
-    assert.equal(p.recoverUrls, undefined);
   });
 
   await it("instagram story (with owner, display-name probe fails) → owner-only message", async () => {

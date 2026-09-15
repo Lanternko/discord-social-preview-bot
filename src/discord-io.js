@@ -325,6 +325,7 @@ async function sendPreviews(message, payloads) {
       embedFallback: base.embedFallback ?? null,
       recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
       recoverEmbedOptions: base.recoverEmbedOptions ?? null,
+      placeholderFallback: base.placeholderFallback ?? null,
       sourceUrl: base.sourceUrl ?? null,
     });
   }
@@ -340,6 +341,22 @@ async function apologyReply(originalMessage) {
     });
   } catch (error) {
     console.warn("[preview] could not send apology:", error.message);
+  }
+}
+
+async function tryEmbedFallback(target, fallback, label) {
+  if (!fallback) return false;
+  try {
+    await target.edit({
+      content: "",
+      ...fallback,
+      allowedMentions: { repliedUser: false },
+    });
+    console.log(`[preview] ${label} used ${target.id}`);
+    return true;
+  } catch (error) {
+    console.warn(`[preview] could not edit to ${label}:`, error.message);
+    return false;
   }
 }
 
@@ -389,6 +406,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       embedFallback,
       recoverUrls,
       recoverEmbedOptions,
+      placeholderFallback,
       sourceUrl,
     } = item;
 
@@ -439,25 +457,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
     }
     if (viewerSucceeded) continue;
 
-    if (embedFallback) {
-      try {
-        await current.edit({
-          content: "",
-          ...embedFallback,
-          allowedMentions: { repliedUser: false },
-        });
-        console.log(`[preview] embed fallback used ${current.id}`);
-        continue;
-      } catch (error) {
-        console.warn(
-          "[preview] could not edit to embed fallback:",
-          error.message,
-        );
-      }
+    if (await tryEmbedFallback(current, embedFallback, "embed fallback")) {
+      continue;
     }
 
     if (
       await tryOgRecover(current, recoverUrls, sourceUrl, recoverEmbedOptions)
+    ) {
+      continue;
+    }
+
+    // A placeholder carries no post content (just a link card), so it ranks
+    // below OG recovery — unlike `embedFallback`, which holds real metadata.
+    if (
+      await tryEmbedFallback(current, placeholderFallback, "placeholder fallback")
     ) {
       continue;
     }
