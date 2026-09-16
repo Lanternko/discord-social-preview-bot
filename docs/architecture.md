@@ -9,6 +9,8 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - **URL plumbing** — [url-routing.js](../src/url-routing.js) handles host sets, `normalizeUrl`, `extractSupportedUrls`, `isXxxUrl` predicates, and `replaceHostFixer` / `buildFallbackUrl`. [utils.js](../src/utils.js) holds `trimDescription` / `pickRandom`.
 - **Probe** — [probe.js](../src/probe.js) owns the Threads metadata chain: [threads-graphql.js](../src/threads-graphql.js) first (Meta's own GraphQL endpoint — no browser, no DOM race), Playwright subprocess second, both normalized to one shape and cached. It wraps that subprocess via `execFile`. The actual browser code lives in [threads-probe.cjs](../src/threads-probe.cjs) — kept CommonJS because it must run in its own process (Playwright's `chromium.launch` blocks the Discord event loop).
 - **Embeds** — [embeds.js](../src/embeds.js) is the single home for `EmbedBuilder` factories (Threads / Bahamut / PTT / Bilibili).
+- **PTT fetch** — [ptt-fetch.js](../src/ptt-fetch.js) parses a PTT article straight out of its static HTML (no browser). `ptt.js` tries it first and only falls back to the probe on a miss; parsing deliberately mirrors `readPttMetadata` in the probe so both paths return one shape.
+
 - **OG fallback** — [og-fallback.js](../src/og-fallback.js) is the lightweight HTTP fetch + OG meta parser, plus a generic embed builder. Used by `checkAndHandleEmptyEmbeds` as the last layer before delete. No Playwright — plain `fetch` + regex over `<head>`. Streams responses with a `</head>` early-bail to keep latency low.
 - **Platforms** — [platforms/](../src/platforms/) holds one builder per platform (`threads.js`, `instagram.js`, `bilibili.js`, `bahamut.js`, `ptt.js`). Each returns a `{ content?, embeds?, fallbackContent?, embedFallback?, recoverUrls?, recoverEmbedOptions?, sourceUrl? }` payload. `recoverUrls` is the OG-fallback layer — list of URLs whose HTML to fetch + parse for OG tags when both primary and secondary fixer unfurl empty.
 - **Preview dispatcher** — [preview.js](../src/preview.js) `buildPreviewPayloads` runs all per-URL builders in parallel via `Promise.all`. Per-platform branches dispatch to the correct builder; URL-only platforms (X/Reddit/Pixiv/Bluesky/Facebook) all share `buildSimpleFixerPayload` which always populates `recoverUrls`. The `if` ladder inside each platform builder is what's load-bearing — see [routing.md](routing.md).
@@ -41,6 +43,7 @@ src/
 ├── url-routing.js        # Host sets, normalizeUrl, extractSupportedUrls, isXxxUrl, fixers
 ├── utils.js              # trimDescription, pickRandom
 ├── probe.js              # Threads metadata chain (graphql → playwright) + cache
+├── ptt-fetch.js          # PTT metadata via plain fetch (fast path, no browser)
 ├── threads-graphql.js    # Threads metadata via Meta's GraphQL API (fast path)
 ├── embeds.js             # All EmbedBuilder factories
 ├── platforms/
@@ -48,7 +51,7 @@ src/
 │   ├── instagram.js      # buildInstagramPayload — story owner detection + ddinstagram
 │   ├── bilibili.js       # buildBilibiliPayload — b23.tv expansion + vxbilibili
 │   ├── bahamut.js        # buildBahamutPayload — playwright probe + custom embed
-│   └── ptt.js            # buildPttPayload — playwright probe + custom embed
+│   └── ptt.js            # buildPttPayload — fetch fast path → probe + custom embed
 ├── preview.js            # buildPreviewPayloads — top-level platform dispatcher
 ├── discord-io.js         # send/suppress/empty-embed/dedup state/permissions
 ├── video.js              # download mp4 → Discord attachment (size/concurrency/timeout/allowlist guards)
