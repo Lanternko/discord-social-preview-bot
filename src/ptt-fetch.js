@@ -12,7 +12,12 @@
 // 任何一步不如預期都回 null（絕不 throw）：未登入牆、版型改動、PTT 掛掉——
 // 呼叫端就照舊開 probe。快路徑只能讓預覽變快，不能讓預覽變差。
 
-const { decodeHtmlEntities } = require("./og-fallback");
+const {
+  htmlToText,
+  extractMeta,
+  extractTitleTag,
+  trimText,
+} = require("./html-text");
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const MAX_HTML_BYTES = 2 * 1024 * 1024; // 內文要整份讀，比 og-fallback 的 head-only 寬。
@@ -36,19 +41,6 @@ function isPttArticleUrl(url) {
   } catch {
     return false;
   }
-}
-
-// probe 讀的是 innerText，這裡要從 HTML 還原出等價的純文字：<br> 與區塊結尾
-// 變換行，標籤拿掉，實體還原。
-function htmlToText(html) {
-  return decodeHtmlEntities(
-    html
-      .replace(/<script\b[\s\S]*?<\/script>/gi, "")
-      .replace(/<style\b[\s\S]*?<\/style>/gi, "")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/(?:div|p|li|tr|h[1-6])>/gi, "\n")
-      .replace(/<[^>]+>/g, ""),
-  );
 }
 
 // 只要 #main-content 這一塊。推文（.push）整段砍掉——probe 是靠「切掉 `--` 之後
@@ -75,17 +67,6 @@ function extractMetaValues(html) {
   return values;
 }
 
-function extractOgMeta(html, property) {
-  const re = new RegExp(
-    `<meta\\b[^>]*property=["']${property}["'][^>]*content=["']([^"']*)["']`,
-    "i",
-  );
-  const match = html.match(re);
-  if (!match) return null;
-  const value = decodeHtmlEntities(match[1]).trim();
-  return value || null;
-}
-
 function parsePttHtml(html) {
   const mainContentHtml = extractMainContentHtml(html);
   const values = extractMetaValues(html);
@@ -102,27 +83,14 @@ function parsePttHtml(html) {
   return {
     title:
       values[2] ||
-      extractOgMeta(html, "og:title") ||
-      htmlToText(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").trim() ||
+      extractMeta(html, "property", "og:title") ||
+      extractTitleTag(html) ||
       null,
-    description: extractOgMeta(html, "og:description") || body || null,
+    description: extractMeta(html, "property", "og:description") || body || null,
     image: imageMatch?.[0] || null,
     author: values[0] || null,
     metaTagCount: (html.match(/<meta\b/gi) || []).length,
   };
-}
-
-// 與 threads-probe.cjs 的 trimText 同一套規則：兩條路徑吐出的字串長度、換行
-// 收斂方式要一致，不然同一篇文走不同路會長得不一樣。
-function trimText(text, limit) {
-  if (!text) return null;
-  const normalized = text
-    .replace(/\r/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-  if (!normalized) return null;
-  if (normalized.length <= limit) return normalized;
-  return `${normalized.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function normalizePttMetadata(metadata) {
