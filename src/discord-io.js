@@ -325,6 +325,7 @@ async function sendPreviews(message, payloads) {
       embedFallback: base.embedFallback ?? null,
       recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
       recoverEmbedOptions: base.recoverEmbedOptions ?? null,
+      recoverStrategy: base.recoverStrategy ?? null,
       placeholderFallback: base.placeholderFallback ?? null,
       sourceUrl: base.sourceUrl ?? null,
     });
@@ -360,11 +361,18 @@ async function tryEmbedFallback(target, fallback, label) {
   }
 }
 
-async function tryOgRecover(target, recoverUrls, sourceUrl, embedOptions) {
+async function tryOgRecover(
+  target,
+  recoverUrls,
+  sourceUrl,
+  embedOptions,
+  strategy,
+) {
   if (!Array.isArray(recoverUrls) || recoverUrls.length === 0) return false;
   let recovered;
   try {
     recovered = await tryRecoverEmbedFromUrls(recoverUrls, {
+      ...(strategy || {}),
       sourceUrl: sourceUrl || recoverUrls[0],
       embedOptions: embedOptions || undefined,
     });
@@ -406,6 +414,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       embedFallback,
       recoverUrls,
       recoverEmbedOptions,
+      recoverStrategy,
       placeholderFallback,
       sourceUrl,
     } = item;
@@ -462,7 +471,13 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
     }
 
     if (
-      await tryOgRecover(current, recoverUrls, sourceUrl, recoverEmbedOptions)
+      await tryOgRecover(
+        current,
+        recoverUrls,
+        sourceUrl,
+        recoverEmbedOptions,
+        recoverStrategy,
+      )
     ) {
       continue;
     }

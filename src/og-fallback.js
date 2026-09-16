@@ -110,23 +110,29 @@ function parseOgFromHtml(html) {
     findMeta(head, "name", "twitter:image");
 
   const siteName = findMeta(head, "property", "og:site_name");
+  const url = findMeta(head, "property", "og:url");
   const author =
     findMeta(head, "name", "author") ||
     findMeta(head, "property", "article:author") ||
     findMeta(head, "property", "og:author");
 
-  return { title, description, image, siteName, author };
+  return { title, description, image, siteName, author, url };
 }
 
-async function fetchHtml(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
+async function fetchHtml(
+  url,
+  { timeoutMs = DEFAULT_TIMEOUT_MS, userAgent = DEFAULT_USER_AGENT, signal } = {},
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
   try {
     const response = await fetch(url, {
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": DEFAULT_USER_AGENT,
+        "User-Agent": userAgent,
         Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
       },
@@ -172,11 +178,12 @@ async function fetchHtml(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return html;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
-async function fetchOgMetadata(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const html = await fetchHtml(url, timeoutMs);
+async function fetchOgMetadata(url, options = {}) {
+  const html = await fetchHtml(url, options);
   const meta = parseOgFromHtml(html);
   return meta;
 }
@@ -215,40 +222,101 @@ function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
   return embed;
 }
 
-// Walks `recoverUrls` in order, returning the first embed we can build from a
-// usable OG metadata response. Returns null if every URL fails.
+// A recover candidate is either a plain URL or
+// `{ url, userAgent, requireOgUrl }`. `requireOgUrl` is for origins that answer
+// a walled/missing post with a 200 login page carrying a generic og:title
+// (facebook.com: "登入或註冊即可查看") — only real posts expose og:url.
+function normalizeCandidate(candidate) {
+  if (typeof candidate === "string") return { url: candidate };
+  if (candidate && typeof candidate.url === "string") return candidate;
+  return null;
+}
+
+// Fetches one candidate and builds the embed. Throws on fetch failure; returns
+// null when the page has nothing usable.
+async function recoverFromCandidate(candidate, options) {
+  const { timeoutMs, sourceUrl, embedOptions, signal } = options;
+  const meta = await fetchOgMetadata(candidate.url, {
+    timeoutMs,
+    userAgent: candidate.userAgent,
+    signal,
+  });
+  if (!hasUsefulMetadata(meta) || (candidate.requireOgUrl && !meta.url)) {
+    console.log(`[og-fallback] empty meta candidate=${candidate.url}`);
+    return null;
+  }
+  const embed = buildGenericFallbackEmbed(
+    meta,
+    sourceUrl || candidate.url,
+    embedOptions || {},
+  );
+  console.log(
+    `[og-fallback] recovered candidate=${candidate.url} title=${meta.title ? "yes" : "no"} desc=${meta.description ? "yes" : "no"} image=${meta.image ? "yes" : "no"}`,
+  );
+  return { embed, source: candidate.url, meta };
+}
+
+function logFetchFailure(candidate, error, startedAt) {
+  console.log(
+    `[og-fallback] fetch failed candidate=${candidate.url} reason=${error.message} elapsed=${Date.now() - startedAt}ms`,
+  );
+}
+
+// Walks candidates in order, returning the first usable embed.
+async function recoverSequentially(candidates, options) {
+  for (const candidate of candidates) {
+    const startedAt = Date.now();
+    try {
+      const result = await recoverFromCandidate(candidate, options);
+      if (result) return result;
+    } catch (error) {
+      logFetchFailure(candidate, error, startedAt);
+    }
+  }
+  return null;
+}
+
+// Fetches all candidates at once; the first usable embed wins and the losers
+// are aborted (their aborts aren't logged — they didn't fail, they lost).
+async function recoverByRace(candidates, options) {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const attempts = candidates.map(async (candidate) => {
+    try {
+      const result = await recoverFromCandidate(candidate, {
+        ...options,
+        signal: controller.signal,
+      });
+      if (result) return result;
+    } catch (error) {
+      if (!controller.signal.aborted) logFetchFailure(candidate, error, startedAt);
+    }
+    throw new Error("no embed");
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch {
+    return null;
+  } finally {
+    controller.abort();
+  }
+}
+
+// Returns the first embed we can build from a usable OG metadata response, or
+// null if every candidate fails. `race: true` fetches candidates concurrently
+// instead of in order.
 async function tryRecoverEmbedFromUrls(recoverUrls, options = {}) {
   if (!Array.isArray(recoverUrls) || recoverUrls.length === 0) return null;
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    race = false,
     sourceUrl,
     embedOptions,
   } = options;
-
-  for (const candidate of recoverUrls) {
-    if (!candidate) continue;
-    try {
-      const meta = await fetchOgMetadata(candidate, { timeoutMs });
-      if (!hasUsefulMetadata(meta)) {
-        console.log(`[og-fallback] empty meta candidate=${candidate}`);
-        continue;
-      }
-      const embed = buildGenericFallbackEmbed(
-        meta,
-        sourceUrl || candidate,
-        embedOptions || {},
-      );
-      console.log(
-        `[og-fallback] recovered candidate=${candidate} title=${meta.title ? "yes" : "no"} desc=${meta.description ? "yes" : "no"} image=${meta.image ? "yes" : "no"}`,
-      );
-      return { embed, source: candidate, meta };
-    } catch (error) {
-      console.log(
-        `[og-fallback] fetch failed candidate=${candidate} reason=${error.message}`,
-      );
-    }
-  }
-  return null;
+  const candidates = recoverUrls.map(normalizeCandidate).filter(Boolean);
+  if (candidates.length === 0) return null;
+  const recover = race ? recoverByRace : recoverSequentially;
+  return recover(candidates, { timeoutMs, sourceUrl, embedOptions });
 }
 
 module.exports = {

@@ -63,6 +63,8 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 
 除 Threads 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Instagram）都帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 刻意不做 bot-side viewer fetch，改走 local canonical embed。
 
+Facebook 的 OG recovery 比較特別：facebed 沒快取、每次都即時爬 Facebook（常態 2–5s），所以 `recoverStrategy` 設成 **同時抓** facebed 與 facebook.com 本身（UA=`facebookexternalhit/1.1`，逾時 15s），先回來的贏。facebook.com 對不存在/不公開的貼文會回 200 登入牆（「登入或註冊即可查看」），用 `requireOgUrl` 擋（真貼文才有 og:url）。
+
 **Reddit short links** (`redd.it/<id>`) now correctly route to `rxddit.com/<id>` (was: falling into FixEmbed wrapper because `buildFallbackUrl` only matched `reddit.com` / `www.reddit.com`).
 
 ## Empty embed detection (`checkAndHandleEmptyEmbeds`)

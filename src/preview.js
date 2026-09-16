@@ -38,6 +38,25 @@ function buildSimpleFixerPayload(url, recoverProfile) {
   };
 }
 
+// facebed has no cache — every request re-scrapes Facebook live, so it takes
+// 2-5s and sometimes blows past the default 6s. Give OG recovery more room and
+// race facebed against facebook.com itself (which serves real OG tags to its
+// own crawler UA), so either one being slow or down doesn't kill the preview.
+const FACEBOOK_RECOVER_TIMEOUT_MS = 15000;
+const FACEBOOK_CRAWLER_USER_AGENT = "facebookexternalhit/1.1";
+
+function buildFacebookPayload(url) {
+  const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.facebook);
+  return {
+    ...payload,
+    recoverUrls: [
+      ...payload.recoverUrls,
+      { url, userAgent: FACEBOOK_CRAWLER_USER_AGENT, requireOgUrl: true },
+    ],
+    recoverStrategy: { race: true, timeoutMs: FACEBOOK_RECOVER_TIMEOUT_MS },
+  };
+}
+
 async function buildPreviewPayloads(urls) {
   const tasks = urls.map(async (url) => {
     try {
@@ -64,7 +83,7 @@ async function buildPreviewPayloads(urls) {
       }
       if (isFacebookUrl(url)) {
         console.log(`[preview] fixer facebook ${url}`);
-        return buildSimpleFixerPayload(url, RECOVER_PROFILES.facebook);
+        return buildFacebookPayload(url);
       }
 
       console.log(`[preview] fixer generic ${url}`);

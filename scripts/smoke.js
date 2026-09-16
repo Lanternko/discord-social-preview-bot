@@ -3579,7 +3579,96 @@ async function itAsync(name, fn) {
   }
 }
 
+// OG recovery race：facebed 慢、facebook.com 先回來；登入牆（無 og:url）要被擋掉
+const { tryRecoverEmbedFromUrls } = require("../src/og-fallback");
+function withMockFetch(routes, fn) {
+  const realFetch = global.fetch;
+  const seen = [];
+  global.fetch = (url, init) => {
+    seen.push({ url, ua: init.headers["User-Agent"] });
+    const { delayMs = 0, html } = routes[url];
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          resolve(
+            new Response(html, { headers: { "content-type": "text/html" } }),
+          ),
+        delayMs,
+      );
+      init.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("This operation was aborted"));
+      });
+    });
+  };
+  return fn(seen).finally(() => {
+    global.fetch = realFetch;
+  });
+}
+const POST_HTML = `<head><meta property="og:title" content="貼文" /><meta property="og:url" content="https://www.facebook.com/p/1" /></head>`;
+const WALL_HTML = `<head><meta property="og:title" content="登入或註冊即可查看" /></head>`;
+const ogRaceCases = [
+  [
+    "og race: faster candidate wins, UA passed per candidate",
+    () =>
+      withMockFetch(
+        {
+          "https://slow.example/p": { delayMs: 300, html: POST_HTML },
+          "https://fast.example/p": { delayMs: 10, html: POST_HTML },
+        },
+        async (seen) => {
+          const r = await tryRecoverEmbedFromUrls(
+            [
+              "https://slow.example/p",
+              { url: "https://fast.example/p", userAgent: "crawler/1" },
+            ],
+            { race: true, timeoutMs: 1000 },
+          );
+          assert.equal(r.source, "https://fast.example/p");
+          assert.equal(seen[1].ua, "crawler/1");
+        },
+      ),
+  ],
+  [
+    "og race: requireOgUrl rejects login wall, falls to other candidate",
+    () =>
+      withMockFetch(
+        {
+          "https://wall.example/p": { delayMs: 10, html: WALL_HTML },
+          "https://fixer.example/p": { delayMs: 50, html: POST_HTML },
+        },
+        async () => {
+          const r = await tryRecoverEmbedFromUrls(
+            [
+              "https://fixer.example/p",
+              { url: "https://wall.example/p", requireOgUrl: true },
+            ],
+            { race: true, timeoutMs: 1000 },
+          );
+          assert.equal(r.source, "https://fixer.example/p");
+        },
+      ),
+  ],
+  [
+    "og race: all candidates time out → null",
+    () =>
+      withMockFetch(
+        { "https://slow.example/p": { delayMs: 500, html: POST_HTML } },
+        async () => {
+          const r = await tryRecoverEmbedFromUrls(["https://slow.example/p"], {
+            race: true,
+            timeoutMs: 50,
+          });
+          assert.equal(r, null);
+        },
+      ),
+  ],
+];
+
 (async () => {
+  for (const [name, fn] of ogRaceCases) {
+    await itAsync(name, fn);
+  }
   for (const [name, fn] of bahamutSessionAsyncCases.asyncCases) {
     await itAsync(name, fn);
   }
