@@ -3341,6 +3341,87 @@ let bahamutSessionAsyncCases;
   bahamutSessionAsyncCases = { asyncCases, reset: () => freshSession({}) };
 }
 
+// --- ptt 純 fetch 快路徑 ---
+{
+  const {
+    parsePttHtml,
+    normalizePttMetadata,
+    isPttArticleUrl,
+  } = require("../src/ptt-fetch");
+
+  // 真實 PTT 文章頁的骨架（只留解析會碰到的部分）。
+  const buildPttHtml = ({ og = true, push = true, signature = true } = {}) =>
+    [
+      "<html><head>",
+      "<title>看板 C_Chat 文章列表 - 批踢踢實業坊</title>",
+      og ? '<meta property="og:title" content="[閒聊] 測試標題" />' : "",
+      og ? '<meta property="og:description" content="og 的摘要" />' : "",
+      "</head><body>",
+      '<div id="main-content" class="bbs-screen bbs-content">',
+      // metaline 的四行（作者/看板/標題/時間）之間不能有空行——真實頁面的
+      // innerText 也是連續四行，切標頭的 regex 靠這個貼齊。
+      '<div class="article-metaline"><span class="article-meta-tag">作者</span><span class="article-meta-value">tester (測試者)</span></div>',
+      '<div class="article-metaline-right"><span class="article-meta-tag">看板</span><span class="article-meta-value">C_Chat</span></div>',
+      '<div class="article-metaline"><span class="article-meta-tag">標題</span><span class="article-meta-value">[閒聊] 測試標題</span></div>',
+      '<div class="article-metaline"><span class="article-meta-tag">時間</span><span class="article-meta-value">Mon Sep 15 12:00:00 2026</span></div>',
+      "內文第一行<br>圖 https://i.urusai.cc/abc.jpg<br>",
+      signature ? "--<br>※ 發信站: 批踢踢實業坊(ptt.cc)<br>" : "",
+      push
+        ? '<div class="push"><span class="push-tag">推 </span><span class="push-userid">someone</span><span class="push-content">: 推文不該進預覽</span></div>'
+        : "",
+      "</div></body></html>",
+    ].join("");
+
+  it("parsePttHtml 取到 作者 / 標題 / 圖", () => {
+    const meta = parsePttHtml(buildPttHtml());
+    assert.equal(meta.author, "tester (測試者)");
+    assert.equal(meta.title, "[閒聊] 測試標題");
+    assert.equal(meta.image, "https://i.urusai.cc/abc.jpg");
+  });
+  it("parsePttHtml description 以 og:description 優先", () => {
+    assert.equal(parsePttHtml(buildPttHtml()).description, "og 的摘要");
+  });
+  it("parsePttHtml 沒有 og 時退回內文，且不含 metaline 標頭", () => {
+    const meta = parsePttHtml(buildPttHtml({ og: false }));
+    assert.ok(meta.description.includes("內文第一行"));
+    assert.ok(!meta.description.includes("作者"));
+    assert.ok(!meta.description.includes("看板"));
+    // 標題那行沒了 og 就只能從 .article-meta-value 來
+    assert.equal(meta.title, "[閒聊] 測試標題");
+  });
+  it("parsePttHtml 切掉簽名檔與推文", () => {
+    const withBoth = parsePttHtml(buildPttHtml({ og: false }));
+    assert.ok(!withBoth.description.includes("發信站"));
+    assert.ok(!withBoth.description.includes("推文不該進預覽"));
+    // 沒有 `--` 簽名檔的文章，推文一樣要被結構性地擋掉
+    const noSignature = parsePttHtml(
+      buildPttHtml({ og: false, signature: false }),
+    );
+    assert.ok(!noSignature.description.includes("推文不該進預覽"));
+  });
+  it("normalizePttMetadata 依 probe 規則裁切（author 壓成一行）", () => {
+    const meta = normalizePttMetadata({
+      title: "t".repeat(300),
+      description: "d",
+      author: "a\n  b",
+      image: null,
+    });
+    assert.equal(meta.title.length, 256);
+    assert.ok(meta.title.endsWith("…"));
+    assert.equal(meta.author, "a b");
+  });
+  it("isPttArticleUrl 只認文章頁", () => {
+    assert.equal(
+      isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/M.1789352998.A.DA0.html"),
+      true,
+    );
+    // 年齡牆的落點、看板列表、別的站都不是文章頁 → 交回 probe
+    assert.equal(isPttArticleUrl("https://www.ptt.cc/ask/over18"), false);
+    assert.equal(isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/index.html"), false);
+    assert.equal(isPttArticleUrl("https://example.com/bbs/X/M.1.A.2.html"), false);
+  });
+}
+
 // `it` 是同步的；需要 await 的案例收在這裡最後跑
 async function itAsync(name, fn) {
   try {
