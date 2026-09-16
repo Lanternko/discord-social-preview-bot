@@ -1396,6 +1396,12 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     ]);
     assert.ok(p.content.includes("facebed"));
     assert.ok(Array.isArray(p.recoverUrls));
+    // facebed races facebook.com itself (crawler UA, login wall rejected).
+    assert.ok(p.recoverUrls[0].includes("facebed"));
+    assert.equal(p.recoverUrls[1].url, "https://www.facebook.com/post/1");
+    assert.equal(p.recoverUrls[1].requireOgUrl, true);
+    assert.equal(p.recoverStrategy.race, true);
+    assert.ok(p.recoverStrategy.timeoutMs > 6000);
   });
 
   await it("multiple URLs run in parallel and preserve order", async () => {
