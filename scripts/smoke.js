@@ -3422,6 +3422,150 @@ let bahamutSessionAsyncCases;
   });
 }
 
+// --- html-text（PTT / 巴哈快路徑共用的 innerText 近似）---
+{
+  const {
+    htmlToText,
+    extractElementHtml,
+    extractElementText,
+    trimText,
+  } = require("../src/html-text");
+
+  it("htmlToText：<br> 換行，區塊邊界只換一行", () => {
+    // </div><div> 相鄰在瀏覽器裡是一行，不是兩行
+    assert.equal(htmlToText("<div>a</div><div>b</div>").trim(), "a\nb");
+    // <br> 之後再開一個區塊 → 真的空一行（巴哈內文最常見的排版）
+    assert.equal(htmlToText("a<br><div>b</div>").trim(), "a\n\nb");
+    // 行內元素不換行
+    assert.equal(htmlToText('<div>a<a href="#">b</a>c</div>').trim(), "abc");
+  });
+  it("htmlToText：只有 &nbsp; 的排版行整行丟掉", () => {
+    // 刻意與瀏覽器不同：innerText 會把 nbsp 當成不可收合的空白，留下一行空白。
+    // 那種行在 embed 裡只是雜訊，而且會逃過 trimText 的空行收斂，所以直接丟掉。
+    assert.equal(htmlToText("<div>a</div><div>&nbsp;</div><div>b</div>").trim(), "a\nb");
+  });
+  it("htmlToText：script / style 不進內文", () => {
+    assert.equal(
+      htmlToText("<div>a</div><script>var x=1;</script><style>.b{}</style>").trim(),
+      "a",
+    );
+  });
+  it("extractElementHtml 認得巢狀同名標籤", () => {
+    const html = '<div class="wrap"><div class="inner">x</div>y</div><div>z</div>';
+    // 非貪婪 regex 會停在第一個 </div>，只拿到 <div class="inner">x
+    assert.equal(extractElementHtml(html, "wrap"), '<div class="inner">x</div>y');
+    assert.equal(extractElementText(html, "wrap"), "x\ny");
+    assert.equal(extractElementHtml(html, "nope"), null);
+  });
+  it("trimText 與 probe 同規則", () => {
+    assert.equal(trimText("  a\r\n\n\n\nb  ", 100), "a\n\nb");
+    assert.equal(trimText("x".repeat(300), 256).length, 256);
+    assert.equal(trimText("", 10), null);
+    assert.equal(trimText(null, 10), null);
+  });
+}
+
+// --- 巴哈純 fetch 快路徑 ---
+{
+  const {
+    parseBahamutHtml,
+    normalizeBahamutMetadata,
+    stripSiteSuffix,
+    isBahamutHost,
+  } = require("../src/bahamut-fetch");
+
+  const buildBahamutHtml = ({ body, ogImage = "https://p2.bahamut.com.tw/x.PNG" } = {}) =>
+    [
+      "<html><head>",
+      "<title>【閒聊】測試標題 @測試板 哈啦板 - 巴哈姆特</title>",
+      '<meta property="og:title" content="【閒聊】測試標題 @測試板 哈啦板 - 巴哈姆特">',
+      '<meta property="og:description" content="被壓成一行的摘要">',
+      ogImage ? `<meta property="og:image" content="${ogImage}">` : "",
+      "</head><body>",
+      '<div class="c-post__header__author">',
+      '<a href="//home.gamer.com.tw/tester" class="username">暱稱</a>',
+      '<a href="//home.gamer.com.tw/tester" class="userid">tester</a>',
+      '<div class="userdata">GP 12 BP 34</div>',
+      "</div>",
+      '<div class="c-article__content">',
+      body ||
+        [
+          "<div>第一行</div>",
+          "<div>第二行</div>",
+          '<img data-src="https://truth.bahamut.com.tw/a.JPG">',
+          '<img src="https://i2.bahamut.com.tw/emotion/e1.gif">',
+          '<img src="https://avatar2.bahamut.com.tw/avatar/tester.png">',
+        ].join(""),
+      "</div>",
+      "</body></html>",
+    ].join("");
+
+  it("stripSiteSuffix 只砍站名後綴", () => {
+    assert.equal(stripSiteSuffix("【閒聊】標題 @測試板 哈啦板 - 巴哈姆特"), "【閒聊】標題");
+    // 沒有站名後綴的「@某某」結尾標題不能被誤砍
+    assert.equal(stripSiteSuffix("致敬 @某某"), "致敬 @某某");
+    assert.equal(stripSiteSuffix(null), null);
+  });
+  it("parseBahamutHtml 取到 標題 / 作者 / 內文分行", () => {
+    const meta = parseBahamutHtml(buildBahamutHtml());
+    assert.equal(meta.title, "【閒聊】測試標題");
+    assert.equal(meta.author, "暱稱 (tester)");
+    // og:description 會把內文壓平，文章自己的分行優先（與 probe 同序）
+    assert.equal(meta.description.trim(), "第一行\n第二行");
+    assert.equal(meta.restricted, false);
+  });
+  it("parseBahamutHtml 濾掉表情符號與頭像，留文章的圖", () => {
+    const meta = parseBahamutHtml(buildBahamutHtml());
+    assert.deepEqual(meta.images, ["https://truth.bahamut.com.tw/a.JPG"]);
+    // 站方給的 og:image 仍在 image（是否改用文章圖由 withArticleMedia 決定）
+    assert.equal(meta.image, "https://p2.bahamut.com.tw/x.PNG");
+  });
+  it("parseBahamutHtml 把 YouTube 嵌入轉成 watch 網址（去重）", () => {
+    const meta = parseBahamutHtml(
+      buildBahamutHtml({
+        body:
+          '<div>看這個</div><iframe src="https://www.youtube.com/embed/sbC8x8WwZ58"></iframe>' +
+          '<iframe src="https://www.youtube-nocookie.com/embed/sbC8x8WwZ58"></iframe>',
+      }),
+    );
+    assert.deepEqual(meta.videoUrls, ["https://www.youtube.com/watch?v=sbC8x8WwZ58"]);
+  });
+  it("parseBahamutHtml 丟掉推文佔位（瀏覽器會換成 iframe 的那塊）", () => {
+    const meta = parseBahamutHtml(
+      buildBahamutHtml({
+        body:
+          '<blockquote class="twitter-tweet"><a href="https://twitter.com/a/status/1">https://twitter.com/a/status/1</a></blockquote>' +
+          "<div>內文</div>",
+      }),
+    );
+    assert.equal(meta.description.trim(), "內文");
+  });
+  it("parseBahamutHtml 認出兒少保護牆", () => {
+    const walled =
+      "<html><head><title>兒少保護警示 - 巴哈姆特</title></head>" +
+      "<body><div>您將進入的頁面，有不適合兒少瀏覽的內容，如要閱覽請先登入</div></body></html>";
+    assert.equal(parseBahamutHtml(walled).restricted, true);
+  });
+  it("normalizeBahamutMetadata 依 probe 規則裁切", () => {
+    const meta = normalizeBahamutMetadata({
+      title: "t".repeat(300),
+      description: "d",
+      author: "暱稱\n (tester)",
+      image: null,
+      images: [],
+      videoUrls: [],
+    });
+    assert.equal(meta.title.length, 256);
+    assert.equal(meta.author, "暱稱 (tester)");
+  });
+  it("isBahamutHost 只認 gamer 的兩個子網域", () => {
+    assert.equal(isBahamutHost("https://forum.gamer.com.tw/C.php?bsn=1"), true);
+    assert.equal(isBahamutHost("https://m.gamer.com.tw/forum/C.php?bsn=1"), true);
+    assert.equal(isBahamutHost("https://example.com/C.php"), false);
+    assert.equal(isBahamutHost("not a url"), false);
+  });
+}
+
 // `it` 是同步的；需要 await 的案例收在這裡最後跑
 async function itAsync(name, fn) {
   try {
