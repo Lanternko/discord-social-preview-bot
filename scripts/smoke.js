@@ -33,6 +33,7 @@ const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 const {
   isThreadsLoginWall,
   isRedirectedOffPost,
+  isContentlessStub,
   salvageLoginWallMedia,
 } = require("../src/probe");
 
@@ -568,6 +569,59 @@ it("isRedirectedOffPost rejects a probe that landed on the home feed", () => {
   assert.equal(isRedirectedOffPost({ onPostPage: true }), false);
   // older probe output without the field must not be rejected
   assert.equal(isRedirectedOffPost({}), false);
+});
+
+// Regression (2026-09-16, threads.com/@cuqhytr/post/DdRLvLZE-Rr): the walled
+// post stayed on its permalink but served a stub with no description, no card
+// and no media — 17 meta tags and a bare "Threads" title. The text-only branch
+// rendered it as a preview containing nothing but the word "Threads".
+it("isContentlessStub rejects a bare stub that has no content at all", () => {
+  assert.equal(
+    isContentlessStub({
+      title: "Threads",
+      description: null,
+      image: null,
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      ancestors: [],
+    }),
+    true,
+  );
+  assert.equal(isContentlessStub({ title: "" }), true);
+  assert.equal(isContentlessStub(null), false);
+});
+it("isContentlessStub does NOT trigger on a real text-only post", () => {
+  assert.equal(
+    isContentlessStub({
+      title: "Gamepo (@game_po) on Threads",
+      description: "今天天氣真好",
+      imageCount: 0,
+      videoCount: 0,
+    }),
+    false,
+  );
+  // author in the title, description still missing → a real (if terse) post
+  assert.equal(
+    isContentlessStub({ title: "Gamepo (@game_po) on Threads" }),
+    false,
+  );
+});
+it("isContentlessStub keeps anything that still carries content", () => {
+  assert.equal(
+    isContentlessStub({ title: "Threads", images: ["https://cdn/a.jpg"], imageCount: 1 }),
+    false,
+  );
+  assert.equal(
+    isContentlessStub({ title: "Threads", video: "https://cdn/v.mp4", videoCount: 1 }),
+    false,
+  );
+  assert.equal(isContentlessStub({ title: "Threads", postText: "嗨" }), false);
+  assert.equal(
+    isContentlessStub({ title: "Threads", ancestors: [{ author: "a", text: "b" }] }),
+    false,
+  );
 });
 
 it("salvageLoginWallMedia keeps walled media, drops the wall's text", () => {

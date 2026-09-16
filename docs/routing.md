@@ -15,6 +15,7 @@ Threads 的 `/share/<token>` 會先由 [src/threads-url.js](../src/threads-url.j
 | Generic / partial metadata | Compact text embed |
 | Probe error | 依序嘗試 `THREADS_VIEWER_HOSTS` → local canonical `embedFallback` |
 | Login wall (`isThreadsLoginWall` — probe returned `Threads • Log in` / generic `Join Threads to share ideas…`) | Treated as a probe error → same ordered viewer chain → local fallback |
+| Content-less stub (`isContentlessStub` — 停在 permalink 但只有 `Threads` 標題，無 description／card／媒體／ancestors) | Treated as a probe error → same ordered viewer chain → local fallback |
 
 **回覆貼文的上文（reply context）**：分享出來的 Threads 連結很常是一則**回覆**，而 Threads 的 `og:description` 只帶那則回覆本身的文字——梗的鋪陳（被回覆的原貼文）完全不會進預覽。Probe 因此另外抓 `ancestors`：thread 頁面會把所有祖先貼文依 DOM 順序排在目標貼文之前，用**目標貼文自己的 permalink**（`<time>` 的 `<a href>`）定位目標，其前面的 `div[data-pressable-container]` 就是祖先鏈。**刻意不用捲動位置判斷**——頁面會自動把目標捲到頂端，但那是非同步的，用位置會踩到跟 media race 同一類的競態；permalink 不會。貼文內文則靠 role 辨識（`span[dir="auto"]` 且不在 `<a>`／`[role="button"]` 內、本身也不包 `<time>`），因為 Threads 的 class name 每次 build 都會換。
 
@@ -26,6 +27,8 @@ Threads 的 `/share/<token>` 會先由 [src/threads-url.js](../src/threads-url.j
 - **VIDEO-NO-IMAGE case** (video with `image=null` MUST still route to fixer chain — was a regression where `isTextOnly = !metadata.image` silently dropped these to text embed)
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
+
+**Content-less stub guard** (`isContentlessStub` in [src/probe.js](../src/probe.js)): 被牆／已移除的貼文不一定會轉址離開 permalink，也不一定吐登入牆文案——2026-09-16 的 `@cuqhytr/post/DdRLvLZE-Rr` 停在原網址、17 個 meta tag、標題只有 `Threads`、沒有 description／card／媒體。那個形狀會掉進 `isTextOnly` 分支，被當成真的純文字貼文，產出一張內容只有「Threads」四個字的 embed。因此把「標題是裸站名（或空）且完全沒有內容」視為 probe miss，交給 viewer chain + local fallback。判準刻意保守：真貼文的標題一定帶作者（`X (@y) on Threads`），任何殘存的 postText／圖／影片／ancestors 都不會被丟掉。
 
 **Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it and throws. Discord 的 viewer unfurl 也會再驗證內容：空 embed、`Threads • Log in`、`Join Threads…` 與只有 `Thread` / `Threads` 的泛用卡片都視為失敗並嘗試下一個 viewer；第一個含實質文字或媒體的 embed 才停止。
 

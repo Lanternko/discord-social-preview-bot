@@ -150,6 +150,27 @@ function isRedirectedOffPost(metadata) {
   return metadata?.onPostPage === false;
 }
 
+// A walled / removed post can also come back as a CONTENT-LESS stub: the probe
+// stays on the permalink, but Threads renders none of the post's meta — the
+// title is the bare site name, there is no og:description, no twitter card and
+// no media. Downstream that shape reaches the text-only branch, which renders
+// it as a real preview: an embed whose entire content is the word "Threads"
+// linking back to the post. Treat it as a probe miss so the fixer chain + OG
+// recovery (and finally the local "預覽載入失敗" embed) get their turn.
+function isContentlessStub(metadata) {
+  if (!metadata) return false;
+  if (metadata.description || metadata.postText) return false;
+  if (metadata.image || metadata.video) return false;
+  if ((metadata.imageCount || 0) > 0 || (metadata.videoCount || 0) > 0) {
+    return false;
+  }
+  if ((metadata.ancestors || []).length > 0) return false;
+  // A real post's title always carries the author ("X (@y) on Threads"), so
+  // only the bare site name (or nothing at all) counts as a stub.
+  const title = (metadata.title || "").trim();
+  return title === "" || /^threads$/i.test(title);
+}
+
 // If a walled page does stay on the permalink, its media is the post's own
 // even though every meta tag is the login interstitial. The fixers get the
 // same wall (vx unfurls "Threads • Log in"), so keep the media and drop the
@@ -188,6 +209,12 @@ async function fetchThreadsMetadataViaProbe(url) {
     }
     logThreadsMetadata(salvaged, "playwright-subprocess", " login-wall-salvaged");
     return normalizeThreadsMetadata(salvaged);
+  }
+
+  if (isContentlessStub(metadata)) {
+    throw new Error(
+      `Threads served a content-less stub (walled / unavailable logged-out) for ${url}`,
+    );
   }
 
   logThreadsMetadata(
@@ -239,5 +266,6 @@ module.exports = {
   fetchPageProbeMetadata,
   isThreadsLoginWall,
   isRedirectedOffPost,
+  isContentlessStub,
   salvageLoginWallMedia,
 };
