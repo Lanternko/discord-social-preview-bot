@@ -197,19 +197,36 @@ function isUsefulInstagramViewerEmbed(embed) {
 
 // fxtwitter / vxtwitter error pages ("This post is unavailable :(", "Failed
 // to scan your link!") unfurl as a normal-looking card with no post content.
-function isUsefulTwitterViewerEmbed(embed) {
-  const visibleText = [
-    readEmbedValue(embed, "title"),
-    readEmbedValue(embed, "description"),
-  ]
+// fxtwitter also sometimes drops a post's media, leaving just the "Name
+// (@handle)" title — useless with no body, and wrong when the post HAS media.
+function isUsefulTwitterViewerEmbed(embed, { requireMedia = false } = {}) {
+  const description = String(
+    readEmbedValue(embed, "description") || "",
+  ).trim();
+  const visibleText = [readEmbedValue(embed, "title"), description]
     .filter(Boolean)
     .join(" ");
-  return !/post\s+is\s+unavailable|failed\s+to\s+scan\s+your\s+link/i.test(
-    visibleText,
+  if (
+    /post\s+is\s+unavailable|failed\s+to\s+scan\s+your\s+link/i.test(
+      visibleText,
+    )
+  ) {
+    return false;
+  }
+  const hasMedia = Boolean(
+    readEmbedValue(embed, "image") ||
+      readEmbedValue(embed, "thumbnail") ||
+      readEmbedValue(embed, "video"),
   );
+  if (requireMedia) return hasMedia;
+  return hasMedia || Boolean(description);
 }
 
-function isViewerPreviewUseful(embeds, viewerValidation = null) {
+function isViewerPreviewUseful(
+  embeds,
+  viewerValidation = null,
+  { requireMedia = false } = {},
+) {
   if (!Array.isArray(embeds) || embeds.length === 0) return false;
   if (viewerValidation === "threads") {
     return embeds.some(isUsefulThreadsViewerEmbed);
@@ -218,7 +235,9 @@ function isViewerPreviewUseful(embeds, viewerValidation = null) {
     return embeds.some(isUsefulInstagramViewerEmbed);
   }
   if (viewerValidation === "twitter") {
-    return embeds.some(isUsefulTwitterViewerEmbed);
+    return embeds.some((embed) =>
+      isUsefulTwitterViewerEmbed(embed, { requireMedia }),
+    );
   }
   return true;
 }
@@ -339,6 +358,7 @@ async function sendPreviews(message, payloads) {
           ? [base.fallbackContent]
           : [],
       viewerValidation: base.viewerValidation ?? null,
+      viewerRequiresMedia: base.viewerRequiresMedia ?? null,
       embedFallback: base.embedFallback ?? null,
       recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
       recoverEmbedOptions: base.recoverEmbedOptions ?? null,
@@ -428,6 +448,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       sentMessage,
       fallbackContents,
       viewerValidation,
+      viewerRequiresMedia,
       embedFallback,
       recoverUrls,
       recoverEmbedOptions,
@@ -435,6 +456,10 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       placeholderFallback,
       sourceUrl,
     } = item;
+    // May be a lookup promise started at payload build; resolved by now.
+    const validationOptions = {
+      requireMedia: (await viewerRequiresMedia) === true,
+    };
 
     let fetched;
     try {
@@ -446,7 +471,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    if (isViewerPreviewUseful(fetched.embeds, viewerValidation)) continue;
+    if (isViewerPreviewUseful(fetched.embeds, viewerValidation, validationOptions)) continue;
 
     console.log(`[preview] empty-or-useless-embed detected ${fetched.id}`);
 
@@ -474,7 +499,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      if (isViewerPreviewUseful(current?.embeds, viewerValidation)) {
+      if (isViewerPreviewUseful(current?.embeds, viewerValidation, validationOptions)) {
         console.log(`[preview] fallback url succeeded ${current.id}`);
         viewerSucceeded = true;
         break;

@@ -1373,6 +1373,60 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(p.recoverUrls[0], "https://vxtwitter.com/u/status/1");
   });
 
+  await it("twitter payload looks up whether the post has media", async () => {
+    const seen = [];
+    _mockFetch = async (input) => {
+      seen.push(String(input));
+      return new Response(JSON.stringify({ tweet: { media: { all: [{}] } } }));
+    };
+    try {
+      const [p] = await buildPreviewPayloads(["https://x.com/u/status/42"]);
+      assert.equal(await p.viewerRequiresMedia, true);
+      assert.deepEqual(seen, ["https://api.fxtwitter.com/status/42"]);
+      const [profile] = await buildPreviewPayloads(["https://x.com/u"]);
+      assert.equal(await profile.viewerRequiresMedia, null);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("twitter embed without the post's media advances to vxtwitter", async () => {
+    const edits = [];
+    const target = {
+      id: "twitter-media-stripped",
+      embeds: [{ title: "ほんま (@honma_nmn)", description: "壁に耳あり" }],
+      async fetch() {
+        return this;
+      },
+      async edit(payload) {
+        edits.push(payload);
+        this.embeds = [
+          { title: "ほんま (@honma_nmn)", image: { url: "https://pbs.twimg.com/a.jpg" } },
+        ];
+        return this;
+      },
+    };
+    const result = await checkAndHandleEmptyEmbeds(
+      { reply: async () => assert.fail("must not apologize") },
+      [
+        {
+          sentMessage: target,
+          isUrlOnly: true,
+          fallbackContents: ["https://vxtwitter.com/honma_nmn/status/1"],
+          viewerValidation: "twitter",
+          viewerRequiresMedia: Promise.resolve(true),
+          embedFallback: null,
+          recoverUrls: null,
+        },
+      ],
+    );
+    assert.equal(result.allSucceeded, true);
+    assert.deepEqual(
+      edits.map((edit) => edit.content),
+      ["https://vxtwitter.com/honma_nmn/status/1"],
+    );
+  });
+
   await it("redd.it short URL → rxddit (regression)", async () => {
     const [p] = await buildPreviewPayloads(["https://redd.it/abc"]);
     assert.ok(

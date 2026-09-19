@@ -470,6 +470,31 @@ it("rejects fxtwitter/vxtwitter error stubs, keeps real posts", () => {
     ),
     true,
   );
+  // fxtwitter stripped the media and the body: just "Name (@handle)".
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "poiAI (@poipoip01)", description: "" }],
+      "twitter",
+    ),
+    false,
+  );
+  // Post is known to have media → text without the picture is not enough.
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "ほんま (@honma_nmn)", description: "壁に耳あり" }],
+      "twitter",
+      { requireMedia: true },
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "ほんま (@honma_nmn)", image: { url: "https://pbs.twimg.com/a.jpg" } }],
+      "twitter",
+      { requireMedia: true },
+    ),
+    true,
+  );
 });
 
 console.log("Threads viewer validation");

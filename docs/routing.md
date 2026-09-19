@@ -61,6 +61,8 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 | Bahamut | forum.gamer.com.tw, m.gamer.com.tw | — | Custom embed via 純 fetch 快路徑（[bahamut-fetch.js](../src/bahamut-fetch.js)，~150-460ms），miss 才退 playwright probe（`[preview] bahamut-custom ... source=http|probe`）；登入 cookie 兩條路都吃。 Embed image = 文章第一張圖（GIF 會動）, og:image 只在文章沒圖時墊底（全站預設的 `bahaLOGO_*` 不算，純文字文就不放圖）；description 取 `.c-article__content` 的 innerText 保留原文分行（og:description 會把換行壓平，只當後備）；文章有 YouTube 嵌入時第一支影片網址當 message content，讓 Discord 自己 unfurl 出播放器（bot embed 塞不了播放器）。標題砍掉「@板名 哈啦板 - 巴哈姆特」尾巴、author 只留「暱稱 (帳號)」。restricted board → public-summary embed with login notice。場外（兒少保護警示）：設了 `BAHA_USER_ID`/`BAHA_PASSWORD` 就帶登入 cookie probe（被牆 → 強制重登再試一次），沒設或仍被牆 → 警示文字不當摘要、退回原連結 |
 | PTT | ptt.cc | — | Custom embed via 純 fetch 快路徑（[ptt-fetch.js](../src/ptt-fetch.js)：靜態 HTML + `over18=1` cookie，~5-90ms）；miss（404 / 被導去年齡牆 / 版型改動）才退 playwright probe。兩條路吐同一個 metadata shape，`[preview] ptt-custom ... source=http|probe` 看得出走哪條 |
 
+X 的 fxtwitter unfurl 會被判無效而改貼 vxtwitter 的三種情況：「This post is unavailable」殘頁、只剩「名字 (@帳號)」沒內文也沒圖、以及貼文明明有媒體（建 payload 時非同步查 `api.fxtwitter.com/status/<id>`，embed check 時才 await）卻 unfurl 成沒圖的卡。查詢失敗/逾時就不要求媒體。grep `[twitter]`。
+
 除 Threads 外的 URL-only platforms（X / Reddit / Pixiv / Bluesky / Facebook / Bilibili-fixer-fallback / Instagram）都帶 `recoverUrls`，讓 empty-embed detector 用 OG metadata recovery。Threads 刻意不做 bot-side viewer fetch，改走 local canonical embed。
 
 Facebook 的 OG recovery 比較特別：facebed 沒快取、每次都即時爬 Facebook（常態 2–5s），所以 `recoverStrategy` 設成 **同時抓** facebed 與 facebook.com 本身（UA=`facebookexternalhit/1.1`，逾時 15s），先回來的贏。facebook.com 對不存在/不公開的貼文會回 200 登入牆（「登入或註冊即可查看」），用 `requireOgUrl` 擋（真貼文才有 og:url）。
