@@ -53,7 +53,7 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 
 | Platform | Hosts (`isXxxUrl`) | Fixer env var | Default |
 |---|---|---|---|
-| X / Twitter | x.com, twitter.com, mobile.twitter.com | `FIXER_TWITTER` | `fxtwitter.com` |
+| X / Twitter | x.com, twitter.com, mobile.twitter.com | `FIXER_TWITTER` (+ `FIXER_TWITTER_SECONDARY`) | `fxtwitter.com` (→ `vxtwitter.com`) |
 | Reddit | reddit.com, old.reddit.com, redd.it | `FIXER_REDDIT` | `rxddit.com` |
 | Pixiv | pixiv.net | `FIXER_PIXIV` | `phixiv.net` |
 | Bluesky | bsky.app | `FIXER_BLUESKY` | `bskx.app` |

@@ -445,6 +445,33 @@ it("accepts a playable Instagram viewer or meaningful caption", () => {
   );
 });
 
+console.log("Twitter viewer validation");
+it("rejects fxtwitter/vxtwitter error stubs, keeps real posts", () => {
+  assert.equal(isViewerPreviewUseful([], "twitter"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "FxTwitter", description: "This post is unavailable :(" }],
+      "twitter",
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ data: { title: "vxTwitter", description: "Failed to scan your link!" } }],
+      "twitter",
+    ),
+    false,
+  );
+  // Text-only / media-less posts are still real previews.
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ author: { name: "poiAI (@poipoip01)" }, description: "hello" }],
+      "twitter",
+    ),
+    true,
+  );
+});
+
 console.log("Threads viewer validation");
 it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () => {
   assert.equal(isViewerPreviewUseful([], "threads"), false);

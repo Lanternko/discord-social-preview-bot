@@ -195,6 +195,20 @@ function isUsefulInstagramViewerEmbed(embed) {
   return hasMedia || meaningfulText;
 }
 
+// fxtwitter / vxtwitter error pages ("This post is unavailable :(", "Failed
+// to scan your link!") unfurl as a normal-looking card with no post content.
+function isUsefulTwitterViewerEmbed(embed) {
+  const visibleText = [
+    readEmbedValue(embed, "title"),
+    readEmbedValue(embed, "description"),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return !/post\s+is\s+unavailable|failed\s+to\s+scan\s+your\s+link/i.test(
+    visibleText,
+  );
+}
+
 function isViewerPreviewUseful(embeds, viewerValidation = null) {
   if (!Array.isArray(embeds) || embeds.length === 0) return false;
   if (viewerValidation === "threads") {
@@ -202,6 +216,9 @@ function isViewerPreviewUseful(embeds, viewerValidation = null) {
   }
   if (viewerValidation === "instagram") {
     return embeds.some(isUsefulInstagramViewerEmbed);
+  }
+  if (viewerValidation === "twitter") {
+    return embeds.some(isUsefulTwitterViewerEmbed);
   }
   return true;
 }

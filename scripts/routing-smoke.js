@@ -1365,6 +1365,14 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.ok(p.recoverEmbedOptions?.footerText?.includes("X"));
   });
 
+  await it("twitter URL → vxtwitter as fallback + first OG-recovery candidate", async () => {
+    const [p] = await buildPreviewPayloads(["https://x.com/u/status/1"]);
+    assert.equal(p.viewerValidation, "twitter");
+    assert.deepEqual(p.fallbackContents, ["https://vxtwitter.com/u/status/1"]);
+    // The primary's "unavailable" stub must not win OG recovery.
+    assert.equal(p.recoverUrls[0], "https://vxtwitter.com/u/status/1");
+  });
+
   await it("redd.it short URL → rxddit (regression)", async () => {
     const [p] = await buildPreviewPayloads(["https://redd.it/abc"]);
     assert.ok(
