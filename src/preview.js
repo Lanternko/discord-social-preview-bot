@@ -16,6 +16,7 @@ const { FIXER_TWITTER_SECONDARY } = require("./config");
 const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
+const { fetchTweetHasMedia } = require("./platforms/twitter");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
 
@@ -64,6 +65,8 @@ function buildFacebookPayload(url) {
 // passes the generic non-empty check and would sit there as the preview —
 // validate it as useless and retry on a second fixer. The secondary also leads
 // OG recovery, since the primary's stub would otherwise be "recovered" as-is.
+// It also strips the media off some image posts; the media lookup (started now,
+// awaited only at the embed check, seconds later) lets validation catch that.
 function buildTwitterPayload(url) {
   const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
   const secondaryUrl = replaceHostFixer(url, FIXER_TWITTER_SECONDARY);
@@ -71,6 +74,7 @@ function buildTwitterPayload(url) {
     ...payload,
     fallbackContents: [secondaryUrl],
     viewerValidation: "twitter",
+    viewerRequiresMedia: fetchTweetHasMedia(url),
     recoverUrls: [secondaryUrl, ...payload.recoverUrls],
   };
 }
