@@ -10,7 +10,9 @@ const {
   isBlueskyUrl,
   isFacebookUrl,
   buildFallbackUrl,
+  replaceHostFixer,
 } = require("./url-routing");
+const { FIXER_TWITTER_SECONDARY } = require("./config");
 const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
@@ -57,6 +59,22 @@ function buildFacebookPayload(url) {
   };
 }
 
+// fxtwitter intermittently unfurls a post as a "This post is unavailable"
+// stub (seen on sensitive posts). The stub has a title + description, so it
+// passes the generic non-empty check and would sit there as the preview —
+// validate it as useless and retry on a second fixer. The secondary also leads
+// OG recovery, since the primary's stub would otherwise be "recovered" as-is.
+function buildTwitterPayload(url) {
+  const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
+  const secondaryUrl = replaceHostFixer(url, FIXER_TWITTER_SECONDARY);
+  return {
+    ...payload,
+    fallbackContents: [secondaryUrl],
+    viewerValidation: "twitter",
+    recoverUrls: [secondaryUrl, ...payload.recoverUrls],
+  };
+}
+
 async function buildPreviewPayloads(urls) {
   const tasks = urls.map(async (url) => {
     try {
@@ -67,7 +85,7 @@ async function buildPreviewPayloads(urls) {
       if (isThreadsUrl(url)) return await buildThreadsPayload(url);
       if (isTwitterUrl(url)) {
         console.log(`[preview] fixer twitter ${url}`);
-        return buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
+        return buildTwitterPayload(url);
       }
       if (isRedditUrl(url)) {
         console.log(`[preview] fixer reddit ${url}`);

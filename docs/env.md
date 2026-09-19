@@ -17,6 +17,7 @@
 | `FIXER_INSTAGRAM` | `ddinstagram.com` | Instagram fixer host |
 | `FIXER_INSTAGRAM_SECONDARY` | `fxstagram.com` | Second Instagram fixer tried if primary unfurls empty |
 | `FIXER_TWITTER` | `fxtwitter.com` | |
+| `FIXER_TWITTER_SECONDARY` | `vxtwitter.com` | Second X fixer tried when the primary unfurls its "This post is unavailable" stub (fxtwitter does this intermittently on sensitive posts); also the first OG-recovery candidate |
 | `FIXER_THREADS` | `fixthreads.seria.moe` | |
 | `FIXER_THREADS_SECONDARY` | `fzthreads.com` | Second Threads fixer tried if primary unfurls empty. Was `threadsez.net` — swapped 2026-07 because it went dead (connection refused) and `fzthreads.com` fetches sensitive/walled posts the primary can't |
 | `FIXER_REDDIT` | `rxddit.com` | |

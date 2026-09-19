@@ -218,6 +218,10 @@ module.exports = {
   FIXEMBED_BASE_URL:
     process.env.FIXEMBED_BASE_URL || "https://fixembed.app/embed?url=",
   FIXER_TWITTER: process.env.FIXER_TWITTER || "fxtwitter.com",
+  // Tried when the primary unfurls into its "post is unavailable" stub
+  // (fxtwitter does this intermittently, notably on sensitive posts).
+  FIXER_TWITTER_SECONDARY:
+    process.env.FIXER_TWITTER_SECONDARY || "vxtwitter.com",
   // Legacy aliases retained for callers and existing deployments. New code
   // should consume THREADS_VIEWER_HOSTS so a third viewer can be configured.
   FIXER_THREADS: THREADS_VIEWER_HOSTS[0],
