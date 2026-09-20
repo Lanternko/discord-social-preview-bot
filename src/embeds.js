@@ -95,7 +95,32 @@ function buildBilibiliEmbed(url, metadata) {
   return embed;
 }
 
+// The card for a sensitive X post: author + avatar, the post text, and no
+// link unfurl — the images ride below as spoilered attachments, so nothing
+// explicit renders until someone chooses to look. No engagement counts.
+function buildTwitterSpoilerEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(0x1da1f2)
+    .setURL(url)
+    .setFooter({ text: "X (Twitter) · 🔞 已打碼" });
+
+  const handle = metadata.authorHandle ? `@${metadata.authorHandle}` : "";
+  const name = [metadata.authorName, handle && `(${handle})`]
+    .filter(Boolean)
+    .join(" ");
+  if (name) {
+    embed.setAuthor({
+      name: trimDescription(name, 256),
+      url,
+      ...(metadata.authorAvatar ? { iconURL: metadata.authorAvatar } : {}),
+    });
+  }
+  if (metadata.text) embed.setDescription(trimDescription(metadata.text, 1024));
+  return embed;
+}
+
 module.exports = {
+  buildTwitterSpoilerEmbed,
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
   buildThreadsCarouselEmbeds,

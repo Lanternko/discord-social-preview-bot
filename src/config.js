@@ -5,7 +5,9 @@ function parsePositiveIntEnv(name, defaultValue) {
   if (raw === undefined || raw === "") return defaultValue;
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    console.warn(`[config] invalid ${name}="${raw}", using default ${defaultValue}`);
+    console.warn(
+      `[config] invalid ${name}="${raw}", using default ${defaultValue}`,
+    );
     return defaultValue;
   }
   return parsed;
@@ -20,10 +22,7 @@ function parseCsvEnv(name, defaultValue = []) {
     .filter(Boolean);
 }
 
-const DEFAULT_THREADS_VIEWER_HOSTS = [
-  "fzthreads.com",
-  "fixthreads.seria.moe",
-];
+const DEFAULT_THREADS_VIEWER_HOSTS = ["fzthreads.com", "fixthreads.seria.moe"];
 // Ordered by bot.log outcomes since 2026-08-31 (264 previews): instagram7 won
 // ~68%, deinstagram 23, fxig only 9 — so fxig was dropped for oginstagram,
 // which sits behind a Cloudflare challenge for our host but lets Discord's
@@ -59,12 +58,14 @@ function isPlainDnsHostname(value) {
   ) {
     return false;
   }
-  return hostname.split(".").every(
-    (label) =>
-      label.length > 0 &&
-      label.length <= 63 &&
-      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
-  );
+  return hostname
+    .split(".")
+    .every(
+      (label) =>
+        label.length > 0 &&
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label),
+    );
 }
 
 function parseViewerHosts(rawValue, label) {
@@ -86,7 +87,9 @@ function parseViewerHosts(rawValue, label) {
     seen.add(host);
     hosts.push(host);
     if (hosts.length > 3) {
-      throw new Error(`[config] ${label.toUpperCase()}_VIEWER_HOSTS accepts at most 3 hosts`);
+      throw new Error(
+        `[config] ${label.toUpperCase()}_VIEWER_HOSTS accepts at most 3 hosts`,
+      );
     }
   }
 
@@ -251,22 +254,32 @@ module.exports = {
     process.env.THREADS_GRAPHQL_DOC_ID || "7448594591874178",
   THREADS_GRAPHQL_APP_ID:
     process.env.THREADS_GRAPHQL_APP_ID || "238260118697367",
-  THREADS_GRAPHQL_LSD: process.env.THREADS_GRAPHQL_LSD || "hgmSkqDnLNFckqa7t1vJdn",
+  THREADS_GRAPHQL_LSD:
+    process.env.THREADS_GRAPHQL_LSD || "hgmSkqDnLNFckqa7t1vJdn",
   THREADS_GRAPHQL_TIMEOUT_MS: parsePositiveIntEnv(
     "THREADS_GRAPHQL_TIMEOUT_MS",
     6000,
   ),
   BAHA_USER_ID: process.env.BAHA_USER_ID || "",
   BAHA_PASSWORD: process.env.BAHA_PASSWORD || "",
-  BAHA_SESSION_TTL_MS: parsePositiveIntEnv("BAHA_SESSION_TTL_MS", 3 * 24 * 60 * 60 * 1000),
-  BAHA_LOGIN_COOLDOWN_MS: parsePositiveIntEnv("BAHA_LOGIN_COOLDOWN_MS", 10 * 60 * 1000),
+  BAHA_SESSION_TTL_MS: parsePositiveIntEnv(
+    "BAHA_SESSION_TTL_MS",
+    3 * 24 * 60 * 60 * 1000,
+  ),
+  BAHA_LOGIN_COOLDOWN_MS: parsePositiveIntEnv(
+    "BAHA_LOGIN_COOLDOWN_MS",
+    10 * 60 * 1000,
+  ),
   THREADS_PROBE_NODE: process.env.THREADS_PROBE_NODE || process.execPath,
   THREADS_PROBE_SCRIPT:
     process.env.THREADS_PROBE_SCRIPT ||
     path.join(__dirname, "threads-probe.cjs"),
   // goto (<=8s) + meta settle (<=1.5s) + media poll (<=2.5s) + evaluate must fit
   // inside this, or the subprocess is killed and the post falls to the fixer.
-  THREADS_PROBE_TIMEOUT_MS: parsePositiveIntEnv("THREADS_PROBE_TIMEOUT_MS", 15000),
+  THREADS_PROBE_TIMEOUT_MS: parsePositiveIntEnv(
+    "THREADS_PROBE_TIMEOUT_MS",
+    15000,
+  ),
   THREADS_PROBE_MAX_CONCURRENT: parsePositiveIntEnv(
     "THREADS_PROBE_MAX_CONCURRENT",
     3,
@@ -291,6 +304,14 @@ module.exports = {
   // bot controls is to download the mp4 and re-upload it as a Discord attachment.
   // Guarded so a flood of video links can't overwhelm the host: a HEAD size
   // check before download, a global concurrency cap, and a per-fetch timeout.
+  // X posts flagged sensitive get the bot's own card with the images uploaded
+  // as spoilered attachments; Twitter allows at most 4 images per post.
+  TWEET_SPOILER_ENABLED:
+    (process.env.TWEET_SPOILER_ENABLED || "true").toLowerCase() === "true",
+  TWEET_SPOILER_MAX_IMAGES: Math.min(
+    4,
+    parsePositiveIntEnv("TWEET_SPOILER_MAX_IMAGES", 4),
+  ),
   VIDEO_ATTACHMENT_ENABLED:
     (process.env.VIDEO_ATTACHMENT_ENABLED || "true").toLowerCase() === "true",
   // Empty = every guild may use it (still bounded by the caps below). Set a
@@ -298,7 +319,10 @@ module.exports = {
   VIDEO_ATTACHMENT_GUILD_IDS: parseCsvEnv("VIDEO_ATTACHMENT_GUILD_IDS"),
   // 0 = auto (use each guild's own Discord upload limit by boost tier). A
   // positive value caps it further (never exceeds the guild's limit).
-  VIDEO_ATTACHMENT_MAX_BYTES: parsePositiveIntEnv("VIDEO_ATTACHMENT_MAX_BYTES", 0),
+  VIDEO_ATTACHMENT_MAX_BYTES: parsePositiveIntEnv(
+    "VIDEO_ATTACHMENT_MAX_BYTES",
+    0,
+  ),
   VIDEO_ATTACHMENT_MAX_CONCURRENT: parsePositiveIntEnv(
     "VIDEO_ATTACHMENT_MAX_CONCURRENT",
     2,
@@ -310,8 +334,7 @@ module.exports = {
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_MODEL: process.env.OPENAI_MODEL || "gpt-5.6-luna",
   OPENAI_BASE_URL:
-    process.env.OPENAI_BASE_URL ||
-    "https://api.openai.com/v1/chat/completions",
+    process.env.OPENAI_BASE_URL || "https://api.openai.com/v1/chat/completions",
   STORY_OPENAI_TIMEOUT_MS: parsePositiveIntEnv(
     "STORY_OPENAI_TIMEOUT_MS",
     45000,
@@ -357,8 +380,7 @@ module.exports = {
     .map((s) => s.trim())
     .filter(Boolean),
   KIMI_API_KEY: process.env.KIMI_API_KEY,
-  KIMI_ENABLED:
-    (process.env.KIMI_ENABLED || "true").toLowerCase() === "true",
+  KIMI_ENABLED: (process.env.KIMI_ENABLED || "true").toLowerCase() === "true",
   // During DeepSeek's peak window its tokens cost double, so the interactive
   // chain puts the flat-rate fallback (luna) first and keeps DeepSeek as the
   // tail. Set false to always lead with DeepSeek regardless of the clock.
@@ -366,8 +388,7 @@ module.exports = {
     (process.env.AI_PEAK_PREFER_FALLBACK || "true").toLowerCase() === "true",
   KIMI_MODEL: process.env.KIMI_MODEL || "kimi-k2.6",
   KIMI_BASE_URL:
-    process.env.KIMI_BASE_URL ||
-    "https://api.moonshot.ai/v1/chat/completions",
+    process.env.KIMI_BASE_URL || "https://api.moonshot.ai/v1/chat/completions",
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-chat",
   DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-v4-flash",
@@ -396,7 +417,10 @@ module.exports = {
   // Downloading the attachment ourselves, NOT handing DeepSeek the CDN link:
   // its fetcher failed on a plain public image URL in testing (2026-09-10), and
   // a Discord CDN link is signed and expiring on top of that.
-  VISION_FETCH_TIMEOUT_MS: parsePositiveIntEnv("VISION_FETCH_TIMEOUT_MS", 10000),
+  VISION_FETCH_TIMEOUT_MS: parsePositiveIntEnv(
+    "VISION_FETCH_TIMEOUT_MS",
+    10000,
+  ),
   // DeepSeek fetches the Discord CDN URL itself before it can answer, so a
   // vision call is structurally slower than the 8 s text budget allows.
   VISION_TIMEOUT_MS: parsePositiveIntEnv("VISION_TIMEOUT_MS", 25000),
@@ -440,7 +464,8 @@ module.exports = {
   AI_MEMORY_TTL_MS: parsePositiveIntEnv("AI_MEMORY_TTL_MS", 30 * 60 * 1000),
   AI_PROVIDER_FORCE: (process.env.AI_PROVIDER || "").toLowerCase(),
   AI_LONG_TERM_MEMORY_ENABLED:
-    (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() === "true",
+    (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() ===
+    "true",
   // Personal-memory backlog sweep cadence; "0" disables the sweep entirely.
   PROFILE_SWEEP_INTERVAL_MS:
     process.env.PROFILE_SWEEP_INTERVAL_MS === "0"

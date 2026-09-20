@@ -135,6 +135,7 @@ async function fetchVideoAttachment(url, guild) {
 
 module.exports = {
   uploadLimitBytes,
+  readCapped,
   isGuildVideoAllowed,
   effectiveMaxBytes,
   fetchVideoAttachment,

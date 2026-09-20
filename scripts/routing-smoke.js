@@ -33,7 +33,10 @@ require.cache[probeModulePath].exports.fetchThreadsMetadata = async (url) => {
   return _mockThreadsMetadata;
 };
 let _pageProbeCalls = [];
-require.cache[probeModulePath].exports.fetchPageProbeMetadata = async (url, options) => {
+require.cache[probeModulePath].exports.fetchPageProbeMetadata = async (
+  url,
+  options,
+) => {
   _pageProbeCalls.push({ url, options });
   if (_mockProbeError) throw _mockProbeError;
   return typeof _mockPageMetadata === "function"
@@ -45,8 +48,9 @@ require.cache[probeModulePath].exports.fetchPageProbeMetadata = async (url, opti
 const bahaSessionModulePath = require.resolve("../src/bahamut-session");
 require(bahaSessionModulePath);
 let _mockBahaSession = async () => null;
-require.cache[bahaSessionModulePath].exports.getBahamutSessionCookies = (opts) =>
-  _mockBahaSession(opts);
+require.cache[bahaSessionModulePath].exports.getBahamutSessionCookies = (
+  opts,
+) => _mockBahaSession(opts);
 
 // Mock global fetch for Bilibili API + b23.tv expansion + Instagram display name
 const _origFetch = global.fetch;
@@ -102,7 +106,8 @@ function shapeOf(payload) {
       typeof payload.content === "string" && payload.content.startsWith("http"),
     contentText: payload.content,
     embedCount: Array.isArray(payload.embeds) ? payload.embeds.length : 0,
-    hasComponents: Array.isArray(payload.components) && payload.components.length > 0,
+    hasComponents:
+      Array.isArray(payload.components) && payload.components.length > 0,
     hasFallbackContent: typeof payload.fallbackContent === "string",
     fallbackContents: payload.fallbackContents,
     hasEmbedFallback: payload.embedFallback != null,
@@ -271,7 +276,9 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     for (let index = 0; index < 8; index += 1) {
       inputs.push(`https://www.threads.com/share/CONCURRENCY${index}/`);
     }
-    await Promise.all(inputs.map((url) => resolveThreadsUrl(url, { fetchImpl })));
+    await Promise.all(
+      inputs.map((url) => resolveThreadsUrl(url, { fetchImpl })),
+    );
     const stats = getThreadsUrlResolverStats();
     assert.equal(calls, 9, "100 identical inflight URLs share one fetch");
     assert.ok(stats.maxObservedConcurrency <= RESOLVE_MAX_CONCURRENT);
@@ -445,7 +452,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const description = p.embeds[0].data.description;
     assert.ok(description.includes("@root"), "keeps the thread's root post");
     assert.ok(description.includes("@parent"), "keeps the direct parent");
-    assert.ok(!description.includes("@mid"), "drops the middle of a long chain");
+    assert.ok(
+      !description.includes("@mid"),
+      "drops the middle of a long chain",
+    );
     assert.ok(
       description.includes("還有 1 則"),
       `says how many were skipped, got: ${description}`,
@@ -523,7 +533,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const p = await buildThreadsPayload(THREADS_URL);
     const s = shapeOf(p);
     assert.equal(s.embedCount, 3, "should truncate to default preview count 3");
-    assert.equal(s.hasComponents, false, "no button — rely on embed URL instead");
+    assert.equal(
+      s.hasComponents,
+      false,
+      "no button — rely on embed URL instead",
+    );
     const lastDesc = p.embeds[p.embeds.length - 1].data?.description;
     assert.ok(
       typeof lastDesc === "string" && lastDesc.includes("還有 2 張"),
@@ -615,7 +629,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(s.videoAttachmentText, "https://cdn.example/v.mp4");
     // ...and still carries the full fixer chain as the fallback when it misses
     assert.equal(s.contentStartsWithHttp, true);
-    assert.ok(s.contentText.includes("fzthreads.com"), "primary viewer present");
+    assert.ok(
+      s.contentText.includes("fzthreads.com"),
+      "primary viewer present",
+    );
     assert.deepEqual(p.fallbackContents, [
       "https://fixthreads.seria.moe/@a/post/1",
     ]);
@@ -626,7 +643,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
         p.videoAttachmentEmbeds.length === 1,
       "carries a clean title/文案 embed for the successful-attachment case",
     );
-    assert.equal(p.recoverUrls, undefined, "Threads must not bot-fetch viewers");
+    assert.equal(
+      p.recoverUrls,
+      undefined,
+      "Threads must not bot-fetch viewers",
+    );
     assert.equal(p.embedFallback.embeds[0].data.url, THREADS_URL);
   });
 
@@ -805,7 +826,12 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       async edit(payload) {
         edits.push(payload);
         if (payload.content === "https://viewer-two.example/reel/1") {
-          this.embeds = [{ title: "@creator", video: { url: "https://cdn.example/video.mp4" } }];
+          this.embeds = [
+            {
+              title: "@creator",
+              video: { url: "https://cdn.example/video.mp4" },
+            },
+          ];
         }
         return this;
       },
@@ -882,7 +908,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       const last = edits.at(-1);
       assert.equal(last.content, "");
       assert.equal(last.embeds[0].data.title, "@creator");
-      assert.equal(last.embeds[0].data.url, "https://www.instagram.com/reel/1/");
+      assert.equal(
+        last.embeds[0].data.url,
+        "https://www.instagram.com/reel/1/",
+      );
     } finally {
       _mockFetch = null;
     }
@@ -974,7 +1003,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       title: "x",
       description: "y",
       image: "https://i1.ytimg.com/vi/ID/hqdefault.jpg",
-      images: ["https://meee.com.tw/abc.gif", "https://truth.bahamut.com.tw/a.JPG"],
+      images: [
+        "https://meee.com.tw/abc.gif",
+        "https://truth.bahamut.com.tw/a.JPG",
+      ],
       videoUrls: ["https://www.youtube.com/watch?v=ID"],
       restricted: false,
     };
@@ -1019,9 +1051,19 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       videoUrls: [],
       restricted: false,
     };
-    const p = await buildBahamutPayload("https://forum.gamer.com.tw/Co.php?bsn=60076&sn=1");
-    assert.equal(p.embeds[0].data?.image, undefined, "no picture beats the Bahamut logo");
-    assert.equal(p.embeds[0].data?.description, "第一行\n第二行", "line breaks survive");
+    const p = await buildBahamutPayload(
+      "https://forum.gamer.com.tw/Co.php?bsn=60076&sn=1",
+    );
+    assert.equal(
+      p.embeds[0].data?.image,
+      undefined,
+      "no picture beats the Bahamut logo",
+    );
+    assert.equal(
+      p.embeds[0].data?.description,
+      "第一行\n第二行",
+      "line breaks survive",
+    );
   });
 
   await it("bahamut restricted with public title/desc → embed with login notice", async () => {
@@ -1055,25 +1097,43 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   await it("bahamut 兒少保護 wall text is not passed off as a summary", async () => {
     _mockPageMetadata = {
       title: "兒少保護警示",
-      description: "您將進入的頁面，有不適合兒少瀏覽的內容，需年滿 15 歲、完成「手機認證」且開啟「顯示敏感內容」設定才可閱覽。",
+      description:
+        "您將進入的頁面，有不適合兒少瀏覽的內容，需年滿 15 歲、完成「手機認證」且開啟「顯示敏感內容」設定才可閱覽。",
       image: "https://i2.bahamut.com.tw/child-protection.png",
       restricted: true,
     };
-    const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
-    assert.equal(shapeOf(p).embedCount, 0, "the wall must not render as the post");
+    const p = await buildBahamutPayload(
+      "https://forum.gamer.com.tw/C.php?bsn=60076&snA=1",
+    );
+    assert.equal(
+      shapeOf(p).embedCount,
+      0,
+      "the wall must not render as the post",
+    );
     assert.equal(shapeOf(p).contentStartsWithHttp, true);
   });
 
   await it("bahamut with a login session → probe carries the session cookies", async () => {
     _pageProbeCalls = [];
     _mockBahaSession = async () => ({ BAHAENUR: "a", BAHARUNE: "b" });
-    _mockPageMetadata = { title: "場外文", description: "內文", restricted: false };
+    _mockPageMetadata = {
+      title: "場外文",
+      description: "內文",
+      restricted: false,
+    };
     try {
-      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      const p = await buildBahamutPayload(
+        "https://forum.gamer.com.tw/C.php?bsn=60076&snA=1",
+      );
       assert.equal(shapeOf(p).embedCount, 1);
       assert.equal(_pageProbeCalls.length, 1);
-      const names = _pageProbeCalls[0].options.cookies.map((c) => `${c.name}@${c.domain}`);
-      assert.deepEqual(names, ["BAHAENUR@.gamer.com.tw", "BAHARUNE@.gamer.com.tw"]);
+      const names = _pageProbeCalls[0].options.cookies.map(
+        (c) => `${c.name}@${c.domain}`,
+      );
+      assert.deepEqual(names, [
+        "BAHAENUR@.gamer.com.tw",
+        "BAHARUNE@.gamer.com.tw",
+      ]);
     } finally {
       _mockBahaSession = async () => null;
     }
@@ -1087,9 +1147,15 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     _mockPageMetadata = (options) =>
       options.cookies[0].value === "new"
         ? { title: "場外文", description: "內文", restricted: false }
-        : { title: "兒少保護警示", description: "您將進入的頁面…", restricted: true };
+        : {
+            title: "兒少保護警示",
+            description: "您將進入的頁面…",
+            restricted: true,
+          };
     try {
-      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      const p = await buildBahamutPayload(
+        "https://forum.gamer.com.tw/C.php?bsn=60076&snA=1",
+      );
       assert.equal(_pageProbeCalls.length, 2);
       assert.equal(p.embeds[0].data?.title?.includes("場外文"), true);
     } finally {
@@ -1101,11 +1167,17 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     _pageProbeCalls = [];
     const same = { BAHAENUR: "a", BAHARUNE: "b" };
     _mockBahaSession = async () => same;
-    _mockPageMetadata = { title: "兒少保護警示", description: "您將進入的頁面…", restricted: true };
+    _mockPageMetadata = {
+      title: "兒少保護警示",
+      description: "您將進入的頁面…",
+      restricted: true,
+    };
     const origWarn = console.warn;
     console.warn = () => {};
     try {
-      const p = await buildBahamutPayload("https://forum.gamer.com.tw/C.php?bsn=60076&snA=1");
+      const p = await buildBahamutPayload(
+        "https://forum.gamer.com.tw/C.php?bsn=60076&snA=1",
+      );
       assert.equal(_pageProbeCalls.length, 1);
       assert.equal(shapeOf(p).embedCount, 0);
     } finally {
@@ -1163,10 +1235,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
     const s = shapeOf(p);
     assert.equal(s.contentStartsWithHttp, true);
-    assert.equal(
-      s.contentText,
-      "https://instagram7.com/reel/DcA0yXWMF4E/",
-    );
+    assert.equal(s.contentText, "https://instagram7.com/reel/DcA0yXWMF4E/");
     assert.deepEqual(p.fallbackContents, [
       "https://oginstagram.com/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
@@ -1216,7 +1285,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
 
   await it("bilibili API success → custom embed + video attachment (no fixer URL)", async () => {
     _mockFetch = async (apiUrl) => {
-      if (typeof apiUrl === "string" && apiUrl.includes("/x/web-interface/view")) {
+      if (
+        typeof apiUrl === "string" &&
+        apiUrl.includes("/x/web-interface/view")
+      ) {
         return {
           ok: true,
           status: 200,
@@ -1306,7 +1378,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
 
   await it("bilibili share-tracking params don't leak into the miss fixer URL", async () => {
     _mockFetch = async (apiUrl) => {
-      if (typeof apiUrl === "string" && apiUrl.includes("/x/web-interface/view")) {
+      if (
+        typeof apiUrl === "string" &&
+        apiUrl.includes("/x/web-interface/view")
+      ) {
         return {
           ok: true,
           status: 200,
@@ -1401,7 +1476,10 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       async edit(payload) {
         edits.push(payload);
         this.embeds = [
-          { title: "ほんま (@honma_nmn)", image: { url: "https://pbs.twimg.com/a.jpg" } },
+          {
+            title: "ほんま (@honma_nmn)",
+            image: { url: "https://pbs.twimg.com/a.jpg" },
+          },
         ];
         return this;
       },
@@ -1425,6 +1503,136 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       edits.map((edit) => edit.content),
       ["https://vxtwitter.com/honma_nmn/status/1"],
     );
+  });
+
+  await it("sensitive X post → own spoiler card with every image", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            possibly_sensitive: true,
+            text: "body",
+            author: { name: "poiAI", screen_name: "poipoip01" },
+            media: {
+              all: [
+                {
+                  type: "photo",
+                  url: "https://pbs.twimg.com/media/a.jpg?name=orig",
+                },
+                {
+                  type: "photo",
+                  url: "https://pbs.twimg.com/media/b.jpg?name=orig",
+                },
+              ],
+            },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads([
+        "https://x.com/poipoip01/status/42",
+      ]);
+      // No fixer link: the viewers unfurl a sensitive image in the clear.
+      assert.equal(p.content, undefined);
+      assert.deepEqual(p.spoilerImages, [
+        "https://pbs.twimg.com/media/a.jpg?name=large",
+        "https://pbs.twimg.com/media/b.jpg?name=large",
+      ]);
+      assert.equal(
+        p.spoilerMissContent.includes("||https://vxtwitter.com"),
+        true,
+      );
+      assert.equal(p.embeds.length, 1);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("sensitive post over the image cap keeps a 還有 N 張 hint", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            possibly_sensitive: true,
+            author: { name: "a", screen_name: "a" },
+            media: {
+              all: Array.from({ length: 6 }, (_, i) => ({
+                type: "photo",
+                url: `https://pbs.twimg.com/media/${i}.jpg`,
+              })),
+            },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads(["https://x.com/a/status/42"]);
+      assert.equal(p.spoilerImages.length, 4);
+      assert.match(p.spoilerContent, /還有 2 張/);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("sensitive video post stays on the fixer chain", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            possibly_sensitive: true,
+            author: { name: "a", screen_name: "a" },
+            media: {
+              all: [{ type: "video", url: "https://video.example/v.mp4" }],
+            },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads(["https://x.com/a/status/42"]);
+      assert.equal(p.spoilerImages, undefined);
+      assert.ok(p.content.includes("fxtwitter"));
+      assert.equal(await p.viewerRequiresMedia, true);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("spoiler images upload as SPOILER_ attachments", async () => {
+    const outgoing = await resolveOutgoing(
+      {
+        embeds: [{ title: "poiAI" }],
+        spoilerImages: ["https://pbs.twimg.com/media/a.jpg?name=large"],
+        spoilerContent: "還有 1 張",
+        spoilerMissContent: "🔞 ||https://vxtwitter.com/a/status/1||",
+      },
+      { guild: null },
+      {
+        fetchSpoilerImageAttachments: async (urls) =>
+          urls.map((_, i) => ({
+            buffer: Buffer.from("img"),
+            name: `SPOILER_${i + 1}.jpg`,
+          })),
+      },
+    );
+    assert.equal(outgoing.files.length, 1);
+    assert.equal(outgoing.files[0].name, "SPOILER_1.jpg");
+    assert.equal(outgoing.embeds.length, 1);
+    assert.equal(outgoing.content, "還有 1 張");
+    assert.equal(outgoing.spoilerImages, undefined);
+  });
+
+  await it("spoiler upload miss falls back to a spoilered link", async () => {
+    const outgoing = await resolveOutgoing(
+      {
+        embeds: [{ title: "poiAI" }],
+        spoilerImages: ["https://pbs.twimg.com/media/a.jpg?name=large"],
+        spoilerMissContent: "🔞 ||https://vxtwitter.com/a/status/1||",
+      },
+      { guild: null },
+      { fetchSpoilerImageAttachments: async () => null },
+    );
+    assert.equal(outgoing.content, "🔞 ||https://vxtwitter.com/a/status/1||");
+    assert.equal(outgoing.embeds, undefined);
+    assert.equal(outgoing.files, undefined);
   });
 
   await it("redd.it short URL → rxddit (regression)", async () => {
@@ -1453,9 +1661,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   });
 
   await it("facebook URL → facebed with recoverUrls", async () => {
-    const [p] = await buildPreviewPayloads([
-      "https://www.facebook.com/post/1",
-    ]);
+    const [p] = await buildPreviewPayloads(["https://www.facebook.com/post/1"]);
     assert.ok(p.content.includes("facebed"));
     assert.ok(Array.isArray(p.recoverUrls));
     // facebed races facebook.com itself (crawler UA, login wall rejected).
@@ -1520,60 +1726,117 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
         state.deleted = true;
       },
     };
-    return { reaction: { partial: false, emoji: { name: emojiName }, message }, state };
+    return {
+      reaction: { partial: false, emoji: { name: emojiName }, message },
+      state,
+    };
   }
 
   await it("link poster's 🗑️ deletes 西寶's own message", async () => {
     const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER" });
-    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    await handleReactionDelete(
+      reaction,
+      { id: "POSTER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, true);
   });
 
   await it("random user without ManageMessages cannot delete", async () => {
-    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: false });
-    await handleReactionDelete(reaction, { id: "RANDO", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      origAuthorId: "POSTER",
+      canManage: false,
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "RANDO", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, false);
   });
 
   await it("ManageMessages mod can delete even if not the poster", async () => {
-    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: true });
-    await handleReactionDelete(reaction, { id: "MOD", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      origAuthorId: "POSTER",
+      canManage: true,
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "MOD", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, true);
   });
 
   await it("bot owner deletes without being poster or mod", async () => {
-    const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER", canManage: false });
-    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      origAuthorId: "POSTER",
+      canManage: false,
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "OWNER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, true);
   });
 
   await it("bot owner deletes an orphaned preview (reference gone)", async () => {
-    const { reaction, state } = makeTrashReaction({ hasReference: false, canManage: false });
-    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      hasReference: false,
+      canManage: false,
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "OWNER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, true);
   });
 
   await it("owner privilege still never touches non-西寶 messages", async () => {
     const { reaction, state } = makeTrashReaction({ authorId: "HUMAN" });
-    await handleReactionDelete(reaction, { id: "OWNER", bot: false }, DELETE_CLIENT);
+    await handleReactionDelete(
+      reaction,
+      { id: "OWNER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, false);
   });
 
   await it("never deletes a message 西寶 did not author", async () => {
-    const { reaction, state } = makeTrashReaction({ authorId: "HUMAN", origAuthorId: "POSTER" });
-    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      authorId: "HUMAN",
+      origAuthorId: "POSTER",
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "POSTER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, false);
   });
 
   await it("ignores non-🗑️ reactions", async () => {
-    const { reaction, state } = makeTrashReaction({ emojiName: "❌", origAuthorId: "POSTER" });
-    await handleReactionDelete(reaction, { id: "POSTER", bot: false }, DELETE_CLIENT);
+    const { reaction, state } = makeTrashReaction({
+      emojiName: "❌",
+      origAuthorId: "POSTER",
+    });
+    await handleReactionDelete(
+      reaction,
+      { id: "POSTER", bot: false },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, false);
   });
 
   await it("ignores reactions from bots", async () => {
     const { reaction, state } = makeTrashReaction({ origAuthorId: "POSTER" });
-    await handleReactionDelete(reaction, { id: "POSTER", bot: true }, DELETE_CLIENT);
+    await handleReactionDelete(
+      reaction,
+      { id: "POSTER", bot: true },
+      DELETE_CLIENT,
+    );
     assert.equal(state.deleted, false);
   });
 
@@ -1599,27 +1862,39 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   }
 
   await it("context menu: owner deletes and gets an ephemeral ack", async () => {
-    const { interaction, state, replies } = makeDeleteInteraction({ canManage: false }, "OWNER");
+    const { interaction, state, replies } = makeDeleteInteraction(
+      { canManage: false },
+      "OWNER",
+    );
     await handleDeleteMessageContext(interaction, DELETE_CLIENT);
     assert.equal(state.deleted, true);
     assert.equal(replies.length, 1, "interaction must be acknowledged");
   });
 
   await it("context menu: poster deletes via reply reference", async () => {
-    const { interaction, state } = makeDeleteInteraction({ origAuthorId: "POSTER" }, "POSTER");
+    const { interaction, state } = makeDeleteInteraction(
+      { origAuthorId: "POSTER" },
+      "POSTER",
+    );
     await handleDeleteMessageContext(interaction, DELETE_CLIENT);
     assert.equal(state.deleted, true);
   });
 
   await it("context menu: random user is refused but still acknowledged", async () => {
-    const { interaction, state, replies } = makeDeleteInteraction({ canManage: false }, "RANDO");
+    const { interaction, state, replies } = makeDeleteInteraction(
+      { canManage: false },
+      "RANDO",
+    );
     await handleDeleteMessageContext(interaction, DELETE_CLIENT);
     assert.equal(state.deleted, false);
     assert.equal(replies.length, 1, "refusal must still reply ephemerally");
   });
 
   await it("context menu: never deletes a non-西寶 message, even for owner", async () => {
-    const { interaction, state, replies } = makeDeleteInteraction({ authorId: "HUMAN" }, "OWNER");
+    const { interaction, state, replies } = makeDeleteInteraction(
+      { authorId: "HUMAN" },
+      "OWNER",
+    );
     await handleDeleteMessageContext(interaction, DELETE_CLIENT);
     assert.equal(state.deleted, false);
     assert.equal(replies.length, 1);
@@ -1682,7 +1957,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(sent[0].files.length, 1);
     assert.equal(sent[0].files[0].name, "xibao.png");
     assert.equal(sent[0].stickers, undefined);
-    assert.equal(sent[0].content, undefined, "sticker-only reply carries no text");
+    assert.equal(
+      sent[0].content,
+      undefined,
+      "sticker-only reply carries no text",
+    );
   });
 
   await it("plain replies go out untouched", async () => {
@@ -1699,7 +1978,11 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     await sendAIReply(message, "好啦 [貼圖:起床重睡]", STICKER_CATALOG);
     assert.equal(sent.length, 1);
     assert.equal(sent[0].content, "好啦");
-    assert.equal(sent[0].stickers, undefined, "second attempt drops the sticker");
+    assert.equal(
+      sent[0].stickers,
+      undefined,
+      "second attempt drops the sticker",
+    );
   });
 
   await it("an invented sticker name never reaches the channel", async () => {
