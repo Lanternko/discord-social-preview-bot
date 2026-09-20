@@ -304,13 +304,16 @@ module.exports = {
   // bot controls is to download the mp4 and re-upload it as a Discord attachment.
   // Guarded so a flood of video links can't overwhelm the host: a HEAD size
   // check before download, a global concurrency cap, and a per-fetch timeout.
-  // X posts flagged sensitive get the bot's own card with the images uploaded
-  // as spoilered attachments; Twitter allows at most 4 images per post.
-  TWEET_SPOILER_ENABLED:
-    (process.env.TWEET_SPOILER_ENABLED || "true").toLowerCase() === "true",
+  // Posts flagged sensitive (X possibly_sensitive, pixiv xRestrict) get the
+  // bot's own card with the images uploaded as spoilered attachments.
+  R18_SPOILER_ENABLED:
+    (process.env.R18_SPOILER_ENABLED || "true").toLowerCase() === "true",
   // Both X image paths (spoiler card, carousel) share this cap; Twitter
   // allows at most 4 images per post.
   TWEET_MAX_IMAGES: Math.min(4, parsePositiveIntEnv("TWEET_MAX_IMAGES", 4)),
+  // pixiv works can run to 100+ pages; the gallery shows the first few and
+  // says how many are left.
+  PIXIV_MAX_IMAGES: Math.min(10, parsePositiveIntEnv("PIXIV_MAX_IMAGES", 4)),
   VIDEO_ATTACHMENT_ENABLED:
     (process.env.VIDEO_ATTACHMENT_ENABLED || "true").toLowerCase() === "true",
   // Empty = every guild may use it (still bounded by the caps below). Set a

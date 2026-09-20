@@ -12,7 +12,7 @@ const {
   buildFallbackUrl,
   replaceHostFixer,
 } = require("./url-routing");
-const { FIXER_TWITTER_SECONDARY, TWEET_SPOILER_ENABLED } = require("./config");
+const { FIXER_TWITTER_SECONDARY, R18_SPOILER_ENABLED } = require("./config");
 const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
@@ -20,7 +20,10 @@ const { fetchTweetMeta } = require("./platforms/twitter");
 const {
   buildTwitterSpoilerEmbed,
   buildTwitterCarouselEmbeds,
+  buildPixivSpoilerEmbed,
+  buildPixivCarouselEmbeds,
 } = require("./embeds");
+const { fetchPixivMeta } = require("./platforms/pixiv");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
 
@@ -74,7 +77,7 @@ function buildFacebookPayload(url) {
 async function buildTwitterPayload(url) {
   const meta = await fetchTweetMeta(url);
   const secondaryUrl = replaceHostFixer(url, FIXER_TWITTER_SECONDARY);
-  if (TWEET_SPOILER_ENABLED && meta?.sensitive && meta.photos.length > 0) {
+  if (R18_SPOILER_ENABLED && meta?.sensitive && meta.photos.length > 0) {
     return buildSensitiveTwitterPayload(url, meta, secondaryUrl);
   }
   // Multi-image posts only: a single image already unfurls fine through the
@@ -126,6 +129,38 @@ function buildTwitterCarouselPayload(url, meta) {
   };
 }
 
+// phixiv unfurls page 1 of a work and nothing else — no other pages, no R-18
+// signal. With pixiv's own metadata the bot can do both: hide an R-18 work
+// behind spoilered attachments, and show a multi-page work as a gallery.
+// Single-page all-ages works keep the phixiv unfurl, which is already right.
+async function buildPixivPayload(url) {
+  const meta = await fetchPixivMeta(url);
+  const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.pixiv);
+  if (!meta) return payload;
+  if (R18_SPOILER_ENABLED && meta.sensitive) {
+    console.log(
+      `[pixiv] R18 → spoiler card images=${meta.images.length}/${meta.pageCount} ${url}`,
+    );
+    return {
+      embeds: [buildPixivSpoilerEmbed(url, meta)],
+      spoilerImages: meta.images,
+      spoilerContent:
+        meta.pageCount > meta.images.length
+          ? `還有 ${meta.pageCount - meta.images.length} 張`
+          : null,
+      spoilerMissContent: `🔞 ||${payload.content}||`,
+      sourceUrl: url,
+    };
+  }
+  if (meta.images.length > 1) {
+    console.log(
+      `[pixiv] gallery images=${meta.images.length}/${meta.pageCount} ${url}`,
+    );
+    return { embeds: buildPixivCarouselEmbeds(url, meta), sourceUrl: url };
+  }
+  return payload;
+}
+
 async function buildPreviewPayloads(urls) {
   const tasks = urls.map(async (url) => {
     try {
@@ -144,7 +179,7 @@ async function buildPreviewPayloads(urls) {
       }
       if (isPixivUrl(url)) {
         console.log(`[preview] fixer pixiv ${url}`);
-        return buildSimpleFixerPayload(url, RECOVER_PROFILES.pixiv);
+        return await buildPixivPayload(url);
       }
       if (isBlueskyUrl(url)) {
         console.log(`[preview] fixer bluesky ${url}`);

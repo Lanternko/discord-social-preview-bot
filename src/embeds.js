@@ -135,18 +135,58 @@ function buildTwitterSpoilerEmbed(url, metadata) {
 // single tile, vxtwitter renders a combined collage, and neither gives the
 // full-size originals.
 function buildTwitterCarouselEmbeds(url, metadata) {
-  const [first, ...rest] = metadata.photos;
-  const firstEmbed = buildTwitterPostEmbed(url, metadata).setImage(first);
+  return buildGalleryEmbeds({
+    url,
+    leadEmbed: buildTwitterPostEmbed(url, metadata),
+    images: metadata.photos,
+    hidden: metadata.photoCount - metadata.photos.length,
+    color: TWITTER_EMBED_COLOR,
+  });
+}
+
+const PIXIV_EMBED_COLOR = 0x0096fa;
+
+// Title + author, linked to the work. phixiv's own unfurl only ever shows
+// page 1 of a multi-page work and gives no R-18 signal, so both bot-built
+// pixiv cards start from here instead.
+function buildPixivWorkEmbed(url, metadata, footerText = "pixiv") {
+  const embed = new EmbedBuilder()
+    .setColor(PIXIV_EMBED_COLOR)
+    .setURL(url)
+    .setFooter({ text: footerText });
+
+  if (metadata.title) embed.setTitle(trimDescription(metadata.title, 256));
+  if (metadata.author)
+    embed.setAuthor({ name: trimDescription(metadata.author, 256), url });
+  return embed;
+}
+
+function buildPixivSpoilerEmbed(url, metadata) {
+  return buildPixivWorkEmbed(url, metadata, "pixiv · 🔞 已打碼");
+}
+
+// Every page of a multi-page work as one album.
+function buildPixivCarouselEmbeds(url, metadata) {
+  return buildGalleryEmbeds({
+    url,
+    leadEmbed: buildPixivWorkEmbed(url, metadata),
+    images: metadata.images,
+    hidden: metadata.pageCount - metadata.images.length,
+    color: PIXIV_EMBED_COLOR,
+  });
+}
+
+// One embed per image, all carrying the post URL — that shared URL is what
+// makes Discord render them as a single album rather than stacked cards. The
+// lead embed holds the text; a truncated gallery says so on the last one.
+function buildGalleryEmbeds({ url, leadEmbed, images, hidden, color }) {
+  const [first, ...rest] = images;
   const embeds = [
-    firstEmbed,
+    leadEmbed.setImage(first),
     ...rest.map((image) =>
-      new EmbedBuilder()
-        .setURL(url)
-        .setColor(TWITTER_EMBED_COLOR)
-        .setImage(image),
+      new EmbedBuilder().setURL(url).setColor(color).setImage(image),
     ),
   ];
-  const hidden = metadata.photoCount - metadata.photos.length;
   if (hidden > 0) {
     const last = embeds[embeds.length - 1];
     const existing = last.data?.description;
@@ -158,6 +198,8 @@ function buildTwitterCarouselEmbeds(url, metadata) {
 
 module.exports = {
   buildTwitterSpoilerEmbed,
+  buildPixivSpoilerEmbed,
+  buildPixivCarouselEmbeds,
   buildTwitterCarouselEmbeds,
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
