@@ -1702,6 +1702,127 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.equal(outgoing.files, undefined);
   });
 
+  await it("multi-page pixiv work → gallery of phixiv-proxied pages", async () => {
+    _mockFetch = async (input) => {
+      assert.match(String(input), /ajax\/illust\/118216884/);
+      return new Response(
+        JSON.stringify({
+          body: {
+            illustId: "118216884",
+            title: "白毛浮綠水",
+            userName: "KaoWYK",
+            pageCount: 3,
+            xRestrict: 0,
+            urls: {
+              regular:
+                "https://i.pximg.net/img-master/img/2024/04/28/17/13/43/118216884_p0_master1200.jpg",
+            },
+          },
+        }),
+      );
+    };
+    try {
+      const url = "https://www.pixiv.net/artworks/118216884";
+      const [p] = await buildPreviewPayloads([url]);
+      assert.equal(p.content, undefined);
+      assert.equal(p.embeds.length, 3);
+      assert.deepEqual(
+        new Set(p.embeds.map((e) => e.data.url)),
+        new Set([url]),
+      );
+      // i.pximg.net needs a pixiv referer — Discord can only fetch the proxy.
+      assert.deepEqual(
+        p.embeds.map((e) => e.data.image.url),
+        [0, 1, 2].map(
+          (n) =>
+            `https://www.phixiv.net/i/img-master/img/2024/04/28/17/13/43/118216884_p${n}_master1200.jpg`,
+        ),
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("R-18 pixiv work → spoiler card, pages read off phixiv", async () => {
+    const seen = [];
+    _mockFetch = async (input) => {
+      seen.push(String(input));
+      if (String(input).includes("ajax/illust")) {
+        return new Response(
+          JSON.stringify({
+            body: {
+              illustId: "149784500",
+              title: "るるかちゃん",
+              userName: "Drs",
+              pageCount: 2,
+              xRestrict: 1,
+              // Logged out, pixiv hides every image URL of an R-18 work.
+              urls: { regular: null },
+            },
+          }),
+        );
+      }
+      return new Response(
+        '<meta property="og:image" content="https://phixiv.net/i/img-master/img/x/149784500_p0_master1200.jpg" />',
+      );
+    };
+    try {
+      const [p] = await buildPreviewPayloads([
+        "https://www.pixiv.net/artworks/149784500",
+      ]);
+      assert.equal(p.content, undefined);
+      assert.deepEqual(p.spoilerImages, [
+        "https://phixiv.net/i/img-master/img/x/149784500_p0_master1200.jpg",
+        "https://phixiv.net/i/img-master/img/x/149784500_p1_master1200.jpg",
+      ]);
+      assert.match(p.spoilerMissContent, /^🔞 \|\|https:\/\/phixiv/);
+      assert.equal(
+        seen.length,
+        2,
+        "ajax first, phixiv only when it hides URLs",
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("single-page all-ages pixiv work keeps the phixiv unfurl", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          body: {
+            pageCount: 1,
+            xRestrict: 0,
+            urls: {
+              regular: "https://i.pximg.net/img-master/a_p0_master1200.jpg",
+            },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads([
+        "https://www.pixiv.net/artworks/1",
+      ]);
+      assert.ok(p.content.includes("phixiv"));
+      assert.equal(p.embeds, undefined);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("pixiv lookup failure falls back to the phixiv link", async () => {
+    _mockFetch = async () => new Response("nope", { status: 500 });
+    try {
+      const [p] = await buildPreviewPayloads([
+        "https://www.pixiv.net/artworks/1",
+      ]);
+      assert.ok(p.content.includes("phixiv"));
+      assert.ok(Array.isArray(p.recoverUrls));
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
   await it("redd.it short URL → rxddit (regression)", async () => {
     const [p] = await buildPreviewPayloads(["https://redd.it/abc"]);
     assert.ok(
