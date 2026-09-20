@@ -50,8 +50,11 @@ const {
   effectiveMaxBytes,
 } = require("../src/video");
 
-const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
-  require("../src/ai/persona");
+const {
+  buildUserTurn,
+  buildOpenAIMessages,
+  buildGeminiContents,
+} = require("../src/ai/persona");
 
 const {
   EMBED_CONTEXT_MAX_CHARS,
@@ -339,14 +342,18 @@ it("rejects URL, path, port, IP, localhost, and more than three viewers", () => 
   }
 });
 it("fails fast during startup on invalid THREADS_VIEWER_HOSTS", () => {
-  const result = spawnSync(process.execPath, ["-e", "require('./src/config')"], {
-    cwd: path.join(__dirname, ".."),
-    env: {
-      ...process.env,
-      THREADS_VIEWER_HOSTS: "https://viewer.example/path",
+  const result = spawnSync(
+    process.execPath,
+    ["-e", "require('./src/config')"],
+    {
+      cwd: path.join(__dirname, ".."),
+      env: {
+        ...process.env,
+        THREADS_VIEWER_HOSTS: "https://viewer.example/path",
+      },
+      encoding: "utf8",
     },
-    encoding: "utf8",
-  });
+  );
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /invalid Threads viewer host/);
 });
@@ -376,8 +383,8 @@ it("normalizes Instagram posts/reels and strips query tracking", () => {
 });
 it("uses the tested Instagram viewer order and supports legacy aliases", () => {
   assert.deepEqual(DEFAULT_INSTAGRAM_VIEWER_HOSTS, [
-    "instagram7.com",
     "oginstagram.com",
+    "instagram7.com",
     "deinstagram.com",
   ]);
   assert.deepEqual(
@@ -389,11 +396,7 @@ it("uses the tested Instagram viewer order and supports legacy aliases", () => {
       FIXER_INSTAGRAM: "legacy-primary.example",
       FIXER_INSTAGRAM_SECONDARY: "legacy-secondary.example",
     }),
-    [
-      "legacy-primary.example",
-      "legacy-secondary.example",
-      "deinstagram.com",
-    ],
+    ["legacy-primary.example", "legacy-secondary.example", "deinstagram.com"],
   );
 });
 it("rejects unsafe Instagram viewer configuration", () => {
@@ -457,7 +460,14 @@ it("rejects fxtwitter/vxtwitter error stubs, keeps real posts", () => {
   );
   assert.equal(
     isViewerPreviewUseful(
-      [{ data: { title: "vxTwitter", description: "Failed to scan your link!" } }],
+      [
+        {
+          data: {
+            title: "vxTwitter",
+            description: "Failed to scan your link!",
+          },
+        },
+      ],
       "twitter",
     ),
     false,
@@ -489,7 +499,12 @@ it("rejects fxtwitter/vxtwitter error stubs, keeps real posts", () => {
   );
   assert.equal(
     isViewerPreviewUseful(
-      [{ title: "ほんま (@honma_nmn)", image: { url: "https://pbs.twimg.com/a.jpg" } }],
+      [
+        {
+          title: "ほんま (@honma_nmn)",
+          image: { url: "https://pbs.twimg.com/a.jpg" },
+        },
+      ],
       "twitter",
       { requireMedia: true },
     ),
@@ -502,7 +517,12 @@ it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () =
   assert.equal(isViewerPreviewUseful([], "threads"), false);
   assert.equal(
     isViewerPreviewUseful(
-      [{ title: "Threads • Log in", description: "Join Threads to share ideas" }],
+      [
+        {
+          title: "Threads • Log in",
+          description: "Join Threads to share ideas",
+        },
+      ],
       "threads",
     ),
     false,
@@ -662,16 +682,27 @@ it("isContentlessStub does NOT trigger on a real text-only post", () => {
 });
 it("isContentlessStub keeps anything that still carries content", () => {
   assert.equal(
-    isContentlessStub({ title: "Threads", images: ["https://cdn/a.jpg"], imageCount: 1 }),
+    isContentlessStub({
+      title: "Threads",
+      images: ["https://cdn/a.jpg"],
+      imageCount: 1,
+    }),
     false,
   );
   assert.equal(
-    isContentlessStub({ title: "Threads", video: "https://cdn/v.mp4", videoCount: 1 }),
+    isContentlessStub({
+      title: "Threads",
+      video: "https://cdn/v.mp4",
+      videoCount: 1,
+    }),
     false,
   );
   assert.equal(isContentlessStub({ title: "Threads", postText: "嗨" }), false);
   assert.equal(
-    isContentlessStub({ title: "Threads", ancestors: [{ author: "a", text: "b" }] }),
+    isContentlessStub({
+      title: "Threads",
+      ancestors: [{ author: "a", text: "b" }],
+    }),
     false,
   );
 });
@@ -716,7 +747,7 @@ it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {
 it("instagram -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.instagram.com/p/ABC/"),
-    "https://instagram7.com/p/ABC/",
+    "https://oginstagram.com/p/ABC/",
   );
 });
 it("reddit -> rxddit", () => {
@@ -800,10 +831,7 @@ it("isInstagramStoryUrl detects /stories/", () => {
     isInstagramStoryUrl("https://www.instagram.com/stories/foo/123"),
     true,
   );
-  assert.equal(
-    isInstagramStoryUrl("https://www.instagram.com/p/abc/"),
-    false,
-  );
+  assert.equal(isInstagramStoryUrl("https://www.instagram.com/p/abc/"), false);
 });
 it("extractInstagramStoryOwner", () => {
   assert.equal(
@@ -894,7 +922,10 @@ it("replaces newlines and tabs with space", () => {
   assert.equal(sanitizeName("line1\nline2\ttab"), "line1 line2 tab");
 });
 it("escapes angle brackets and quotes to fullwidth", () => {
-  assert.equal(sanitizeName('<script>"hi"</script>'), "＜script＞＂hi＂＜/script＞");
+  assert.equal(
+    sanitizeName('<script>"hi"</script>'),
+    "＜script＞＂hi＂＜/script＞",
+  );
 });
 it("collapses multiple spaces", () => {
   assert.equal(sanitizeName("a   b     c"), "a b c");
@@ -919,20 +950,14 @@ it("neutralizes prompt-injection in nickname", () => {
 console.log("buildUserTurn");
 it("wraps with sender XML when text present", () => {
   const msg = { author: { username: "alice", globalName: null }, member: null };
-  assert.equal(
-    buildUserTurn(msg, "hello"),
-    '<sender name="alice"/>\nhello',
-  );
+  assert.equal(buildUserTurn(msg, "hello"), '<sender name="alice"/>\nhello');
 });
 it("uses member.displayName preferentially", () => {
   const msg = {
     author: { username: "alice", globalName: "Alice G" },
     member: { displayName: "ServerNick" },
   };
-  assert.equal(
-    buildUserTurn(msg, "hi"),
-    '<sender name="ServerNick"/>\nhi',
-  );
+  assert.equal(buildUserTurn(msg, "hi"), '<sender name="ServerNick"/>\nhi');
 });
 it("falls back to globalName then username", () => {
   const msg1 = {
@@ -945,7 +970,10 @@ it("falls back to globalName then username", () => {
 });
 it("uses placeholder when text empty", () => {
   const msg = { author: { username: "alice" }, member: null };
-  assert.match(buildUserTurn(msg, ""), /^<sender name="alice"\/>\n（這個人 @ 了你/);
+  assert.match(
+    buildUserTurn(msg, ""),
+    /^<sender name="alice"\/>\n（這個人 @ 了你/,
+  );
 });
 it("falls back to 使用者 when all names missing", () => {
   const msg = { author: {}, member: null };
@@ -988,17 +1016,20 @@ it("maps assistant -> model and wraps as parts", () => {
 console.log("formatGroupMessage");
 it("extracts and de-duplicates rich embed text fields", () => {
   const text = extractEmbedContext({
-    embeds: [{
-      author: { name: "貼文作者" },
-      title: "貼文標題",
-      description: "相同內容",
-      fields: [
-        { name: "摘要", value: "欄位內容" },
-        { name: "重複", value: "相同內容" },
-      ],
-    }, {
-      description: "相同內容",
-    }],
+    embeds: [
+      {
+        author: { name: "貼文作者" },
+        title: "貼文標題",
+        description: "相同內容",
+        fields: [
+          { name: "摘要", value: "欄位內容" },
+          { name: "重複", value: "相同內容" },
+        ],
+      },
+      {
+        description: "相同內容",
+      },
+    ],
   });
   assert.match(text, /貼文作者/);
   assert.match(text, /貼文標題/);
@@ -1198,10 +1229,7 @@ it("returns [] for missing or unknown guildId", () => {
   assert.deepEqual(getFamiliarityRoster(undefined), []);
   assert.deepEqual(getFamiliarityRoster(null), []);
   assert.deepEqual(getFamiliarityRoster(""), []);
-  assert.deepEqual(
-    getFamiliarityRoster("never-seen-" + Date.now()),
-    [],
-  );
+  assert.deepEqual(getFamiliarityRoster("never-seen-" + Date.now()), []);
 });
 it("recordMessage with missing guildId/userId is a no-op (no throw)", () => {
   resetFamiliarityForTests();
@@ -1470,7 +1498,9 @@ it("replaces known :name: with Discord syntax", () => {
   );
 });
 it("replaces fullwidth-colon :name: variants", () => {
-  const map = new Map([["Waku_kyaru", { id: "1215440196057956442", animated: false }]]);
+  const map = new Map([
+    ["Waku_kyaru", { id: "1215440196057956442", animated: false }],
+  ]);
   assert.equal(
     resolveCustomEmojis("好吃...：Waku_kyaru:", map),
     "好吃...<:Waku_kyaru:1215440196057956442>",
@@ -1694,7 +1724,13 @@ const DISCORD_EPOCH_TEST = 1420070400000;
 const snowflakeForMs = (ms) => String(BigInt(ms - DISCORD_EPOCH_TEST) << 22n);
 it("buildEmojiPromptBlock tags recent + animated emoji and lists new ones first", () => {
   const map = new Map([
-    ["Good_shark", { id: snowflakeForMs(Date.parse("2020-01-01T00:00:00Z")), animated: false }],
+    [
+      "Good_shark",
+      {
+        id: snowflakeForMs(Date.parse("2020-01-01T00:00:00Z")),
+        animated: false,
+      },
+    ],
     ["Waku_fresh", { id: snowflakeForMs(Date.now()), animated: true }],
   ]);
   const block = buildEmojiPromptBlock(map);
@@ -1782,7 +1818,10 @@ it("appendObservations caps observation text at OBSERVATION_MAX_LEN", () => {
       { text: long, confidence: 0.5 },
     ]);
     const p = profileStore.getUserProfile("g1", "u1");
-    assert.equal(p.observations[0].text.length, profileStore.OBSERVATION_MAX_LEN);
+    assert.equal(
+      p.observations[0].text.length,
+      profileStore.OBSERVATION_MAX_LEN,
+    );
   });
 });
 
@@ -1914,7 +1953,13 @@ it("renders the latest 3 loose observations even without a profile", () => {
 console.log("pendingInteractions");
 it("appendPendingInteraction stores capped text", () => {
   withProfileStore(() => {
-    profileStore.appendPendingInteraction("g1", "u1", "Alice", "你好", "嗯…你好…");
+    profileStore.appendPendingInteraction(
+      "g1",
+      "u1",
+      "Alice",
+      "你好",
+      "嗯…你好…",
+    );
     const p = profileStore.getUserProfile("g1", "u1");
     assert.equal(p.pendingInteractions.length, 1);
     assert.equal(p.pendingInteractions[0].userText, "你好");
@@ -1927,8 +1972,14 @@ it("appendPendingInteraction caps text at PENDING_TEXT_MAX_LEN", () => {
     const long = "字".repeat(600);
     profileStore.appendPendingInteraction("g1", "u1", "x", long, long);
     const p = profileStore.getUserProfile("g1", "u1");
-    assert.equal(p.pendingInteractions[0].userText.length, profileStore.PENDING_TEXT_MAX_LEN);
-    assert.equal(p.pendingInteractions[0].assistantText.length, profileStore.PENDING_TEXT_MAX_LEN);
+    assert.equal(
+      p.pendingInteractions[0].userText.length,
+      profileStore.PENDING_TEXT_MAX_LEN,
+    );
+    assert.equal(
+      p.pendingInteractions[0].assistantText.length,
+      profileStore.PENDING_TEXT_MAX_LEN,
+    );
   });
 });
 it("getPendingInteractions returns [] for missing user", () => {
@@ -1985,7 +2036,13 @@ it("shouldExtract false when no pending", () => {
 it("shouldExtract true when pending >= EXTRACT_MIN_COUNT", () => {
   withProfileStore(() => {
     for (let i = 0; i < EXTRACT_MIN_COUNT; i++) {
-      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, `reply${i}`);
+      profileStore.appendPendingInteraction(
+        "g1",
+        "u1",
+        "x",
+        `msg${i}`,
+        `reply${i}`,
+      );
     }
     assert.equal(shouldExtract("g1", "u1"), true);
   });
@@ -2124,16 +2181,25 @@ it("appendPendingInteraction dedups by messageId, not by text", () => {
   withProfileStore(() => {
     // Same message scooped twice → one record.
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m1",
+        source: "passive",
+      }),
       true,
     );
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m1",
+        source: "passive",
+      }),
       false,
     );
     // Same TEXT from a different message → kept (repetition can be a trait).
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m2", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m2",
+        source: "passive",
+      }),
       true,
     );
     // No messageId → never deduped.
@@ -2146,10 +2212,13 @@ it("appendPendingInteraction dedups by messageId, not by text", () => {
 it("appendPendingInteraction records messageId, source, and at", () => {
   withProfileStore(() => {
     profileStore.appendPendingInteraction("g1", "u1", "x", "hi", "yo", {
-      messageId: "m9", source: "direct", at: 12345,
+      messageId: "m9",
+      source: "direct",
+      at: 12345,
     });
     profileStore.appendPendingInteraction("g1", "u1", "x", "[x]: line", "", {
-      messageId: "m10", source: "passive",
+      messageId: "m10",
+      source: "passive",
     });
     const [direct, passive] = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(direct.messageId, "m9");
@@ -2158,7 +2227,9 @@ it("appendPendingInteraction records messageId, source, and at", () => {
     assert.equal(passive.source, "passive");
     assert.ok(passive.at > 0, "missing at falls back to now");
     // Unknown source value normalizes to direct.
-    profileStore.appendPendingInteraction("g1", "u1", "x", "a", "b", { source: "weird" });
+    profileStore.appendPendingInteraction("g1", "u1", "x", "a", "b", {
+      source: "weird",
+    });
     const all = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(all[2].source, "direct");
   });
@@ -2166,7 +2237,9 @@ it("appendPendingInteraction records messageId, source, and at", () => {
 it("appendPendingInteraction caps backlog at PENDING_MAX_COUNT (drops oldest)", () => {
   withProfileStore(() => {
     for (let i = 0; i < profileStore.PENDING_MAX_COUNT + 5; i++) {
-      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, "", { messageId: `m${i}` });
+      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, "", {
+        messageId: `m${i}`,
+      });
     }
     const pending = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(pending.length, profileStore.PENDING_MAX_COUNT);
@@ -2175,9 +2248,17 @@ it("appendPendingInteraction caps backlog at PENDING_MAX_COUNT (drops oldest)", 
 });
 it("listPendingBacklog reports users at/above minCount", () => {
   withProfileStore(() => {
-    profileStore.appendPendingInteraction("g1", "u1", "A", "a", "", { messageId: "m1", at: 100 });
-    profileStore.appendPendingInteraction("g1", "u1", "A", "b", "", { messageId: "m2", at: 200 });
-    profileStore.appendPendingInteraction("g2", "u2", "B", "c", "", { messageId: "m3" });
+    profileStore.appendPendingInteraction("g1", "u1", "A", "a", "", {
+      messageId: "m1",
+      at: 100,
+    });
+    profileStore.appendPendingInteraction("g1", "u1", "A", "b", "", {
+      messageId: "m2",
+      at: 200,
+    });
+    profileStore.appendPendingInteraction("g2", "u2", "B", "c", "", {
+      messageId: "m3",
+    });
     const backlog = profileStore.listPendingBacklog(2);
     assert.equal(backlog.length, 1);
     assert.equal(backlog[0].guildId, "g1");
@@ -2197,10 +2278,17 @@ it("buildExtractionTurns numbers entries and tags direct vs passive", () => {
   assert.match(content, /#1【直接互動】/);
   assert.match(content, /#2【旁聽片段】/);
   assert.match(content, /#3【直接互動】/, "legacy record with reply = direct");
-  assert.match(content, /#4【旁聽片段】/, "legacy record without reply = passive");
+  assert.match(
+    content,
+    /#4【旁聽片段】/,
+    "legacy record without reply = passive",
+  );
 });
 it("parseEvidenceIndices keeps unique positive ints only", () => {
-  assert.deepEqual(parseEvidenceIndices([1, 3, 3, "2", 0, -1, 1.5, "x"]), [1, 3, 2]);
+  assert.deepEqual(
+    parseEvidenceIndices([1, 3, 3, "2", 0, -1, 1.5, "x"]),
+    [1, 3, 2],
+  );
   assert.deepEqual(parseEvidenceIndices("nope"), []);
   assert.deepEqual(parseEvidenceIndices(undefined), []);
 });
@@ -2209,16 +2297,42 @@ it("parseExtractionResult carries evidence indices through", () => {
     '{"observations":[{"text":"常聊棒球","confidence":0.8,"evidence":[1,4]}]}',
   );
   assert.deepEqual(obs[0].evidence, [1, 4]);
-  const noEv = parseExtractionResult('{"observations":[{"text":"x","confidence":0.8}]}');
+  const noEv = parseExtractionResult(
+    '{"observations":[{"text":"x","confidence":0.8}]}',
+  );
   assert.deepEqual(noEv[0].evidence, []);
 });
 it("attachEvidence resolves indices to messageIds and caps confidence", () => {
   const pending = [
-    { userText: "a", assistantText: "r", messageId: "m1", at: 1000, source: "direct" },
-    { userText: "b", assistantText: "", messageId: "m2", at: 2000, source: "passive" },
+    {
+      userText: "a",
+      assistantText: "r",
+      messageId: "m1",
+      at: 1000,
+      source: "direct",
+    },
+    {
+      userText: "b",
+      assistantText: "",
+      messageId: "m2",
+      at: 2000,
+      source: "passive",
+    },
     { userText: "c", assistantText: "", messageId: null, source: "passive" },
-    { userText: "d", assistantText: "r", messageId: "m4", at: 4000, source: "direct" },
-    { userText: "e", assistantText: "", messageId: "m5", at: 5000, source: "passive" },
+    {
+      userText: "d",
+      assistantText: "r",
+      messageId: "m4",
+      at: 4000,
+      source: "direct",
+    },
+    {
+      userText: "e",
+      assistantText: "",
+      messageId: "m5",
+      at: 5000,
+      source: "passive",
+    },
   ];
   const [full, single, none, passiveOnly] = attachEvidence(
     [
@@ -2229,10 +2343,17 @@ it("attachEvidence resolves indices to messageIds and caps confidence", () => {
     ],
     pending,
   );
-  assert.deepEqual(full.evidence.map((e) => e.messageId), ["m1", "m2", "m4"]);
+  assert.deepEqual(
+    full.evidence.map((e) => e.messageId),
+    ["m1", "m2", "m4"],
+  );
   assert.equal(full.confidence, 0.9, "well-evidenced keeps confidence");
   assert.equal(single.confidence, 0.4, "single message capped");
-  assert.equal(none.evidence.length, 0, "null-messageId and out-of-range dropped");
+  assert.equal(
+    none.evidence.length,
+    0,
+    "null-messageId and out-of-range dropped",
+  );
   assert.equal(none.confidence, 0.3, "no evidence capped hardest");
   assert.equal(passiveOnly.confidence, 0.5, "passive-only capped");
 });
@@ -2249,20 +2370,37 @@ it("isStableObservation: 3 distinct messages, or 2 far enough apart", () => {
     "2 messages in one burst",
   );
   assert.equal(
-    isStableObservation({ evidence: [ev("m1", 0), ev("m2", STABLE_TIME_GAP_MS)] }),
+    isStableObservation({
+      evidence: [ev("m1", 0), ev("m2", STABLE_TIME_GAP_MS)],
+    }),
     true,
     "2 messages across time",
   );
   assert.equal(isStableObservation({ evidence: [] }), false);
-  assert.equal(isStableObservation({}), false, "legacy observation without evidence");
+  assert.equal(
+    isStableObservation({}),
+    false,
+    "legacy observation without evidence",
+  );
 });
 it("appendObservations merges same-text observations and pools evidence", () => {
   withProfileStore(() => {
     profileStore.appendObservations("g1", "u1", "x", [
-      { text: "常聊棒球", confidence: 0.4, evidence: [{ messageId: "m1", at: 1, source: "direct" }] },
+      {
+        text: "常聊棒球",
+        confidence: 0.4,
+        evidence: [{ messageId: "m1", at: 1, source: "direct" }],
+      },
     ]);
     profileStore.appendObservations("g1", "u1", "x", [
-      { text: "常聊棒球", confidence: 0.7, evidence: [{ messageId: "m2", at: 2, source: "passive" }, { messageId: "m1", at: 1, source: "direct" }] },
+      {
+        text: "常聊棒球",
+        confidence: 0.7,
+        evidence: [
+          { messageId: "m2", at: 2, source: "passive" },
+          { messageId: "m1", at: 1, source: "direct" },
+        ],
+      },
     ]);
     const p = profileStore.getUserProfile("g1", "u1");
     assert.equal(p.observations.length, 1, "same text merged");
@@ -2280,12 +2418,19 @@ it("buildConsolidationTurns separates stable from under-evidenced observations",
     name: "Alice",
     profile: null,
     observations: [
-      { text: "常聊棒球", confidence: 0.8, evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)] },
+      {
+        text: "常聊棒球",
+        confidence: 0.8,
+        evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)],
+      },
       { text: "問過星座", confidence: 0.6, evidence: [ev("m4", 0)] },
     ],
   });
   const content = turns[0].content;
-  assert.match(content, /已達證據門檻[\s\S]*常聊棒球（信心 0.8，3 則訊息佐證）/);
+  assert.match(
+    content,
+    /已達證據門檻[\s\S]*常聊棒球（信心 0.8，3 則訊息佐證）/,
+  );
   assert.match(content, /證據不足[\s\S]*問過星座（信心 0.6，1 則訊息佐證）/);
   assert.ok(
     content.indexOf("常聊棒球") < content.indexOf("證據不足"),
@@ -2295,7 +2440,9 @@ it("buildConsolidationTurns separates stable from under-evidenced observations",
 it("describeObservationEvidence counts distinct messageIds", () => {
   assert.equal(describeObservationEvidence({}), "無訊息佐證");
   assert.equal(
-    describeObservationEvidence({ evidence: [{ messageId: "m1" }, { messageId: "m1" }, { messageId: "m2" }] }),
+    describeObservationEvidence({
+      evidence: [{ messageId: "m1" }, { messageId: "m1" }, { messageId: "m2" }],
+    }),
     "2 則訊息佐證",
   );
 });
@@ -2303,13 +2450,37 @@ it("personas demand evidence and ban unsupported praise", () => {
   assert.match(EXTRACTION_PERSONA, /evidence 必填/);
   assert.match(EXTRACTION_PERSONA, /旁聽片段/);
   assert.match(EXTRACTION_PERSONA, /中性/);
-  assert.match(EXTRACTION_PERSONA, /裝飾字[\s\S]*不是人格證據/, "nickname decorations excluded");
-  assert.match(CONSOLIDATION_PERSONA, /靈魂人物/, "praise words named as banned examples");
-  assert.match(CONSOLIDATION_PERSONA, /強詞奪理/, "put-down words named as banned examples");
+  assert.match(
+    EXTRACTION_PERSONA,
+    /裝飾字[\s\S]*不是人格證據/,
+    "nickname decorations excluded",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /靈魂人物/,
+    "praise words named as banned examples",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /強詞奪理/,
+    "put-down words named as banned examples",
+  );
   assert.match(CONSOLIDATION_PERSONA, /不可寫成斷言/);
-  assert.match(CONSOLIDATION_PERSONA, /以新觀察為準/, "new evidence outweighs old profile");
-  assert.match(CONSOLIDATION_PERSONA, /說話風格：/, "field-per-line output format defined");
-  assert.match(CONSOLIDATION_PERSONA, /不要[\s\S]*「自稱」/, "nickname must not become 自稱");
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /以新觀察為準/,
+    "new evidence outweighs old profile",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /說話風格：/,
+    "field-per-line output format defined",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /不要[\s\S]*「自稱」/,
+    "nickname must not become 自稱",
+  );
 });
 it("buildConsolidationTurns labels old profile and nickname sections", () => {
   const turns = buildConsolidationTurns({
@@ -2324,9 +2495,12 @@ it("buildConsolidationTurns labels old profile and nickname sections", () => {
 });
 it("setConsolidatedProfile preserves field-per-line newlines", () => {
   withProfileStore(() => {
-    profileStore.appendObservations("g1", "u1", "x", [{ text: "a", confidence: 0.5 }]);
+    profileStore.appendObservations("g1", "u1", "x", [
+      { text: "a", confidence: 0.5 },
+    ]);
     profileStore.setConsolidatedProfile(
-      "g1", "u1",
+      "g1",
+      "u1",
       "說話風格：短句\r\n常聊話題：棒球\n\n  互動偏好：愛開玩笑  \n\x00注意：無",
     );
     const p = profileStore.getUserProfile("g1", "u1");
@@ -2344,19 +2518,51 @@ it("buildUserProfileBlock flattens multi-line profile for prompt injection", () 
     observations: [],
   });
   assert.match(block, /說話風格：短句；常聊話題：棒球/);
-  assert.ok(!/摘要：[^\n]*\n常聊/.test(block), "no raw newline inside the 摘要 bullet");
+  assert.ok(
+    !/摘要：[^\n]*\n常聊/.test(block),
+    "no raw newline inside the 摘要 bullet",
+  );
 });
 it("selectBacklogUsers filters busy users, sorts starved-first, caps count", () => {
   const now = 1_000_000;
   const idle = 10 * 60 * 1000;
   const backlog = [
-    { guildId: "g", userId: "busy", lastPendingAt: now - 1000, lastExtractedAt: 0 },
-    { guildId: "g", userId: "recent", lastPendingAt: now - idle, lastExtractedAt: 500 },
-    { guildId: "g", userId: "starved", lastPendingAt: now - idle, lastExtractedAt: 100 },
-    { guildId: "g", userId: "third", lastPendingAt: now - idle, lastExtractedAt: 300 },
-    { guildId: "g", userId: "fourth", lastPendingAt: now - idle, lastExtractedAt: 400 },
+    {
+      guildId: "g",
+      userId: "busy",
+      lastPendingAt: now - 1000,
+      lastExtractedAt: 0,
+    },
+    {
+      guildId: "g",
+      userId: "recent",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 500,
+    },
+    {
+      guildId: "g",
+      userId: "starved",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 100,
+    },
+    {
+      guildId: "g",
+      userId: "third",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 300,
+    },
+    {
+      guildId: "g",
+      userId: "fourth",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 400,
+    },
   ];
-  const picked = selectBacklogUsers(backlog, { now, maxUsers: 3, minIdleMs: idle });
+  const picked = selectBacklogUsers(backlog, {
+    now,
+    maxUsers: 3,
+    minIdleMs: idle,
+  });
   assert.deepEqual(
     picked.map((b) => b.userId),
     ["starved", "third", "fourth"],
@@ -2383,7 +2589,10 @@ it("getGuildProfile returns null for missing guild", () => {
 });
 it("appendPendingContext stores context snapshot", () => {
   withGuildStore(() => {
-    guildStore.appendPendingContext("g1", "TestGuild", ["[Alice]: hi", "[Bob]: yo"]);
+    guildStore.appendPendingContext("g1", "TestGuild", [
+      "[Alice]: hi",
+      "[Bob]: yo",
+    ]);
     const p = guildStore.getGuildProfile("g1");
     assert.equal(p.pendingContexts.length, 1);
     assert.match(p.pendingContexts[0].text, /Alice.*Bob/s);
@@ -2606,11 +2815,18 @@ it("nameMatchCandidates matches a named third party, ignores unrelated text", ()
     { userId: "u1", name: "力量の小翔_フードコート ver." },
     { userId: "u2", name: "摳捷" },
   ];
-  assert.equal(nameMatchCandidates("幫我模仿小翔", profiles, [])[0]?.userId, "u1");
+  assert.equal(
+    nameMatchCandidates("幫我模仿小翔", profiles, [])[0]?.userId,
+    "u1",
+  );
   assert.equal(nameMatchCandidates("隨便聊聊天氣", profiles, []).length, 0);
 });
 
-function fakeImitMsg({ authorId = "author1", botId = "bot1", mentions = [] } = {}) {
+function fakeImitMsg({
+  authorId = "author1",
+  botId = "bot1",
+  mentions = [],
+} = {}) {
   return {
     client: { user: { id: botId } },
     author: { id: authorId, username: "說話者" },
@@ -2653,7 +2869,13 @@ it("resolveTargets caps at MAX_TARGETS", () => {
     { userId: "u2", name: "濤濤" },
     { userId: "u3", name: "黑寶" },
   ];
-  const t = resolveTargets(fakeImitMsg(), "模仿我 也學小翔 濤濤 黑寶", [], profiles, true);
+  const t = resolveTargets(
+    fakeImitMsg(),
+    "模仿我 也學小翔 濤濤 黑寶",
+    [],
+    profiles,
+    true,
+  );
   assert.ok(t.length <= 2, `expected <=2 targets, got ${t.length}`);
 });
 
@@ -2739,7 +2961,10 @@ function recapMsg({
     createdTimestamp: ts,
     reactions: {
       cache: recapColl(
-        reactions.map(([name, count]) => ({ emoji: { id: null, name }, count })),
+        reactions.map(([name, count]) => ({
+          emoji: { id: null, name },
+          count,
+        })),
       ),
     },
     stickers: recapColl(stickers.map((name) => ({ name }))),
@@ -2775,14 +3000,22 @@ it("recap rich embeds share a hard 3000-character total budget", () => {
   const budget = createRecapEmbedBudget();
   const extracted = [];
   for (let i = 0; i < 10; i++) {
-    extracted.push(consumeRecapEmbedContext(
-      recapMsg({ id: `e${i}`, embeds: [{ description: `${i}${"文".repeat(500)}` }] }),
-      budget,
-    ));
+    extracted.push(
+      consumeRecapEmbedContext(
+        recapMsg({
+          id: `e${i}`,
+          embeds: [{ description: `${i}${"文".repeat(500)}` }],
+        }),
+        budget,
+      ),
+    );
   }
   assert.equal(RECAP_EMBED_TOTAL_MAX_CHARS, 3000);
   assert.ok(extracted.every((text) => text.length <= 400));
-  assert.equal(extracted.reduce((sum, text) => sum + text.length, 0), 3000);
+  assert.equal(
+    extracted.reduce((sum, text) => sum + text.length, 0),
+    3000,
+  );
   assert.equal(budget.remaining, 0);
 });
 
@@ -2810,7 +3043,15 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
     );
   }
   // A different channel's message must never leak into c1's context.
-  msgs.push(recapMsg({ id: "x1", ch: "c2", chName: "蘑菇鳥", ts: 5, content: "別的頻道" }));
+  msgs.push(
+    recapMsg({
+      id: "x1",
+      ch: "c2",
+      chName: "蘑菇鳥",
+      ts: 5,
+      content: "別的頻道",
+    }),
+  );
 
   const stats = buildRecapStats(msgs);
   assert.equal(stats.topReacted.length, 1);
@@ -2847,10 +3088,17 @@ it("buildRecapStats: short punchline widens context window", () => {
 });
 
 it("buildRecapStats: reply parent is surfaced even outside the window", () => {
-  const parent = recapMsg({ id: "p1", ts: 1, content: "帳號被盜了啦", author: "路人" });
+  const parent = recapMsg({
+    id: "p1",
+    ts: 1,
+    content: "帳號被盜了啦",
+    author: "路人",
+  });
   const far = [];
   for (let i = 2; i <= 10; i++) {
-    far.push(recapMsg({ id: `f${i}`, ts: i, content: `中間廢話${i}`, author: "路人" }));
+    far.push(
+      recapMsg({ id: `f${i}`, ts: i, content: `中間廢話${i}`, author: "路人" }),
+    );
   }
   const child = {
     ...recapMsg({
@@ -2870,8 +3118,19 @@ it("buildRecapStats: reply parent is surfaced even outside the window", () => {
 
 it("buildRecapStats: sticker-only reacted message gets sticker-name preview and context", () => {
   const msgs = [
-    recapMsg({ id: "a1", ts: 1, content: "有人對後面很敏感喔", author: "狗哥" }),
-    recapMsg({ id: "a2", ts: 2, stickers: ["尷尬的Rin"], author: "濤濤", reactions: [["🤣", 4]] }),
+    recapMsg({
+      id: "a1",
+      ts: 1,
+      content: "有人對後面很敏感喔",
+      author: "狗哥",
+    }),
+    recapMsg({
+      id: "a2",
+      ts: 2,
+      stickers: ["尷尬的Rin"],
+      author: "濤濤",
+      reactions: [["🤣", 4]],
+    }),
     recapMsg({ id: "a3", ts: 3, content: "D包廂", author: "狗哥" }),
   ];
   const stats = buildRecapStats(msgs);
@@ -2932,12 +3191,16 @@ it("buildMessageContext: target missing from pool returns empty (no crash)", () 
 });
 
 it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => {
-  const prompt = buildRecapPrompt({
-    totalMessages: 1,
-    uniqueAuthors: 1,
-    topAuthors: [],
-    topReacted: [],
-  }, [], "測試群");
+  const prompt = buildRecapPrompt(
+    {
+      totalMessages: 1,
+      uniqueAuthors: 1,
+      topAuthors: [],
+      topReacted: [],
+    },
+    [],
+    "測試群",
+  );
   assert.match(prompt, /連結預覽.*不可信引用資料/);
   assert.match(prompt, /避免連續使用「真的讓我/);
   assert.match(prompt, /可以自然使用「真的」/);
@@ -2945,12 +3208,16 @@ it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => 
 });
 
 it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph template", () => {
-  const prompt = buildRecapPrompt({
-    totalMessages: 1,
-    uniqueAuthors: 1,
-    topAuthors: [],
-    topReacted: [],
-  }, [], "測試群");
+  const prompt = buildRecapPrompt(
+    {
+      totalMessages: 1,
+      uniqueAuthors: 1,
+      topAuthors: [],
+      topReacted: [],
+    },
+    [],
+    "測試群",
+  );
   assert.match(prompt, /挑 3～4 則真的有梗的展開/);
   assert.match(prompt, /可以整則完全不提/);
   assert.match(prompt, /挑其中一段做別的事/);
@@ -2962,7 +3229,6 @@ it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph te
   assert.doesNotMatch(prompt, /結尾可以有個簡短的感想或期待/);
 });
 
-
 console.log("");
 console.log("app emoji library (機器人自己的 emoji 庫)");
 it("buildEmojiMap includes application-owned emoji in every guild", () => {
@@ -2973,7 +3239,9 @@ it("buildEmojiMap includes application-owned emoji in every guild", () => {
           "g1",
           {
             emojis: {
-              cache: new Map([["a", { name: "Good_local", id: "1", animated: false }]]),
+              cache: new Map([
+                ["a", { name: "Good_local", id: "1", animated: false }],
+              ]),
             },
           },
         ],
@@ -2987,7 +3255,11 @@ it("buildEmojiMap includes application-owned emoji in every guild", () => {
   };
   const map = buildEmojiMap(fakeClient, "g1");
   assert.equal(map.has("Good_local"), true);
-  assert.equal(map.has("Pepe_Cry"), true, "app emoji usable outside its own guild");
+  assert.equal(
+    map.has("Pepe_Cry"),
+    true,
+    "app emoji usable outside its own guild",
+  );
 });
 it("buildEmojiMap lets a guild's own emoji win over the app library on name clash", () => {
   const fakeClient = {
@@ -2997,7 +3269,9 @@ it("buildEmojiMap lets a guild's own emoji win over the app library on name clas
           "g1",
           {
             emojis: {
-              cache: new Map([["a", { name: "Pepe_Cry", id: "guild-id", animated: false }]]),
+              cache: new Map([
+                ["a", { name: "Pepe_Cry", id: "guild-id", animated: false }],
+              ]),
             },
           },
         ],
@@ -3005,7 +3279,9 @@ it("buildEmojiMap lets a guild's own emoji win over the app library on name clas
     },
     application: {
       emojis: {
-        cache: new Map([["x", { name: "Pepe_Cry", id: "app-id", animated: false }]]),
+        cache: new Map([
+          ["x", { name: "Pepe_Cry", id: "app-id", animated: false }],
+        ]),
       },
     },
   };
@@ -3020,7 +3296,10 @@ it("buildEmojiMap can leave the app library out (APP_EMOJI_ENABLED=false)", () =
     },
     emojis: { cache: new Map() },
   };
-  assert.equal(buildEmojiMap(fakeClient, null, [], { includeAppEmojis: false }).size, 0);
+  assert.equal(
+    buildEmojiMap(fakeClient, null, [], { includeAppEmojis: false }).size,
+    0,
+  );
   assert.equal(buildEmojiMap(fakeClient).size, 1);
 });
 
@@ -3038,19 +3317,32 @@ it("isPostableGuildSticker rejects unavailable stickers", () => {
 });
 it("mergeStickerSources keeps guild stickers ahead of the bot's own library", () => {
   const library = new Map([
-    ["起床重睡", { kind: "library", name: "起床重睡", file: "/x.png", basename: "x.png" }],
-    ["西寶專屬", { kind: "library", name: "西寶專屬", file: "/y.png", basename: "y.png" }],
+    [
+      "起床重睡",
+      { kind: "library", name: "起床重睡", file: "/x.png", basename: "x.png" },
+    ],
+    [
+      "西寶專屬",
+      { kind: "library", name: "西寶專屬", file: "/y.png", basename: "y.png" },
+    ],
   ]);
   const catalog = mergeStickerSources(guildStickerFixture, library);
   assert.equal(catalog.get("起床重睡").kind, "guild", "群裡有的就用群裡那張");
   assert.equal(catalog.get("西寶專屬").kind, "library");
   assert.equal(catalog.has("掉boost了"), false);
-  assert.equal(catalog.get("沒圖").meaning, "催圖", "falls back to tags for meaning");
+  assert.equal(
+    catalog.get("沒圖").meaning,
+    "催圖",
+    "falls back to tags for meaning",
+  );
 });
 it("buildStickerSendPayload picks sticker id vs file attachment by kind", () => {
-  assert.deepEqual(buildStickerSendPayload({ kind: "guild", id: "s1", name: "a" }), {
-    stickers: ["s1"],
-  });
+  assert.deepEqual(
+    buildStickerSendPayload({ kind: "guild", id: "s1", name: "a" }),
+    {
+      stickers: ["s1"],
+    },
+  );
   const filePayload = buildStickerSendPayload({
     kind: "library",
     name: "b",
@@ -3062,7 +3354,9 @@ it("buildStickerSendPayload picks sticker id vs file attachment by kind", () => 
   assert.equal(buildStickerSendPayload(null), null);
 });
 it("loadStickerLibrary reads images + index.json and skips junk", () => {
-  const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "dspb-stickers-"));
+  const dir = fs.mkdtempSync(
+    path.join(require("node:os").tmpdir(), "dspb-stickers-"),
+  );
   fs.writeFileSync(path.join(dir, "wakeup.png"), "x");
   fs.writeFileSync(path.join(dir, "plain.gif"), "x");
   fs.writeFileSync(path.join(dir, "notes.txt"), "x");
@@ -3093,13 +3387,22 @@ console.log("");
 console.log("extractSticker");
 const catalogFixture = mergeStickerSources(guildStickerFixture, new Map());
 it("pulls [貼圖:name] out of the reply and returns the sticker", () => {
-  const out = extractSticker("欸…好啦我也丟一張 [貼圖:起床重睡]", catalogFixture);
+  const out = extractSticker(
+    "欸…好啦我也丟一張 [貼圖:起床重睡]",
+    catalogFixture,
+  );
   assert.equal(out.text, "欸…好啦我也丟一張");
   assert.equal(out.sticker.id, "s1");
 });
 it("accepts fullwidth brackets and colons", () => {
-  assert.equal(extractSticker("【貼圖：起床重睡】", catalogFixture).sticker.id, "s1");
-  assert.equal(extractSticker("［sticker:起床重睡］", catalogFixture).sticker.id, "s1");
+  assert.equal(
+    extractSticker("【貼圖：起床重睡】", catalogFixture).sticker.id,
+    "s1",
+  );
+  assert.equal(
+    extractSticker("［sticker:起床重睡］", catalogFixture).sticker.id,
+    "s1",
+  );
 });
 it("matches NFD-normalized and case-shifted names", () => {
   const catalog = mergeStickerSources(
@@ -3108,7 +3411,10 @@ it("matches NFD-normalized and case-shifted names", () => {
   );
   assert.equal(extractSticker("[貼圖:cmonBRUH]", catalog).sticker.id, "s9");
   const nfd = "起床重睡".normalize("NFD");
-  assert.equal(extractSticker(`[貼圖:${nfd}]`, catalogFixture).sticker.id, "s1");
+  assert.equal(
+    extractSticker(`[貼圖:${nfd}]`, catalogFixture).sticker.id,
+    "s1",
+  );
 });
 it("drops an invented sticker name instead of leaking the token", () => {
   const out = extractSticker("哈哈 [貼圖:我亂編的]", catalogFixture);
@@ -3182,7 +3488,10 @@ it("extracts the shortcode only from canonical post URLs", () => {
   );
   // Share links are canonicalised by resolveThreadsUrl before we are called;
   // anything still non-canonical here must be a miss, not a bad API call.
-  assert.equal(extractPostCode("https://www.threads.com/share/GghmtW2ch/"), null);
+  assert.equal(
+    extractPostCode("https://www.threads.com/share/GghmtW2ch/"),
+    null,
+  );
   assert.equal(extractPostCode("https://www.threads.com/@a"), null);
   assert.equal(extractPostCode("not a url"), null);
 });
@@ -3192,7 +3501,9 @@ it("shapes a video-only post so buildThreadsPayload takes the video branch", () 
       user: { username: "victor31429" },
       caption: { text: "哈哈哈哈" },
       video_versions: [{ url: "https://cdn.example/v.mp4" }],
-      image_versions2: { candidates: [{ url: "https://cdn.example/cover.jpg" }] },
+      image_versions2: {
+        candidates: [{ url: "https://cdn.example/cover.jpg" }],
+      },
     },
     "DdC2uuQk5DD",
   );
@@ -3212,9 +3523,15 @@ it("keeps a MIXED carousel at imageCount > 1 so it stays a gallery", () => {
       carousel_media: [
         {
           video_versions: [{ url: "https://cdn.example/v.mp4" }],
-          image_versions2: { candidates: [{ url: "https://cdn.example/1.jpg" }] },
+          image_versions2: {
+            candidates: [{ url: "https://cdn.example/1.jpg" }],
+          },
         },
-        { image_versions2: { candidates: [{ url: "https://cdn.example/2.jpg" }] } },
+        {
+          image_versions2: {
+            candidates: [{ url: "https://cdn.example/2.jpg" }],
+          },
+        },
       ],
     },
     "DdF69WtkupI",
@@ -3280,7 +3597,11 @@ it("misses rather than previewing the root when the linked post is absent", () =
   // Rendering the root instead would silently show the wrong content, so this
   // has to fall through to the probe.
   const json = {
-    data: { data: { edges: [{ node: { thread_items: [{ post: { code: "ROOT" } }] } }] } },
+    data: {
+      data: {
+        edges: [{ node: { thread_items: [{ post: { code: "ROOT" } }] } }],
+      },
+    },
   };
   assert.equal(findThread(json, "MISSING"), null);
   assert.equal(findThread({}, "ROOT"), null);
@@ -3320,7 +3641,11 @@ let bahamutSessionAsyncCases;
   it("pickSessionCookies needs both BAHAENUR and BAHARUNE", () => {
     const { pickSessionCookies } = freshSession({});
     assert.deepEqual(
-      pickSessionCookies(["BAHAENUR=a; Path=/", "BAHARUNE=b; domain=.gamer.com.tw", "ckAPP_VCODE=deleted"]),
+      pickSessionCookies([
+        "BAHAENUR=a; Path=/",
+        "BAHARUNE=b; domain=.gamer.com.tw",
+        "ckAPP_VCODE=deleted",
+      ]),
       { BAHAENUR: "a", BAHARUNE: "b" },
     );
     assert.equal(pickSessionCookies(["BAHAENUR=a", "BAHAENUR=c"]), null);
@@ -3346,49 +3671,87 @@ let bahamutSessionAsyncCases;
   };
 
   const asyncCases = [
-    ["unconfigured → null without touching the network", async () => {
-      const { getBahamutSessionCookies } = freshSession({});
-      await withFetch(async () => { throw new Error("must not fetch"); }, async () => {
-        assert.equal(await getBahamutSessionCookies(), null);
-      });
-    }],
-    ["logs in once, caches, sends the app vcode cookie", async () => {
-      const { getBahamutSessionCookies } = freshSession({ BAHA_USER_ID: "u", BAHA_PASSWORD: "p" });
-      const calls = [];
-      await withFetch(async (url, init) => {
-        calls.push({ url, init });
-        return loginResponse(["BAHAENUR=a; Path=/", "BAHARUNE=b; Path=/"]);
-      }, async () => {
-        const [first, second] = await Promise.all([getBahamutSessionCookies(), getBahamutSessionCookies()]);
-        assert.deepEqual(first, { BAHAENUR: "a", BAHARUNE: "b" });
-        assert.equal(second, first);
-        assert.deepEqual(await getBahamutSessionCookies(), first);
-        // 剛登入過的 force 不重登（帳號沒資格時別每個連結都撞登入 API）
-        assert.equal(await getBahamutSessionCookies({ force: true }), first);
-      });
-      assert.equal(calls.length, 1);
-      assert.match(calls[0].url, /api\.gamer\.com\.tw\/mobile_app\/user\/v3\/do_login\.php/);
-      assert.equal(calls[0].init.headers.cookie, "ckAPP_VCODE=9487");
-      assert.equal(calls[0].init.body.get("uid"), "u");
-    }],
-    ["bad password → null, then cooldown stops retry storms", async () => {
-      const { getBahamutSessionCookies } = freshSession({ BAHA_USER_ID: "u", BAHA_PASSWORD: "bad" });
-      let calls = 0;
-      const origWarn = console.warn;
-      console.warn = () => {};
-      try {
-        await withFetch(async () => {
-          calls += 1;
-          return loginResponse(["ckAPP_VCODE=deleted"], '{"code":0,"message":"帳號、密碼或驗證碼錯誤！"}');
-        }, async () => {
-          assert.equal(await getBahamutSessionCookies(), null);
-          assert.equal(await getBahamutSessionCookies(), null);
+    [
+      "unconfigured → null without touching the network",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({});
+        await withFetch(
+          async () => {
+            throw new Error("must not fetch");
+          },
+          async () => {
+            assert.equal(await getBahamutSessionCookies(), null);
+          },
+        );
+      },
+    ],
+    [
+      "logs in once, caches, sends the app vcode cookie",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({
+          BAHA_USER_ID: "u",
+          BAHA_PASSWORD: "p",
         });
-      } finally {
-        console.warn = origWarn;
-      }
-      assert.equal(calls, 1);
-    }],
+        const calls = [];
+        await withFetch(
+          async (url, init) => {
+            calls.push({ url, init });
+            return loginResponse(["BAHAENUR=a; Path=/", "BAHARUNE=b; Path=/"]);
+          },
+          async () => {
+            const [first, second] = await Promise.all([
+              getBahamutSessionCookies(),
+              getBahamutSessionCookies(),
+            ]);
+            assert.deepEqual(first, { BAHAENUR: "a", BAHARUNE: "b" });
+            assert.equal(second, first);
+            assert.deepEqual(await getBahamutSessionCookies(), first);
+            // 剛登入過的 force 不重登（帳號沒資格時別每個連結都撞登入 API）
+            assert.equal(
+              await getBahamutSessionCookies({ force: true }),
+              first,
+            );
+          },
+        );
+        assert.equal(calls.length, 1);
+        assert.match(
+          calls[0].url,
+          /api\.gamer\.com\.tw\/mobile_app\/user\/v3\/do_login\.php/,
+        );
+        assert.equal(calls[0].init.headers.cookie, "ckAPP_VCODE=9487");
+        assert.equal(calls[0].init.body.get("uid"), "u");
+      },
+    ],
+    [
+      "bad password → null, then cooldown stops retry storms",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({
+          BAHA_USER_ID: "u",
+          BAHA_PASSWORD: "bad",
+        });
+        let calls = 0;
+        const origWarn = console.warn;
+        console.warn = () => {};
+        try {
+          await withFetch(
+            async () => {
+              calls += 1;
+              return loginResponse(
+                ["ckAPP_VCODE=deleted"],
+                '{"code":0,"message":"帳號、密碼或驗證碼錯誤！"}',
+              );
+            },
+            async () => {
+              assert.equal(await getBahamutSessionCookies(), null);
+              assert.equal(await getBahamutSessionCookies(), null);
+            },
+          );
+        } finally {
+          console.warn = origWarn;
+        }
+        assert.equal(calls, 1);
+      },
+    ],
   ];
   bahamutSessionAsyncCases = { asyncCases, reset: () => freshSession({}) };
 }
@@ -3469,8 +3832,14 @@ let bahamutSessionAsyncCases;
     );
     // 年齡牆的落點、看板列表、別的站都不是文章頁 → 交回 probe
     assert.equal(isPttArticleUrl("https://www.ptt.cc/ask/over18"), false);
-    assert.equal(isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/index.html"), false);
-    assert.equal(isPttArticleUrl("https://example.com/bbs/X/M.1.A.2.html"), false);
+    assert.equal(
+      isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/index.html"),
+      false,
+    );
+    assert.equal(
+      isPttArticleUrl("https://example.com/bbs/X/M.1.A.2.html"),
+      false,
+    );
   });
 }
 
@@ -3494,18 +3863,27 @@ let bahamutSessionAsyncCases;
   it("htmlToText：只有 &nbsp; 的排版行整行丟掉", () => {
     // 刻意與瀏覽器不同：innerText 會把 nbsp 當成不可收合的空白，留下一行空白。
     // 那種行在 embed 裡只是雜訊，而且會逃過 trimText 的空行收斂，所以直接丟掉。
-    assert.equal(htmlToText("<div>a</div><div>&nbsp;</div><div>b</div>").trim(), "a\nb");
+    assert.equal(
+      htmlToText("<div>a</div><div>&nbsp;</div><div>b</div>").trim(),
+      "a\nb",
+    );
   });
   it("htmlToText：script / style 不進內文", () => {
     assert.equal(
-      htmlToText("<div>a</div><script>var x=1;</script><style>.b{}</style>").trim(),
+      htmlToText(
+        "<div>a</div><script>var x=1;</script><style>.b{}</style>",
+      ).trim(),
       "a",
     );
   });
   it("extractElementHtml 認得巢狀同名標籤", () => {
-    const html = '<div class="wrap"><div class="inner">x</div>y</div><div>z</div>';
+    const html =
+      '<div class="wrap"><div class="inner">x</div>y</div><div>z</div>';
     // 非貪婪 regex 會停在第一個 </div>，只拿到 <div class="inner">x
-    assert.equal(extractElementHtml(html, "wrap"), '<div class="inner">x</div>y');
+    assert.equal(
+      extractElementHtml(html, "wrap"),
+      '<div class="inner">x</div>y',
+    );
     assert.equal(extractElementText(html, "wrap"), "x\ny");
     assert.equal(extractElementHtml(html, "nope"), null);
   });
@@ -3526,7 +3904,10 @@ let bahamutSessionAsyncCases;
     isBahamutHost,
   } = require("../src/bahamut-fetch");
 
-  const buildBahamutHtml = ({ body, ogImage = "https://p2.bahamut.com.tw/x.PNG" } = {}) =>
+  const buildBahamutHtml = ({
+    body,
+    ogImage = "https://p2.bahamut.com.tw/x.PNG",
+  } = {}) =>
     [
       "<html><head>",
       "<title>【閒聊】測試標題 @測試板 哈啦板 - 巴哈姆特</title>",
@@ -3553,7 +3934,10 @@ let bahamutSessionAsyncCases;
     ].join("");
 
   it("stripSiteSuffix 只砍站名後綴", () => {
-    assert.equal(stripSiteSuffix("【閒聊】標題 @測試板 哈啦板 - 巴哈姆特"), "【閒聊】標題");
+    assert.equal(
+      stripSiteSuffix("【閒聊】標題 @測試板 哈啦板 - 巴哈姆特"),
+      "【閒聊】標題",
+    );
     // 沒有站名後綴的「@某某」結尾標題不能被誤砍
     assert.equal(stripSiteSuffix("致敬 @某某"), "致敬 @某某");
     assert.equal(stripSiteSuffix(null), null);
@@ -3580,7 +3964,9 @@ let bahamutSessionAsyncCases;
           '<iframe src="https://www.youtube-nocookie.com/embed/sbC8x8WwZ58"></iframe>',
       }),
     );
-    assert.deepEqual(meta.videoUrls, ["https://www.youtube.com/watch?v=sbC8x8WwZ58"]);
+    assert.deepEqual(meta.videoUrls, [
+      "https://www.youtube.com/watch?v=sbC8x8WwZ58",
+    ]);
   });
   it("parseBahamutHtml 丟掉推文佔位（瀏覽器會換成 iframe 的那塊）", () => {
     const meta = parseBahamutHtml(
@@ -3612,7 +3998,10 @@ let bahamutSessionAsyncCases;
   });
   it("isBahamutHost 只認 gamer 的兩個子網域", () => {
     assert.equal(isBahamutHost("https://forum.gamer.com.tw/C.php?bsn=1"), true);
-    assert.equal(isBahamutHost("https://m.gamer.com.tw/forum/C.php?bsn=1"), true);
+    assert.equal(
+      isBahamutHost("https://m.gamer.com.tw/forum/C.php?bsn=1"),
+      true,
+    );
     assert.equal(isBahamutHost("https://example.com/C.php"), false);
     assert.equal(isBahamutHost("not a url"), false);
   });

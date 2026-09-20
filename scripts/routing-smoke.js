@@ -1235,9 +1235,9 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
     const s = shapeOf(p);
     assert.equal(s.contentStartsWithHttp, true);
-    assert.equal(s.contentText, "https://instagram7.com/reel/DcA0yXWMF4E/");
+    assert.equal(s.contentText, "https://oginstagram.com/reel/DcA0yXWMF4E/");
     assert.deepEqual(p.fallbackContents, [
-      "https://oginstagram.com/reel/DcA0yXWMF4E/",
+      "https://instagram7.com/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
     ]);
     assert.equal(p.viewerValidation, "instagram");

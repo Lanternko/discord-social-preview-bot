@@ -23,13 +23,18 @@ function parseCsvEnv(name, defaultValue = []) {
 }
 
 const DEFAULT_THREADS_VIEWER_HOSTS = ["fzthreads.com", "fixthreads.seria.moe"];
-// Ordered by bot.log outcomes since 2026-08-31 (264 previews): instagram7 won
-// ~68%, deinstagram 23, fxig only 9 — so fxig was dropped for oginstagram,
-// which sits behind a Cloudflare challenge for our host but lets Discord's
-// unfurler through (a Discord-side viewer only).
+// Ordered by what DISCORD's unfurler gets back, which is not what our host
+// sees: oginstagram and instagram7 both serve Discord, but instagram7 now
+// answers a photo post with the Instagram logo as og:image, so Discord renders
+// a picture-less card — 8/8 sampled posts came back with real media on
+// oginstagram (2026-09-20), against 0/5 photo posts on instagram7. Both are
+// Discord-side viewers: oginstagram sits behind a Cloudflare challenge for our
+// host and instagram7 403s us, so neither can be checked by fetching it here —
+// the earlier ordering (instagram7 first, from 2026-08-31 bot.log wins) made
+// nearly every photo link take the 5s empty-embed detour to this one.
 const DEFAULT_INSTAGRAM_VIEWER_HOSTS = [
-  "instagram7.com",
   "oginstagram.com",
+  "instagram7.com",
   "deinstagram.com",
 ];
 // Hosts the bot itself fetches for OG recovery once every viewer unfurl came
