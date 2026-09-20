@@ -1505,6 +1505,73 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
+  await it("multi-image X post → gallery of embeds, no download", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            text: "body",
+            author: { name: "a", screen_name: "a" },
+            media: {
+              all: [
+                { type: "photo", url: "https://pbs.twimg.com/media/a.jpg" },
+                { type: "photo", url: "https://pbs.twimg.com/media/b.jpg" },
+                { type: "photo", url: "https://pbs.twimg.com/media/c.jpg" },
+              ],
+            },
+          },
+        }),
+      );
+    try {
+      const url = "https://x.com/a/status/42";
+      const [p] = await buildPreviewPayloads([url]);
+      assert.equal(p.content, undefined);
+      assert.equal(p.spoilerImages, undefined);
+      assert.equal(p.embeds.length, 3);
+      // One album: Discord groups embeds that share a URL.
+      assert.deepEqual(
+        new Set(p.embeds.map((e) => e.data.url)),
+        new Set([url]),
+      );
+      assert.deepEqual(
+        p.embeds.map((e) => e.data.image.url),
+        [
+          "https://pbs.twimg.com/media/a.jpg?name=large",
+          "https://pbs.twimg.com/media/b.jpg?name=large",
+          "https://pbs.twimg.com/media/c.jpg?name=large",
+        ],
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("single-image and video posts stay on the fixer unfurl", async () => {
+    const tweet = (all) => async () =>
+      new Response(
+        JSON.stringify({
+          tweet: { author: { name: "a", screen_name: "a" }, media: { all } },
+        }),
+      );
+    try {
+      _mockFetch = tweet([
+        { type: "photo", url: "https://pbs.twimg.com/media/a.jpg" },
+      ]);
+      const [single] = await buildPreviewPayloads(["https://x.com/a/status/1"]);
+      assert.ok(single.content.includes("fxtwitter"));
+      // A post with video keeps the fixer's playable player.
+      _mockFetch = tweet([
+        { type: "photo", url: "https://pbs.twimg.com/media/a.jpg" },
+        { type: "video", url: "https://video.example/v.mp4" },
+      ]);
+      const [mixed] = await buildPreviewPayloads(["https://x.com/a/status/2"]);
+      assert.ok(mixed.content.includes("fxtwitter"));
+      assert.equal(mixed.embeds, undefined);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
   await it("sensitive X post → own spoiler card with every image", async () => {
     _mockFetch = async () =>
       new Response(

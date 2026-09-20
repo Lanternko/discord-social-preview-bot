@@ -1,4 +1,4 @@
-const { TWEET_SPOILER_MAX_IMAGES } = require("../config");
+const { TWEET_MAX_IMAGES } = require("../config");
 
 const TWEET_LOOKUP_TIMEOUT_MS = 3000;
 const LOOKUP_RETRY_DELAY_MS = 400;
@@ -43,7 +43,7 @@ async function lookupTweet(statusId) {
       // hide a thumbnail, so sensitive video posts keep the fixer chain.
       photos: media
         .filter((item) => item.type === "photo")
-        .slice(0, TWEET_SPOILER_MAX_IMAGES)
+        .slice(0, TWEET_MAX_IMAGES)
         .map((item) => toLargePhotoUrl(item.url)),
       photoCount: media.filter((item) => item.type === "photo").length,
       hasNonPhotoMedia: media.some((item) => item.type !== "photo"),

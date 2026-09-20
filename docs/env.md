@@ -43,7 +43,7 @@
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
 | `PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS` | `2500` | 第一次讀不到媒體時，最多再輪詢多久等 `<video>` 掛上。Threads 的 video 元素比 DOMContentLoaded 晚 ~0.3–1.5s，且**不吐 og:video**，DOM 是唯一來源。純圖貼文最多多花這麼久 |
 | `TWEET_SPOILER_ENABLED` | `true` | X 的 R18（`possibly_sensitive`）貼文改用西寶自製卡＋`SPOILER_` 打碼附件。設 `false` 全部走 fixer 連結（圖不打碼） |
-| `TWEET_SPOILER_MAX_IMAGES` | `4` | 一則最多上傳幾張（Twitter 單則上限就是 4）。被截掉的以「還有 N 張」提示 |
+| `TWEET_MAX_IMAGES` | `4` | 一則 X 貼文最多顯示幾張（Twitter 單則上限就是 4），打碼卡與多圖輪播共用。被截掉的以「還有 N 張」提示 |
 | `VIDEO_ATTACHMENT_ENABLED` | `true` | 主開關。Threads 影片 / 含影片的多圖貼文會下載 mp4 → 當 Discord 附件上傳（可播放）。設 `false` 全關，一律退回 fixer |
 | `VIDEO_ATTACHMENT_GUILD_IDS` | —（空 = 全部） | 逗號分隔白名單。空 = 所有伺服器都能上傳影片（仍受下方上限保護）；填了就只有這些 guild 能用，其餘走 fixer |
 | `VIDEO_ATTACHMENT_MAX_BYTES` | `0`（自動） | `0` = 用該伺服器 boost tier 的 Discord 上傳上限（25 / 50 / 100 MiB）。填正整數再往下 clamp，永遠不超過伺服器上限 |
