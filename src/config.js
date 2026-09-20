@@ -308,10 +308,9 @@ module.exports = {
   // as spoilered attachments; Twitter allows at most 4 images per post.
   TWEET_SPOILER_ENABLED:
     (process.env.TWEET_SPOILER_ENABLED || "true").toLowerCase() === "true",
-  TWEET_SPOILER_MAX_IMAGES: Math.min(
-    4,
-    parsePositiveIntEnv("TWEET_SPOILER_MAX_IMAGES", 4),
-  ),
+  // Both X image paths (spoiler card, carousel) share this cap; Twitter
+  // allows at most 4 images per post.
+  TWEET_MAX_IMAGES: Math.min(4, parsePositiveIntEnv("TWEET_MAX_IMAGES", 4)),
   VIDEO_ATTACHMENT_ENABLED:
     (process.env.VIDEO_ATTACHMENT_ENABLED || "true").toLowerCase() === "true",
   // Empty = every guild may use it (still bounded by the caps below). Set a

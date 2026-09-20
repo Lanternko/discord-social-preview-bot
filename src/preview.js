@@ -17,7 +17,10 @@ const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
 const { fetchTweetMeta } = require("./platforms/twitter");
-const { buildTwitterSpoilerEmbed } = require("./embeds");
+const {
+  buildTwitterSpoilerEmbed,
+  buildTwitterCarouselEmbeds,
+} = require("./embeds");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
 
@@ -74,6 +77,11 @@ async function buildTwitterPayload(url) {
   if (TWEET_SPOILER_ENABLED && meta?.sensitive && meta.photos.length > 0) {
     return buildSensitiveTwitterPayload(url, meta, secondaryUrl);
   }
+  // Multi-image posts only: a single image already unfurls fine through the
+  // fixer, and a post with video keeps the fixer's playable player.
+  if (meta && !meta.hasNonPhotoMedia && meta.photos.length > 1) {
+    return buildTwitterCarouselPayload(url, meta);
+  }
   const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
   return {
     ...payload,
@@ -102,6 +110,18 @@ function buildSensitiveTwitterPayload(url, meta, secondaryUrl) {
     spoilerImages: meta.photos,
     spoilerContent: hint ? hint.trimStart() : null,
     spoilerMissContent: `🔞 ||${secondaryUrl}||`,
+    sourceUrl: url,
+  };
+}
+
+// Every photo of a multi-image post, as the bot's own gallery. Nothing is
+// downloaded — the embeds point Discord at the images.
+function buildTwitterCarouselPayload(url, meta) {
+  console.log(
+    `[twitter] carousel images=${meta.photos.length}/${meta.photoCount} ${url}`,
+  );
+  return {
+    embeds: buildTwitterCarouselEmbeds(url, meta),
     sourceUrl: url,
   };
 }

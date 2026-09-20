@@ -95,14 +95,16 @@ function buildBilibiliEmbed(url, metadata) {
   return embed;
 }
 
-// The card for a sensitive X post: author + avatar, the post text, and no
-// link unfurl — the images ride below as spoilered attachments, so nothing
-// explicit renders until someone chooses to look. No engagement counts.
-function buildTwitterSpoilerEmbed(url, metadata) {
+const TWITTER_EMBED_COLOR = 0x1da1f2;
+
+// Author (with avatar) + post text, linked to the post. The shared body of
+// both bot-built X cards; what rides below it differs — spoilered attachments
+// for a sensitive post, a gallery of embeds for a multi-image one.
+function buildTwitterPostEmbed(url, metadata, footerText = "X (Twitter)") {
   const embed = new EmbedBuilder()
-    .setColor(0x1da1f2)
+    .setColor(TWITTER_EMBED_COLOR)
     .setURL(url)
-    .setFooter({ text: "X (Twitter) · 🔞 已打碼" });
+    .setFooter({ text: footerText });
 
   const handle = metadata.authorHandle ? `@${metadata.authorHandle}` : "";
   const name = [metadata.authorName, handle && `(${handle})`]
@@ -119,8 +121,44 @@ function buildTwitterSpoilerEmbed(url, metadata) {
   return embed;
 }
 
+// The card for a sensitive X post: no link unfurl, no engagement counts — the
+// images ride below as spoilered attachments, so nothing explicit renders
+// until someone chooses to look.
+function buildTwitterSpoilerEmbed(url, metadata) {
+  return buildTwitterPostEmbed(url, metadata, "X (Twitter) · 🔞 已打碼");
+}
+
+// A multi-image X post as the bot's own gallery: one embed per photo, all
+// sharing the post URL so Discord groups them into a single album. The images
+// stay remote (pbs.twimg.com) — Discord fetches them, the bot uploads nothing.
+// A fixer unfurl can only ever show one image: fxtwitter mosaics them into a
+// single tile, vxtwitter renders a combined collage, and neither gives the
+// full-size originals.
+function buildTwitterCarouselEmbeds(url, metadata) {
+  const [first, ...rest] = metadata.photos;
+  const firstEmbed = buildTwitterPostEmbed(url, metadata).setImage(first);
+  const embeds = [
+    firstEmbed,
+    ...rest.map((image) =>
+      new EmbedBuilder()
+        .setURL(url)
+        .setColor(TWITTER_EMBED_COLOR)
+        .setImage(image),
+    ),
+  ];
+  const hidden = metadata.photoCount - metadata.photos.length;
+  if (hidden > 0) {
+    const last = embeds[embeds.length - 1];
+    const existing = last.data?.description;
+    const hint = `... 還有 ${hidden} 張`;
+    last.setDescription(existing ? `${existing}\n\n${hint}` : hint);
+  }
+  return embeds;
+}
+
 module.exports = {
   buildTwitterSpoilerEmbed,
+  buildTwitterCarouselEmbeds,
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
   buildThreadsCarouselEmbeds,
