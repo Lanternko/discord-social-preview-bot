@@ -7,6 +7,7 @@ const {
 } = require("./config");
 const { tryRecoverEmbedFromUrls } = require("./og-fallback");
 const { fetchVideoAttachment } = require("./video");
+const { fetchSpoilerImageAttachments } = require("./image-attachment");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -122,9 +123,7 @@ function readEmbedValue(embed, key) {
 
 function isUsefulThreadsViewerEmbed(embed) {
   const title = String(readEmbedValue(embed, "title") || "").trim();
-  const description = String(
-    readEmbedValue(embed, "description") || "",
-  ).trim();
+  const description = String(readEmbedValue(embed, "description") || "").trim();
   const author = String(readEmbedValue(embed, "author")?.name || "").trim();
   const fieldText = (readEmbedValue(embed, "fields") || [])
     .flatMap((field) => [field?.name, field?.value])
@@ -144,8 +143,8 @@ function isUsefulThreadsViewerEmbed(embed) {
 
   const hasMedia = Boolean(
     readEmbedValue(embed, "image") ||
-      readEmbedValue(embed, "thumbnail") ||
-      readEmbedValue(embed, "video"),
+    readEmbedValue(embed, "thumbnail") ||
+    readEmbedValue(embed, "video"),
   );
   const meaningfulText = [title, description, author, fieldText].some(
     (value) => value && !/^threads?$/i.test(value),
@@ -156,9 +155,7 @@ function isUsefulThreadsViewerEmbed(embed) {
 
 function isUsefulInstagramViewerEmbed(embed) {
   const title = String(readEmbedValue(embed, "title") || "").trim();
-  const description = String(
-    readEmbedValue(embed, "description") || "",
-  ).trim();
+  const description = String(readEmbedValue(embed, "description") || "").trim();
   const author = String(readEmbedValue(embed, "author")?.name || "").trim();
   const fieldText = (readEmbedValue(embed, "fields") || [])
     .flatMap((field) => [field?.name, field?.value])
@@ -182,8 +179,8 @@ function isUsefulInstagramViewerEmbed(embed) {
 
   const hasMedia = Boolean(
     readEmbedValue(embed, "image") ||
-      readEmbedValue(embed, "thumbnail") ||
-      readEmbedValue(embed, "video"),
+    readEmbedValue(embed, "thumbnail") ||
+    readEmbedValue(embed, "video"),
   );
   const meaningfulText = [title, description, author, fieldText].some(
     (value) =>
@@ -200,9 +197,7 @@ function isUsefulInstagramViewerEmbed(embed) {
 // fxtwitter also sometimes drops a post's media, leaving just the "Name
 // (@handle)" title — useless with no body, and wrong when the post HAS media.
 function isUsefulTwitterViewerEmbed(embed, { requireMedia = false } = {}) {
-  const description = String(
-    readEmbedValue(embed, "description") || "",
-  ).trim();
+  const description = String(readEmbedValue(embed, "description") || "").trim();
   const visibleText = [readEmbedValue(embed, "title"), description]
     .filter(Boolean)
     .join(" ");
@@ -215,8 +210,8 @@ function isUsefulTwitterViewerEmbed(embed, { requireMedia = false } = {}) {
   }
   const hasMedia = Boolean(
     readEmbedValue(embed, "image") ||
-      readEmbedValue(embed, "thumbnail") ||
-      readEmbedValue(embed, "video"),
+    readEmbedValue(embed, "thumbnail") ||
+    readEmbedValue(embed, "video"),
   );
   if (requireMedia) return hasMedia;
   return hasMedia || Boolean(description);
@@ -250,8 +245,44 @@ function isViewerPreviewUseful(
 // URL to swap in instead: Discord unfurls the fixer's og:video by streaming
 // the remote mp4, so a video over the guild's upload cap still gets a native
 // player. Returns the message body to send.
+// A payload may instead carry `spoilerImages` (sensitive X post): download
+// them and upload as SPOILER_ attachments under the bot's own card, so nothing
+// explicit renders until a reader opens it. On any miss the payload falls back
+// to `spoilerMissContent` — the fixer link in spoiler bars, which makes Discord
+// blur its own unfurl.
+async function resolveSpoilerImages(base, message, options = {}) {
+  const urls = base.spoilerImages;
+  const missContent = base.spoilerMissContent;
+  const spoilerContent = base.spoilerContent;
+  delete base.spoilerImages;
+  delete base.spoilerMissContent;
+  delete base.spoilerContent;
+  if (!Array.isArray(urls) || urls.length === 0) return base;
+
+  const fetchAttachments =
+    options.fetchSpoilerImageAttachments || fetchSpoilerImageAttachments;
+  const attachments = await fetchAttachments(urls, message.guild);
+  if (!attachments) {
+    if (typeof missContent === "string" && missContent) {
+      console.log(`[spoiler] miss → 打碼連結`);
+      base.content = missContent;
+      delete base.embeds;
+    }
+    return base;
+  }
+
+  base.files = attachments.map(
+    (attachment) =>
+      new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  );
+  if (spoilerContent) base.content = spoilerContent;
+  return base;
+}
+
 async function resolveOutgoing(payload, message, options = {}) {
   const base = { ...payload };
+  if (base.spoilerImages)
+    return await resolveSpoilerImages(base, message, options);
   const videoUrl = base.videoAttachment;
   const attachmentEmbeds = base.videoAttachmentEmbeds;
   const attachmentContent = base.videoAttachmentContent;
@@ -324,7 +355,8 @@ async function sendPreviews(message, payloads) {
         sentMessage = await message.channel.send(outgoing);
       } catch (error) {
         const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0) logMissingChannelPermissions(message, inferred);
+        if (inferred.length > 0)
+          logMissingChannelPermissions(message, inferred);
         throw error;
       }
     } else {
@@ -332,7 +364,8 @@ async function sendPreviews(message, payloads) {
         sentMessage = await message.reply(outgoing);
       } catch (error) {
         const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0) logMissingChannelPermissions(message, inferred);
+        if (inferred.length > 0)
+          logMissingChannelPermissions(message, inferred);
         throw error;
       }
     }
@@ -342,9 +375,9 @@ async function sendPreviews(message, payloads) {
     // skips the empty-embed delete path.
     const isUrlOnly = Boolean(
       base.content &&
-        !base.embeds &&
-        !base.files &&
-        base.content.startsWith("http"),
+      !base.embeds &&
+      !base.files &&
+      base.content.startsWith("http"),
     );
     sent.push({
       sentMessage,
@@ -471,7 +504,10 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    if (isViewerPreviewUseful(fetched.embeds, viewerValidation, validationOptions)) continue;
+    if (
+      isViewerPreviewUseful(fetched.embeds, viewerValidation, validationOptions)
+    )
+      continue;
 
     console.log(`[preview] empty-or-useless-embed detected ${fetched.id}`);
 
@@ -499,7 +535,13 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      if (isViewerPreviewUseful(current?.embeds, viewerValidation, validationOptions)) {
+      if (
+        isViewerPreviewUseful(
+          current?.embeds,
+          viewerValidation,
+          validationOptions,
+        )
+      ) {
         console.log(`[preview] fallback url succeeded ${current.id}`);
         viewerSucceeded = true;
         break;
@@ -527,7 +569,11 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
     // A placeholder carries no post content (just a link card), so it ranks
     // below OG recovery — unlike `embedFallback`, which holds real metadata.
     if (
-      await tryEmbedFallback(current, placeholderFallback, "placeholder fallback")
+      await tryEmbedFallback(
+        current,
+        placeholderFallback,
+        "placeholder fallback",
+      )
     ) {
       continue;
     }

@@ -12,11 +12,12 @@ const {
   buildFallbackUrl,
   replaceHostFixer,
 } = require("./url-routing");
-const { FIXER_TWITTER_SECONDARY } = require("./config");
+const { FIXER_TWITTER_SECONDARY, TWEET_SPOILER_ENABLED } = require("./config");
 const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
-const { fetchTweetHasMedia } = require("./platforms/twitter");
+const { fetchTweetMeta } = require("./platforms/twitter");
+const { buildTwitterSpoilerEmbed } = require("./embeds");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
 
@@ -67,15 +68,41 @@ function buildFacebookPayload(url) {
 // OG recovery, since the primary's stub would otherwise be "recovered" as-is.
 // It also strips the media off some image posts; the media lookup (started now,
 // awaited only at the embed check, seconds later) lets validation catch that.
-function buildTwitterPayload(url) {
-  const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
+async function buildTwitterPayload(url) {
+  const meta = await fetchTweetMeta(url);
   const secondaryUrl = replaceHostFixer(url, FIXER_TWITTER_SECONDARY);
+  if (TWEET_SPOILER_ENABLED && meta?.sensitive && meta.photos.length > 0) {
+    return buildSensitiveTwitterPayload(url, meta, secondaryUrl);
+  }
+  const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
   return {
     ...payload,
     fallbackContents: [secondaryUrl],
     viewerValidation: "twitter",
-    viewerRequiresMedia: fetchTweetHasMedia(url),
+    viewerRequiresMedia: meta ? meta.hasMedia : null,
     recoverUrls: [secondaryUrl, ...payload.recoverUrls],
+  };
+}
+
+// A sensitive post never goes out as a fixer link: the viewers unfurl the
+// image in the clear. The bot builds the card itself and uploads every image
+// as a spoilered attachment (all of them — a fixer unfurl only ever shows the
+// first, or one mosaic of it). If the upload can't happen, the link goes out
+// wrapped in spoiler bars so Discord blurs its own unfurl instead.
+function buildSensitiveTwitterPayload(url, meta, secondaryUrl) {
+  const hint =
+    meta.photoCount > meta.photos.length
+      ? `\n-# 還有 ${meta.photoCount - meta.photos.length} 張`
+      : "";
+  console.log(
+    `[twitter] sensitive → spoiler card images=${meta.photos.length}/${meta.photoCount} ${url}`,
+  );
+  return {
+    embeds: [buildTwitterSpoilerEmbed(url, meta)],
+    spoilerImages: meta.photos,
+    spoilerContent: hint ? hint.trimStart() : null,
+    spoilerMissContent: `🔞 ||${secondaryUrl}||`,
+    sourceUrl: url,
   };
 }
 
@@ -89,7 +116,7 @@ async function buildPreviewPayloads(urls) {
       if (isThreadsUrl(url)) return await buildThreadsPayload(url);
       if (isTwitterUrl(url)) {
         console.log(`[preview] fixer twitter ${url}`);
-        return buildTwitterPayload(url);
+        return await buildTwitterPayload(url);
       }
       if (isRedditUrl(url)) {
         console.log(`[preview] fixer reddit ${url}`);
