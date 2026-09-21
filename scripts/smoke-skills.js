@@ -45,6 +45,12 @@ const SHOULD_MATCH = [
   "再講另一個故事",
   "tell me a story",
   "can you write a short story for us",
+  // Topic between the verb and 故事 — the shape that missed in prod (2026-09-21).
+  "講一個關於 「他有...那麼大（用手比）」的故事",
+  "說一個關於貓的故事",
+  "寫一篇關於下雨天的小故事",
+  "幫我寫一個西寶自己被當成貓的故事",
+  "你講故事給我聽",
 ];
 
 const SHOULD_NOT_MATCH = [
@@ -52,6 +58,10 @@ const SHOULD_NOT_MATCH = [
   "你昨天的故事我很喜歡",
   "這個故事的結局太扯了",
   "上面的故事是誰寫的",
+  // Topic-form lookalikes: a 的 before 故事 is not enough on its own.
+  "你說的話根本不像故事",
+  "我剛剛講的故事你覺得怎樣",
+  "你寫的那個故事太扯",
   "今天天氣真好",
   "晚餐要吃什麼",
   "抽籤",
