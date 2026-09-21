@@ -116,7 +116,19 @@ const {
 const {
   getMissingChannelPermissions,
   isViewerPreviewUseful,
+  classifyViewerPreview,
 } = require("../src/discord-io");
+const {
+  matchHardError,
+  matchErrorCard,
+  isViewerArtworkUrl,
+} = require("../src/viewer-cards");
+const {
+  isErrorPageMetadata,
+  scoreMeta,
+  mergeMetas,
+} = require("../src/og-fallback");
+const { cleanInstagramTitle } = require("../src/platforms/instagram");
 const {
   DEFAULT_THREADS_VIEWER_HOSTS,
   parseThreadsViewerHosts,
@@ -439,13 +451,141 @@ it("accepts a playable Instagram viewer or meaningful caption", () => {
     ),
     true,
   );
+  // Caption without a cover is a HALF answer: every Instagram post has media,
+  // so the chain keeps looking — but the card is kept as a floor (quality
+  // "weak") and restored if nothing richer turns up.
+  const captionOnly = classifyViewerPreview(
+    [{ title: "@hele.778899", description: "一家子神经！" }],
+    "instagram",
+  );
+  assert.equal(captionOnly.useful, false);
+  assert.equal(captionOnly.quality, "weak");
+});
+
+console.log("Viewer error-card detection (the 2026-09 Instagram regression)");
+it("rejects a viewer's own 'Temporarily unavailable' card", () => {
+  // The exact card OGInstagram served on 2026-09-21: well-formed, no media,
+  // wording the old phrase list did not know — so it passed as a real preview
+  // and the whole fallback chain never ran.
+  const verdict = classifyViewerPreview(
+    [
+      {
+        title: "Temporarily unavailable",
+        description:
+          "Couldn't load this post right now. Please try again in a moment.",
+        author: { name: "OGInstagram" },
+      },
+    ],
+    "instagram",
+  );
+  assert.equal(verdict.useful, false);
+  assert.equal(verdict.quality, "none");
+  assert.match(verdict.reason, /^error:/);
+});
+it("treats hard error wording as fatal even on a card WITH an image", () => {
   assert.equal(
     isViewerPreviewUseful(
-      [{ title: "@hele.778899", description: "一家子神经！" }],
+      [
+        {
+          title: "Temporarily unavailable",
+          image: { url: "https://cdn/real-cover.jpg" },
+        },
+      ],
       "instagram",
+    ),
+    false,
+  );
+  assert.equal(matchHardError("Rate limited, try again"), "rate-limited");
+  assert.equal(matchHardError("Something went wrong"), "server-error");
+  assert.equal(matchHardError("Failed to scan your link!"), "cannot-load");
+  assert.equal(matchHardError("一家子神经！"), null);
+});
+it("only applies soft wording when the card has no media", () => {
+  // "not available" inside a real caption must not kill a card that has media.
+  assert.equal(
+    matchErrorCard({
+      description: "限定商品，現在 not available 囉",
+      image: { url: "https://cdn/cover.jpg" },
+    }),
+    null,
+  );
+  assert.equal(
+    matchErrorCard({ description: "Sorry, please try again later" }),
+    "error:try-again",
+  );
+});
+it("does not count a viewer's own logo as the post's media", () => {
+  assert.equal(
+    isViewerArtworkUrl("https://instagram7.com/static/logo.png"),
+    true,
+  );
+  assert.equal(
+    isViewerArtworkUrl("https://scontent.cdninstagram.com/v/t51/744956044.jpg"),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram", image: { url: "https://viewer/icon.png" } }],
+      "instagram",
+    ),
+    false,
+  );
+});
+
+console.log("OG recovery guards");
+it("refuses to recover a viewer's error page into a pretty card", () => {
+  assert.equal(
+    isErrorPageMetadata({
+      title: "Temporarily unavailable",
+      description: "Couldn't load this post right now.",
+    }),
+    true,
+  );
+  assert.equal(
+    isErrorPageMetadata({ title: "@user", description: "一家子神经！" }),
+    false,
+  );
+});
+it("ranks a cover+caption recovery above a cover-only one", () => {
+  assert.ok(
+    scoreMeta({ image: "i", description: "d", author: "a" }) >
+      scoreMeta({ image: "i" }),
+  );
+  assert.ok(scoreMeta({ image: "i" }) > scoreMeta({ title: "t" }));
+});
+it("cleans the origin's Instagram title", () => {
+  assert.equal(
+    cleanInstagramTitle("Kino (@kino) • Instagram photos and videos", {}),
+    "Kino (@kino)",
+  );
+  // The caption is already the description; the title keeps just the poster.
+  assert.equal(
+    cleanInstagramTitle('波波在 Instagram: "兄弟...別..."', {
+      url: "https://www.instagram.com/bobojokey112/reel/DbCkglnyP3L/",
+    }),
+    "波波（@bobojokey112）",
+  );
+  assert.equal(cleanInstagramTitle("Instagram", {}), null);
+});
+it("merges the recovery hosts instead of trusting one", () => {
+  // instagram7 keeps the caption but serves the Instagram glyph as og:image;
+  // the origin has the real cover but buries the caption. Neither is enough.
+  assert.equal(
+    isViewerArtworkUrl(
+      "https://scontent.cdninstagram.com/rsrc.php/v4/yD/r/R0fBIMurK8v.png",
     ),
     true,
   );
+  const { merged, best } = mergeMetas([
+    { source: "viewer", meta: { title: "@user", description: "caption" } },
+    {
+      source: "origin",
+      meta: { title: "Name", image: "https://cdn/real.jpg", url: "u" },
+    },
+  ]);
+  assert.equal(best.source, "origin");
+  assert.equal(merged.image, "https://cdn/real.jpg");
+  assert.equal(merged.description, "caption");
 });
 
 console.log("Twitter viewer validation");

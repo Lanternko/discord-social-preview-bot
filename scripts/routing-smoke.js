@@ -1242,11 +1242,22 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     ]);
     assert.equal(p.viewerValidation, "instagram");
     assert.equal(s.hasEmbedFallback, false);
+    // instagram.com itself is the last recovery candidate: the origin still
+    // serves og:image + twitter:title to a Discordbot UA, so the chain has a
+    // source that no third-party viewer outage can take away.
     assert.deepEqual(p.recoverUrls, [
       "https://instagram7.com/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
       "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
+      "https://www.instagram.com/reel/DcA0yXWMF4E/",
     ]);
+    assert.equal(p.recoverStrategy.collect, true);
+    // A recovery answer without a cover is the host's own landing page.
+    assert.equal(p.recoverStrategy.validateMeta({ title: "Instagram" }), false);
+    assert.equal(
+      p.recoverStrategy.validateMeta({ image: "https://cdn/x.jpg" }),
+      true,
+    );
     assert.equal(
       p.placeholderFallback.embeds[0].data.url,
       "https://www.instagram.com/reel/DcA0yXWMF4E/",
