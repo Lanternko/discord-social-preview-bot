@@ -33,9 +33,25 @@ DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 o
 
 If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
 
+## DeepSeek 現役 model（2026-09-21 實測）
+
+`/models` 只剩兩個 id，舊的 `deepseek-chat`、`deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 全數下架——這是 vision entry 長期 404、免費層打不到模型的真正原因。
+
+| | `deepseek-flash`（V4.1-Flash） | `deepseek-v4-pro`（V4-Pro-0813） |
+|---|---|---|
+| 吃圖 | ✅ | ❌ |
+| 價格（離峰 in/out，每 1M） | $0.15 / $0.60 | $0.66 / $1.98 |
+| 實測延遲（同 persona、同題目） | 2.1 / 3.4 / 4.5 s | 15.5 / 24.8 / 39.4 s |
+| prod 歷史（1105 次 v4-pro 呼叫） | — | 平均 20.4 s，**27% 超過 25 s 逾時線**（bot.log 有 188 次 deepseek timeout） |
+| thinking | 預設開，可 `thinking:{type:"disabled"}` | 同左 |
+
+**為什麼主力換成 flash（2026-09-21）**：v4-pro 的 39 s 那題在線上會直接撞 `AI_TIMEOUT_MS=25000` 逾時、掉到下一層，等於花了 pro 的錢拿 luna 的回答。品質方面重跑了當初讓 pro 勝出的「模仿語氣」題：這次**反而是 pro 照抄範例句**（原句 "欸不是/這個真的假的啦/但沒事了各位/懂?" 幾乎原封不動搬回來），flash 用同樣語氣造了新句子。當初的結論是拿 V3.2 的 `deepseek-chat` 比的，換代之後不成立了。要換回去只改 `.env` 一行 `DEEPSEEK_MODEL=deepseek-v4-pro`。
+
+> 待辦（未做）：`AI_PEAK_PREFER_FALLBACK` 當初是為了避開 v4-pro 的尖峰成本才把 DeepSeek 移到鏈尾，flash 便宜 4 倍之後這個取捨值得重新評估。
+
 ## 圖片辨識（DeepSeek vision）
 
-DeepSeek 在 2026-08-21 開了第一個多模態 endpoint `deepseek-v4-flash-vision-exp`（[docs](https://api-docs.deepseek.com/guides/vision/)）。實作在 [src/ai/vision.js](../src/ai/vision.js)，鏈的組裝在 `buildVisionEntry`（[chain.js](../src/ai/chain.js)）。
+DeepSeek 2026-08-21 開的那個實驗性 endpoint `deepseek-v4-flash-vision-exp` 已經下架（2026-09-21 查 `/models` 只剩兩個 id），現在吃圖的是 **`deepseek-flash`**（V4.1-Flash；`deepseek-v4-pro` 純文字不吃圖）。實測 `thinking:{type:"disabled"}` 在 flash 上照樣有效，15 個 token 就正確描述完一張圖。（[docs](https://api-docs.deepseek.com/guides/vision/)）實作在 [src/ai/vision.js](../src/ai/vision.js)，鏈的組裝在 `buildVisionEntry`（[chain.js](../src/ai/chain.js)）。
 
 **vision 是插在鏈頭，不是取代鏈。** 只有這個 endpoint 看得到圖，底下每一層都是瞎的，所以：
 

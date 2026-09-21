@@ -203,7 +203,7 @@ async function main() {
   it("uses OpenAI Luna then DeepSeek direct", () => {
     assert.deepEqual(
       STORY_PROVIDER_CHAIN.map((provider) => provider.label),
-      ["openai:gpt-5.6-luna", `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-chat"}:direct`],
+      ["openai:gpt-5.6-luna", `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-flash"}:direct`],
     );
     assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 45000);
     assert.equal(STORY_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
@@ -777,7 +777,13 @@ async function main() {
     );
   });
 
-  it("guild with own key on standard tier gets pro model with :guild label", () => {
+  // Tier → model is asserted through the env config, not a hardcoded id: as of
+  // 2026-09-21 both DEEPSEEK_MODEL and DEEPSEEK_MODEL_FREE are deepseek-flash
+  // (the only current id that takes images; v4-pro averaged 20.4s and blew the
+  // 25s timeout on 27% of prod calls). The wiring — premium reads
+  // DEEPSEEK_MODEL, free reads DEEPSEEK_MODEL_FREE — is what must hold, so this
+  // keeps testing even if the ids diverge again.
+  it("guild with own key on standard tier gets the premium model with :guild label", () => {
     resetKeyCache();
     resetRateLimiter();
     resetCircuitState();
@@ -786,18 +792,24 @@ async function main() {
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry, "should have a DeepSeek entry");
     assert.ok(dsEntry.label.includes(":guild"), `expected :guild suffix, got ${dsEntry.label}`);
-    assert.ok(!dsEntry.label.includes("flash"), `expected pro model, got ${dsEntry.label}`);
+    assert.ok(
+      dsEntry.label.includes(process.env.DEEPSEEK_MODEL || "deepseek-flash"),
+      `expected DEEPSEEK_MODEL, got ${dsEntry.label}`,
+    );
     assert.equal(chain[0], dsEntry);
     assert.equal(chain[1].label.split(":")[0], "kimi");
   });
-  it("guild with own key on brief tier gets flash model", () => {
+  it("guild with own key on brief tier gets the free-tier model", () => {
     resetKeyCache();
     resetCircuitState();
     setGuildApiKey("keyed-guild", "sk-mykey");
     const { chain } = buildGuildChain("keyed-guild", briefTier);
     const dsEntry = chain.find((e) => e.label.startsWith("deepseek:"));
     assert.ok(dsEntry);
-    assert.ok(dsEntry.label.includes("flash"), `expected flash model, got ${dsEntry.label}`);
+    assert.ok(
+      dsEntry.label.includes(process.env.DEEPSEEK_MODEL_FREE || "deepseek-flash"),
+      `expected DEEPSEEK_MODEL_FREE, got ${dsEntry.label}`,
+    );
   });
   await itAsync("passes task-specific thinking options to keyed DeepSeek", async () => {
     resetKeyCache();
