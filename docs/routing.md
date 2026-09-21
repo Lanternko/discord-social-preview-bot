@@ -39,7 +39,13 @@ Viewer 由 `THREADS_VIEWER_HOSTS` 設定，格式為最多三個逗號分隔的�
 ## Instagram
 
 - **Stories** (`/stories/<username>/`): no fixer works — bot immediately replies with owner username in 西寶 voice; skips embed-check pipeline entirely.
-- **Posts / Reels**: [src/instagram-url.js](../src/instagram-url.js) first normalizes `instagram.com` / `www.instagram.com`, singularizes `/reels/` to `/reel/`, removes query tracking, and validates the post shortcode. Discord then tries `INSTAGRAM_VIEWER_HOSTS` in order (default `oginstagram.com,instagram7.com,deinstagram.com`；2026-09-20 起 oginstagram 排第一：instagram7 對照片貼文只給 Instagram logo 當 og:image，Discord 會渲染出沒圖的卡，抽樣 8/8 貼文在 oginstagram 都有真媒體。兩家都只服務 Discord，我們主機自己抓會被 Cloudflare／403 擋，所以只能用 Discord 端實測比較). Empty embeds, login walls, unavailable/not-found cards, and generic no-media cards advance to the next viewer; the first meaningful text/media embed wins. All viewers failing → **OG recovery** from `INSTAGRAM_OG_RECOVERY_HOSTS` (`instagram7.com,deinstagram.com,fxig.seria.moe`, bot-side fetch) → local placeholder embed linked to the canonical Instagram URL (`placeholderFallback`).
+- **Posts / Reels**: [src/instagram-url.js](../src/instagram-url.js) first normalizes `instagram.com` / `www.instagram.com`, singularizes `/reels/` to `/reel/`, removes query tracking, and validates the post shortcode. Discord then tries `INSTAGRAM_VIEWER_HOSTS` in order (default `oginstagram.com,instagram7.com,deinstagram.com`；2026-09-20 起 oginstagram 排第一：instagram7 對照片貼文只給 Instagram logo 當 og:image，Discord 會渲染出沒圖的卡，抽樣 8/8 貼文在 oginstagram 都有真媒體。兩家都只服務 Discord，我們主機自己抓會被 Cloudflare／403 擋，所以只能用 Discord 端實測比較). Empty embeds, login walls, unavailable/not-found cards, and generic no-media cards advance to the next viewer; the first meaningful text/media embed wins. All viewers failing → **OG recovery** from `INSTAGRAM_OG_RECOVERY_HOSTS` (`instagram7.com,deinstagram.com,fxig.seria.moe`) **plus instagram.com itself** — all fetched concurrently (`recoverStrategy.collect`), then **merged**: the richest answer wins and the others fill its gaps → weak-card restore → local placeholder embed linked to the canonical Instagram URL (`placeholderFallback`).
+
+**Why the origin is in the recovery list (2026-09-21):** fetched from our host with a Discordbot UA, `www.instagram.com/{p,reel}/<code>/` still serves `og:image` (the real cover) and `og:title` (`波波在 Instagram: "<caption>"`) — a source no third-party viewer outage can take away. instagram7 complements it: it keeps the caption but answers with the Instagram glyph (`/rsrc.php/…`) as `og:image`, which `recoverStrategy.normalizeMeta` strips so it cannot pass as a cover. Merging the two gives 作者 + 讚數/caption + 真封面.
+
+**Detection (this is the load-bearing half).** A dead viewer does not return an empty unfurl — it returns a well-formed card saying "Temporarily unavailable / Couldn't load this post right now" (OGInstagram, 2026-09-21). The shared error vocabulary lives in [src/viewer-cards.js](../src/viewer-cards.js): HARD wording (只可能來自錯誤頁：temporarily unavailable / couldn't load / not found / something went wrong / rate limit / login wall) 一律否決，即使卡片有圖；SOFT wording（真 caption 也可能出現：try again / not available / private）只在沒有媒體時否決。IG 另外要求**必須有封面**（每則 IG 貼文都是照片或影片），且 viewer 自家 logo（`/rsrc.php/`、`logo.png` 之類）不算封面。判定被拒時 log 會印出實際卡片文字與理由（`reason=error:…`），新的失敗詞彙照著補進同一份清單即可。
+
+**Weak card（半成品卡）**: 有 caption 但沒有封面的 IG 卡不算成功，但也不丟掉——鏈條繼續找有封面的版本，全失敗時再把它貼回來（`layer=weak-viewerN`），OG recovery 成功時則把它的 caption/作者補進恢復卡。嚴格偵測因此不會讓使用者看到比原本更差的東西。
 
 Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXER_INSTAGRAM` / `FIXER_INSTAGRAM_SECONDARY` compatibility.
 
@@ -77,15 +83,18 @@ Facebook 的 OG recovery 比較特別：facebed 沒快取、每次都即時爬 F
 
 ## Empty embed detection (`checkAndHandleEmptyEmbeds`)
 
-For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then re-fetches the message. **Four-layer fallback** — every layer must fail before apology:
+For URL-only payloads (fixer links), the bot waits `EMBED_CHECK_DELAY_MS` then re-fetches the message. **Six-layer fallback** — every layer must fail before apology:
 
 1. **Primary `content`** (fixer URL) — Discord unfurled it → done ✓
 2. **`fallbackContents`**（任意長度的 ordered viewer list；舊 `fallbackContent` 自動相容成單一元素）— 每次 edit 後等待 `EMBED_CHECK_DELAY_MS`，第一個有效 unfurl 即停止 ✓
 3. **`embedFallback`** (pre-built embed payload) — edit message, no further waiting needed. Done ✓
 4. **OG recovery (`recoverUrls`)** — for each candidate URL, plain HTTP fetch + parse `og:title` / `og:description` / `og:image`, build a generic embed and edit. Implementation: [src/og-fallback.js](../src/og-fallback.js). Done ✓
-5. **`placeholderFallback`** (content-less link card, e.g. Instagram「預覽目前無法載入」) — edit message. Ranks below OG recovery, unlike `embedFallback` which holds real metadata. Done ✓
+5. **Weak-card restore** — 若某層 viewer 曾給出「有文字、沒媒體」的半成品卡（目前只有 IG 會這樣分級），把那個 viewer URL 貼回去。排在 OG recovery 之下，因為 OG recovery 的卡保證有封面。Done ✓
+6. **`placeholderFallback`** (content-less link card, e.g. Instagram「預覽目前無法載入」) — edit message. Ranks below everything above, unlike `embedFallback` which holds real metadata. Done ✓
 
-Only if all five fail (or each is null/missing) → delete message + reply failure message. Threads payload 永遠提供 local `embedFallback`，所以 viewer 全失敗時仍保留 canonical click-through；其他平台維持原有 OG recovery / apology 行為。Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
+每一層成功都會留下一行 `[preview] chain resolved platform=<平台> layer=<viewer1|viewer2|…|og-recover|weak-viewerN|placeholder>`，全滅則是 `[preview] chain exhausted platform=…`。要看某平台的健康度直接 grep 這兩行。
+
+Only if all six fail (or each is null/missing) → delete message + reply failure message. Threads payload 永遠提供 local `embedFallback`，所以 viewer 全失敗時仍保留 canonical click-through；其他平台維持原有 OG recovery / apology 行為。Returns `{ allSucceeded: false }` so [src/index.js](../src/index.js) knows NOT to suppress the user's native Discord embed.
 
 This is the "至少要顯示 description" guarantee: as long as at least one fixer host (or the original platform URL for non-auth-walled cases) returns OG tags, the user gets at least a title/description embed.
 
