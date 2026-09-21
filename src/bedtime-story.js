@@ -158,8 +158,13 @@ function buildStoryCraftBlock({
 } = {}) {
   const chat = mode === "chat";
 
+  // The chat opener carries an explicit veto. Detection is a loose keyword
+  // match (src/ai/skills/story.js) — it fires on ANY message mentioning 故事,
+  // including 「剛剛那個故事很好笑」. Recall lives in the regex, precision lives
+  // here: she reads the request and decides. Without this clause a loose
+  // matcher would turn every passing mention of 故事 into a 400-字 story.
   const opener = chat
-    ? "（系統提示：有人在聊天裡要你講故事。這一則就照下面的規格寫，不要用平常聊天的語氣隨便編。"
+    ? "（系統提示：這則訊息裡出現了「故事」，所以下面附上講故事的規格。先自己判斷對方是不是真的要你講一個故事：如果他只是在聊到、評論、或問起某個故事（例如「剛剛那個故事很好笑」「這個故事結局很扯」），就把下面整段規格當作不存在，照平常聊天的樣子回他，不要寫故事、不要下標題。確定是要你講故事，才照下面的規格寫，不要用平常聊天的語氣隨便編。"
     : `（系統提示：現在是「${guildName || "這個伺服器"}」的睡前故事時間。`;
 
   const invent = chat
@@ -171,7 +176,7 @@ function buildStoryCraftBlock({
   // — whose own header says "不要直接複述", so this lifts that for this turn
   // only (same move target-context.js makes for imitation).
   const sourceRule = chat
-    ? "- 整個故事只有一個場景、一條主線。從上面【最近群組對話】裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。（那份紀錄平常標著「不要直接複述」，寫故事這次不算——就是要你拿它當材料。）"
+    ? "- 整個故事只有一個場景、一條主線。從上面【最近群組對話】裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。（那份紀錄平常標著「不要直接複述」，只有在你確定要寫故事、真的動筆寫的時候不算——就是要你拿它當材料；判斷成不用寫故事的話，「不要直接複述」照舊。）"
     : "- 整個故事只有一個場景、一條主線。從素材裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。";
 
   const inspirationRule = chat
