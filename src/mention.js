@@ -144,6 +144,7 @@ async function handleMention(message, client) {
           personaSuffix: skillCtx.personaSuffix,
           minTokens: skillCtx.minTokens,
           minReplyChars: skillCtx.minReplyChars,
+          extraUserContext: skillCtx.extraUserContext || "",
         }
       : {}),
   });
