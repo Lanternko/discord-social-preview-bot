@@ -459,6 +459,10 @@ async function generateAIReply(message, userText, options = {}) {
     // more keeps its own, larger limit.
     minTokens = 0,
     minReplyChars = 0,
+    // Extra material a skill gathered for THIS call (story ingredients). It is
+    // user-authored Discord text, so it goes in as a user turn beside the group
+    // context — never into the system prompt.
+    extraUserContext = "",
     recordMemory = true,
     includeHistory = true,
     includeContext = true,
@@ -629,6 +633,11 @@ async function generateAIReply(message, userText, options = {}) {
   if (groupBlock) {
     turns = [{ role: "user", content: groupBlock }, ...turns];
   }
+  // Skill material sits in front of the group context: it is background the
+  // story draws on, while the group context is the immediate scene.
+  if (extraUserContext) {
+    turns = [{ role: "user", content: extraUserContext }, ...turns];
+  }
   if (targetBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
   }
@@ -668,7 +677,7 @@ async function generateAIReply(message, userText, options = {}) {
     }
     const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {

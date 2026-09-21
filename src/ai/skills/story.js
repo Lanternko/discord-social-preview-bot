@@ -14,6 +14,7 @@ const {
   buildStoryCraftBlock,
   sanitizeBedtimeTitle,
 } = require("../../bedtime-story");
+const { buildStoryMaterial } = require("../story-ingredients");
 
 // A story is 180-420 字 plus a title, which does not fit 入門's 180-token /
 // 300-char budget — she would be cut off mid-sentence. These are FLOORS, not
@@ -63,11 +64,16 @@ module.exports = {
   id: "story",
   label: "說故事",
   match: matchStory,
-  build({ message } = {}) {
+  async build({ message } = {}) {
+    // Gathered per call, not per message: the fetch only happens once the
+    // keyword matched, so ordinary chat never pays for it.
+    const extraUserContext = await buildStoryMaterial(message);
     return {
+      extraUserContext,
       personaSuffix: buildStoryCraftBlock({
         guildName: message?.guild?.name,
         mode: "chat",
+        hasExtraMaterial: Boolean(extraUserContext),
       }),
       minTokens: STORY_MIN_TOKENS,
       minReplyChars: STORY_MIN_REPLY_CHARS,

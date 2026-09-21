@@ -15,6 +15,12 @@ process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 
 const { SKILLS, detectSkill, buildSkillContext } = require("../src/ai/skills");
 const {
+  pickWarmChannels,
+  collectMemberInterests,
+  buildStoryMaterialBlock,
+  snowflakeToMs,
+} = require("../src/ai/story-ingredients");
+const {
   buildStoryCraftBlock,
   buildStoryIngredientsBlock,
   buildBedtimeStoryPrompt,
@@ -119,15 +125,91 @@ check("postProcess only touches story-shaped output", () => {
   );
 });
 
-// ── 2. Chat story pack ──────────────────────────────────────────────────
-check("story.build returns a usable pack", () => {
-  const skill = detectSkill("講個故事");
-  const ctx = skill.build({ message: { guild: { name: "測試群" } } });
-  assert.ok(ctx.personaSuffix.length > 200, "personaSuffix too short");
-  assert.ok(ctx.minTokens >= 900, "story needs a token floor");
-  assert.ok(ctx.minReplyChars >= 1200, "story needs a reply-char floor");
-  assert.equal(typeof ctx.postProcess, "function");
+// ── 1b. Story material (other channels + member interests) ─────────────
+const NOW = Date.now();
+function fakeChannel(id, name, agoMs, viewable = true) {
+  // lastMessageId is a snowflake; the picker reads the timestamp out of it.
+  const ms = BigInt(NOW - agoMs) - 1420070400000n;
+  return {
+    id,
+    name,
+    viewable,
+    lastMessageId: String(ms << 22n),
+    isTextBased: () => true,
+    isThread: () => false,
+  };
+}
+
+check("warm-channel picker skips cold, hidden and current channels", () => {
+  const channels = [
+    fakeChannel("here", "這三小", 1000),
+    fakeChannel("hot", "動畫", 60 * 1000),
+    fakeChannel("warm", "美食", 60 * 60 * 1000),
+    fakeChannel("cold", "去年的坑", 48 * 60 * 60 * 1000),
+    fakeChannel("hidden", "管理層", 60 * 1000, false),
+  ];
+  const guild = { channels: { cache: new Map(channels.map((c) => [c.id, c])) } };
+  const picked = pickWarmChannels(guild, { excludeChannelId: "here", now: NOW });
+  const names = picked.map((c) => c.name);
+  assert.deepEqual(names, ["動畫", "美食"], `unexpected pick: ${names}`);
 });
+
+check("snowflake decoding round-trips", () => {
+  const ms = BigInt(NOW) - 1420070400000n;
+  assert.equal(snowflakeToMs(String(ms << 22n)), NOW);
+  assert.equal(snowflakeToMs(null), 0);
+  assert.equal(snowflakeToMs("not-a-snowflake"), 0);
+});
+
+check("material block stays silent with nothing to say", () => {
+  assert.equal(buildStoryMaterialBlock({}), "");
+  assert.equal(
+    buildStoryMaterialBlock({ channelTopics: [], memberInterests: [] }),
+    "",
+  );
+});
+
+check("material block labels itself as background, not chat fodder", () => {
+  const block = buildStoryMaterialBlock({
+    channelTopics: [{ name: "動畫", lines: [{ name: "orangelin", text: "白媽媽好可憐" }] }],
+    memberInterests: [{ name: "濤濤", gist: "喜歡 codex 跟狗" }],
+  });
+  assert.ok(block.includes("#動畫"), "lost the channel name");
+  assert.ok(block.includes("白媽媽好可憐"), "lost the line");
+  assert.ok(block.includes("濤濤：喜歡 codex 跟狗"), "lost the interest");
+  assert.ok(block.includes("不寫故事就完全忽略"), "material must be opt-in");
+  assert.ok(block.includes("不要直接複述"), "material must not be recited");
+});
+
+check("member interests survive an empty store", () => {
+  assert.deepEqual(collectMemberInterests(null), []);
+  assert.deepEqual(collectMemberInterests("guild-with-no-data"), []);
+});
+
+check("craft block only mentions material when there is some", () => {
+  const withMaterial = buildStoryCraftBlock({ mode: "chat", hasExtraMaterial: true });
+  const without = buildStoryCraftBlock({ mode: "chat", hasExtraMaterial: false });
+  assert.ok(withMaterial.includes("其他材料"), "lost the material rule");
+  assert.ok(!without.includes("其他材料"), "must not point at a block that is absent");
+  const scheduled = buildStoryCraftBlock({ mode: "scheduled", guildName: "X" });
+  assert.ok(!scheduled.includes("其他材料"), "nightly task has its own buffet");
+});
+
+// ── 2. Chat story pack ──────────────────────────────────────────────────
+// build() is async since it gathers story material; a guild-less message (DM,
+// or a fetch that yields nothing) must still produce a usable pack.
+asyncChecks.push([
+  "story.build returns a usable pack",
+  async () => {
+    const skill = detectSkill("講個故事");
+    const ctx = await skill.build({ message: { guild: { name: "測試群" } } });
+    assert.ok(ctx.personaSuffix.length > 200, "personaSuffix too short");
+    assert.ok(ctx.minTokens >= 900, "story needs a token floor");
+    assert.ok(ctx.minReplyChars >= 1200, "story needs a reply-char floor");
+    assert.equal(typeof ctx.postProcess, "function");
+    assert.equal(typeof ctx.extraUserContext, "string");
+  },
+]);
 
 // buildSkillContext is the async wrapper mention.js actually calls; it must
 // swallow a throwing skill rather than take the whole reply down with it.
