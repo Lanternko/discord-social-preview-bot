@@ -397,17 +397,22 @@ module.exports = {
   KIMI_BASE_URL:
     process.env.KIMI_BASE_URL || "https://api.moonshot.ai/v1/chat/completions",
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
-  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-chat",
-  DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-v4-flash",
+  // 2026-09-21: DeepSeek's /models now lists exactly two ids — `deepseek-flash`
+  // (V4.1-Flash) and `deepseek-v4-pro` (V4-Pro-0813). `deepseek-chat`,
+  // `deepseek-v4-flash` and the vision `-exp` id are all gone, which is why the
+  // free tier and the vision entry had been 404/401-ing. Flash is the newer
+  // generation, the only one that takes images, ~4x cheaper, and measured 2-4s
+  // against v4-pro's 20.4s average (27% of prod calls blew the 25s timeout).
+  DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || "deepseek-flash",
+  DEEPSEEK_MODEL_FREE: process.env.DEEPSEEK_MODEL_FREE || "deepseek-flash",
   DEEPSEEK_PREMIUM_GUILD_IDS: parseCsvEnv("DEEPSEEK_PREMIUM_GUILD_IDS"),
-  // DeepSeek's only multimodal endpoint (2026-08-21). It is explicitly
-  // experimental ("-exp"): the id can be renamed or retired without notice, and
-  // when that happens the vision entry 404s and the chain silently falls back
-  // to the blind text providers — grep `[vision] http 4` / `provider failed
-  // label=deepseek:...:vision`. Text quality matches v4-flash, images bill at
-  // up to 384 tokens each at flash rates.
-  DEEPSEEK_VISION_MODEL:
-    process.env.DEEPSEEK_VISION_MODEL || "deepseek-v4-flash-vision-exp",
+  // DeepSeek's multimodal endpoint. The experimental `-exp` id from 2026-08-21
+  // was retired; vision now rides the normal `deepseek-flash` model (v4-pro is
+  // text-only). The id can still change without notice, and when it does the
+  // vision entry 404s and the chain silently falls back to the blind text
+  // providers — grep `[vision] http 4` / `provider failed
+  // label=deepseek:...:vision`. Images bill at up to 384 tokens each.
+  DEEPSEEK_VISION_MODEL: process.env.DEEPSEEK_VISION_MODEL || "deepseek-flash",
   VISION_ENABLED:
     (process.env.VISION_ENABLED || "true").toLowerCase() === "true",
   // Each image costs ~384 tokens; four is a full Discord image grid and still
@@ -432,7 +437,8 @@ module.exports = {
   // vision call is structurally slower than the 8 s text budget allows.
   VISION_TIMEOUT_MS: parsePositiveIntEnv("VISION_TIMEOUT_MS", 25000),
   AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 20),
-  // deepseek-v4-pro is a reasoning model: it spends most of its token budget on
+  // Every current DeepSeek model (flash included) thinks by default: it spends
+  // most of its token budget on
   // hidden reasoning_content before emitting any visible answer. The tier's
   // maxTokens (180 for brief) is a *display* budget and starves the reasoning,
   // so finish_reason=length with empty content. This headroom is added on top of

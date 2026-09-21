@@ -65,9 +65,9 @@ Slash command — anyone can run `/ai-tier` (no arg) to view the current plan, m
 
 | Key | UI label | DeepSeek model | sentences cap | max chars | memoryMaxTurns | group context | key required |
 |---|---|---|---|---|---|---|---|
-| `brief` (default) | 入門 | `DEEPSEEK_MODEL_FREE` (`deepseek-v4-flash`) | 1~4 | 300 | 8 | ✗ | no, 20/day free quota |
-| `standard` | 標準 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 2~8 | 1200 | 40 | recent 15 non-bot msgs | yes, unless whitelisted |
-| `detailed` | 精細 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 3~15 | 2000 | 60 | recent 15 non-bot msgs | yes, unless whitelisted |
+| `brief` (default) | 入門 | `DEEPSEEK_MODEL_FREE` (`deepseek-flash`) | 1~4 | 300 | 8 | ✗ | no, 20/day free quota |
+| `standard` | 標準 | `DEEPSEEK_MODEL` (`deepseek-flash`) | 2~8 | 1200 | 40 | recent 15 non-bot msgs | yes, unless whitelisted |
+| `detailed` | 精細 | `DEEPSEEK_MODEL` (`deepseek-flash`) | 3~15 | 2000 | 60 | recent 15 non-bot msgs | yes, unless whitelisted |
 
 - Storage: `data/tier-settings.json` (gitignored), `{ guildId: "brief"|"standard"|"detailed" }`.
 - Guild API keys: `data/guild-api-keys.json` (gitignored), set/remove via `/ai-key`.

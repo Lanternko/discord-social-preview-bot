@@ -333,7 +333,7 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
     call: (turns, persona, maxTokens) =>
       callDeepSeek(turns, persona, maxTokens, {
         model: DEEPSEEK_MODEL_FREE,
-        // v4-flash thinks too — the tier system shipped assuming only v4-pro
+        // flash thinks too — the tier system shipped assuming only v4-pro
         // did, so this entry alone ran with no headroom. It burned the whole
         // display budget on reasoning and returned empty on 42% of calls
         // (413/414 were finish_reason=length with completion == reasoning).

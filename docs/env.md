@@ -67,9 +67,9 @@
 | Variable | Default | Notes |
 |---|---|---|
 | `DEEPSEEK_API_KEY` | — | Optional. Primary provider (paid, reliable) |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | `deepseek-chat` for V3.2, `deepseek-reasoner` for R1, `deepseek-v4-pro` for V4 (reasoning model) |
-| `DEEPSEEK_MODEL_FREE` | `deepseek-v4-flash` | Model used by the 入門 `/ai-tier` plan when the owner DeepSeek key is available |
-| `DEEPSEEK_VISION_MODEL` | `deepseek-v4-flash-vision-exp` | DeepSeek 唯一吃圖的 endpoint（2026-08-21 上線，**實驗性**，id 可能被改名/下架）。文字能力等同 v4-flash，每張圖最多 384 tokens、以 flash 費率計 |
+| `DEEPSEEK_MODEL` | `deepseek-flash` | 2026-09-21 起 API 只剩 `deepseek-flash`（V4.1-Flash，吃圖）與 `deepseek-v4-pro`（V4-Pro-0813，純文字）；`deepseek-chat` / `deepseek-v4-flash` 已下架。要換回 pro：`DEEPSEEK_MODEL=deepseek-v4-pro`（會慢 5~10 倍、貴 4 倍，見下方實測） |
+| `DEEPSEEK_MODEL_FREE` | `deepseek-flash` | Model used by the 入門 `/ai-tier` plan when the owner DeepSeek key is available |
+| `DEEPSEEK_VISION_MODEL` | `deepseek-flash` | 吃圖的 model（原本的 `deepseek-v4-flash-vision-exp` 已下架，這就是 vision 一直 404/掛掉的原因）。v4-pro 不吃圖，所以這格永遠是 flash。每張圖最多 384 tokens |
 | `VISION_ENABLED` | `true` | 設 `false` 後 @西寶 附圖只會走純文字鏈（她會說看不到） |
 | `VISION_MAX_IMAGES` | `4` | 一次最多送幾張（一整排 Discord 圖片牆 ≈ 4 張，約 1.6k tokens） |
 | `VISION_MAX_BYTES` | `8388608` | 單張上限。圖是我們自己下載後轉 base64 送出，太大的圖等於慢下載 + 肥 request |
@@ -79,7 +79,7 @@
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_PEAK_PREFER_FALLBACK` | `true` | 尖峰時段（UTC 平日 01–04、06–10）把 owner key 的 DeepSeek 移到鏈尾，改由 luna 先跑；設 `false` 則永遠 DeepSeek 優先 |
 | `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |
-| `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (`deepseek-v4-pro` / `-reasoner`) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. Set to 0 for non-reasoning models like `deepseek-chat` if you want to save tokens |
+| `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (現在兩個 model 都預設 thinking) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. 只有在明確關掉 thinking 時才適合設 0 |
 | `KIMI_API_KEY` | — | Optional. Second provider after DeepSeek |
 | `KIMI_ENABLED` | `true` | Set `false` to remove Kimi from all provider chains without deleting its key, for example while the account balance is empty |
 | `KIMI_MODEL` | `kimi-k2.6` | Kimi model name |
