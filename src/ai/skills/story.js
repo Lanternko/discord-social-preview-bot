@@ -21,45 +21,42 @@ const {
 const STORY_MIN_TOKENS = 900;
 const STORY_MIN_REPLY_CHARS = 1200;
 
-// Someone TALKING ABOUT a story ("剛剛那個故事很好笑") is not asking for one.
-// Checked first because the request pattern below would otherwise match it.
-const STORY_REFERENCE_RE =
-  /(剛剛|剛才|上面|前面|那個|這個|之前|昨天)\s*的?\s*(床邊|睡前)?故事/;
-
-// 「我剛剛講的故事」/「你寫的那個故事」 — someone referring to a story that
-// already exists. The 的 is mandatory: without it 「你講故事」 (a request) would
-// be swallowed too.
-const STORY_AUTHORED_RE =
-  /(我|我們|你|妳|他|她|你們|他們)\s*(剛剛|剛才|之前|昨天|上次)?\s*(講|說|寫|編|念|唸)的\s*(那個|這個)?\s*(床邊|睡前)?故事/;
-
-// Request forms: a verb attached to 故事. Deliberately requires the verb —
-// a bare 「故事」 in a sentence is far more often commentary than a request,
-// and a false positive here is expensive (she writes 400 字 instead of chatting).
-const STORY_VERB = "講|說|來|寫|編|念|唸|聽";
-const STORY_COUNTER = "一|個|則|下|點|篇|首";
-const STORY_KIND = "床邊|睡前|短篇|小|新的|另一個|另一則";
-
-const STORY_REQUEST_RE = new RegExp(
-  `(${STORY_VERB})\\s*(${STORY_COUNTER})*\\s*(${STORY_KIND})*\\s*故事`,
-);
-
-// 「講一個關於X的故事」 — the most common shape of a real request, and the one
-// the adjacent pattern above misses entirely: the topic sits between the verb
-// and 故事, so 講…故事 are never neighbours (2026-09-21, a live miss).
-// The gap is bounded, must stay inside one sentence, and must end at 的 —
-// Chinese topic phrases always land on 的故事, which is what keeps commentary
-// like 「你說的話根本不像故事」 out (no second 的 before 故事).
-const STORY_TOPIC_RE = new RegExp(
-  `(${STORY_VERB})\\s*(${STORY_COUNTER})*\\s*(?:有關|關於)?[^。！？!?\\n]{0,40}的\\s*(${STORY_KIND})*\\s*故事`,
-);
-
-const STORY_EN_RE = /\b(tell|write|give)\b[^.!?]{0,24}\bstory\b|bedtime story/i;
+// Detection is deliberately LOOSE: the mechanical layer only decides whether
+// the pack is worth LOADING, and 西寶 herself decides whether to USE it. That
+// split exists because natural language has more ways to ask for a story than a
+// regex can enumerate — the first live test missed on 「講一個關於X的故事」
+// (2026-09-21) because the verb and 故事 were not neighbours. A tight matcher
+// fails silently and unrecoverably; a loose one costs ~2KB of system prompt on
+// messages that merely mention 故事, and the craft block's opt-out clause turns
+// the false positives back into ordinary chat replies.
+//
+// Consequence: there are NO negative patterns here. 「剛剛那個故事很好笑」 loads
+// the pack and she ignores it, which is exactly the intended behaviour.
+const STORY_KEYWORD_RE = /故事|\bstory\b|\bstories\b/i;
 
 function matchStory(text) {
   if (!text || typeof text !== "string") return false;
-  const t = text.normalize("NFC");
-  if (STORY_REFERENCE_RE.test(t) || STORY_AUTHORED_RE.test(t)) return false;
-  return STORY_REQUEST_RE.test(t) || STORY_TOPIC_RE.test(t) || STORY_EN_RE.test(t);
+  return STORY_KEYWORD_RE.test(text.normalize("NFC"));
+}
+
+// The pack loads on a bare mention of 故事, so the output is often an ordinary
+// chat reply. Forcing `## ` onto the first line of THAT would be worse than the
+// bug this normalisation fixes, so it only runs on something already shaped
+// like a story: a short title line, a blank line, then body.
+function looksLikeStory(text) {
+  if (!text || typeof text !== "string") return false;
+  const lines = text.split(/\r?\n/);
+  if (lines.length < 3) return false;
+  if (lines[1].trim() !== "") return false;
+  const first = lines[0].trim();
+  if (!first) return false;
+  if (/^(#|\*)/.test(first)) return true;
+  // An unmarked title: short, and not a sentence.
+  return first.length <= 30 && !/[。！？!?,，]/.test(first);
+}
+
+function normalizeStoryOutput(text) {
+  return looksLikeStory(text) ? sanitizeBedtimeTitle(text) : text;
 }
 
 module.exports = {
@@ -74,9 +71,11 @@ module.exports = {
       }),
       minTokens: STORY_MIN_TOKENS,
       minReplyChars: STORY_MIN_REPLY_CHARS,
-      postProcess: sanitizeBedtimeTitle,
+      postProcess: normalizeStoryOutput,
     };
   },
   STORY_MIN_TOKENS,
   STORY_MIN_REPLY_CHARS,
+  looksLikeStory,
+  normalizeStoryOutput,
 };

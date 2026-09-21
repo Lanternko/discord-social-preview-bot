@@ -53,20 +53,26 @@ const SHOULD_MATCH = [
   "你講故事給我聽",
 ];
 
+// Detection is recall-only: a message that merely MENTIONS 故事 loads the pack
+// on purpose, and the craft block's veto clause sends her back to ordinary
+// chat. These are the ones that must not even load it.
 const SHOULD_NOT_MATCH = [
+  "今天天氣真好",
+  "晚餐要吃什麼",
+  "抽籤",
+  "這部電影的劇情很扯",
+  "history repeats itself",
+  "",
+  null,
+];
+
+// Loaded on purpose even though they are commentary, not requests — 西寶 vetoes
+// them at generation time. Listed so a future "tightening" has to face them.
+const LOADS_AND_LETS_HER_DECIDE = [
   "剛剛那個故事很好笑",
   "你昨天的故事我很喜歡",
   "這個故事的結局太扯了",
   "上面的故事是誰寫的",
-  // Topic-form lookalikes: a 的 before 故事 is not enough on its own.
-  "你說的話根本不像故事",
-  "我剛剛講的故事你覺得怎樣",
-  "你寫的那個故事太扯",
-  "今天天氣真好",
-  "晚餐要吃什麼",
-  "抽籤",
-  "",
-  null,
 ];
 
 check("story skill matches real requests", () => {
@@ -77,10 +83,40 @@ check("story skill matches real requests", () => {
   }
 });
 
-check("story skill ignores commentary and unrelated chat", () => {
+check("story skill ignores chat with no story keyword at all", () => {
   for (const text of SHOULD_NOT_MATCH) {
     assert.equal(detectSkill(text), null, `unexpected skill match for: ${text}`);
   }
+});
+
+check("story skill loads on commentary and lets her veto", () => {
+  for (const text of LOADS_AND_LETS_HER_DECIDE) {
+    const skill = detectSkill(text);
+    assert.ok(skill, `expected the pack to load for: ${text}`);
+    assert.equal(skill.id, "story");
+  }
+});
+
+check("chat pack carries the veto clause", () => {
+  const chat = buildStoryCraftBlock({ guildName: "測試群", mode: "chat" });
+  assert.ok(
+    chat.includes("當作不存在"),
+    "loose detection is only safe while she can opt out",
+  );
+  assert.ok(chat.includes("先自己判斷"), "lost the judge-first instruction");
+});
+
+check("postProcess only touches story-shaped output", () => {
+  const { normalizeStoryOutput } = require("../src/ai/skills/story");
+  const chatty = "欸那個故事我記得啦，就那隻貓的那個嘛";
+  assert.equal(normalizeStoryOutput(chatty), chatty, "must not title a chat reply");
+  const twoLine = "好啊\n那我講一個";
+  assert.equal(normalizeStoryOutput(twoLine), twoLine);
+  const story = "**會替人照相的魔法鏡**\n\n小夏在河邊撿到一面鏡子。\n\n結局很扯。";
+  assert.ok(
+    normalizeStoryOutput(story).startsWith("## 會替人照相的魔法鏡"),
+    "story output must be normalised to a ## heading",
+  );
 });
 
 // ── 2. Chat story pack ──────────────────────────────────────────────────
@@ -137,7 +173,10 @@ check("chat pack sources from group context, not a buffet", () => {
   const chat = buildStoryCraftBlock({ guildName: "測試群", mode: "chat" });
   assert.ok(chat.includes("最近群組對話"), "chat pack must point at group context");
   // group-context.js labels its block 「不要直接複述」; a story must override it.
-  assert.ok(chat.includes("這次不算"), "chat pack must lift the no-reciting rule");
+  assert.ok(
+    chat.includes("真的動筆寫的時候不算"),
+    "chat pack must lift the no-reciting rule, but only once she commits",
+  );
   assert.ok(!chat.includes("睡前故事時間"), "chat pack leaked the bedtime framing");
   assert.ok(!chat.includes("晚安"), "chat pack leaked the bedtime ending rule");
 });
