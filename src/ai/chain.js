@@ -454,6 +454,11 @@ async function generateAIReply(message, userText, options = {}) {
     personaOverride = null,
     personaSuffix = "",
     maxReplyChars = null,
+    // Floors, not overrides: a skill declares the budget its output format
+    // needs (a story cannot fit 入門's 180 tokens), but a tier already granting
+    // more keeps its own, larger limit.
+    minTokens = 0,
+    minReplyChars = 0,
     recordMemory = true,
     includeHistory = true,
     includeContext = true,
@@ -635,12 +640,12 @@ async function generateAIReply(message, userText, options = {}) {
     guildChain,
     turns,
     persona,
-    tierConfig.maxTokens,
+    Math.max(tierConfig.maxTokens, minTokens),
   );
   if (result) {
     const capped = trimDescription(
       result.text,
-      maxReplyChars || tierConfig.maxReplyChars,
+      Math.max(maxReplyChars || tierConfig.maxReplyChars, minReplyChars),
     );
     // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the
     // resolved `<:name:id>` syntax, the model would see its own raw IDs next

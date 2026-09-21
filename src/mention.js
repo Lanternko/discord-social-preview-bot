@@ -1,5 +1,6 @@
 const { pickRandom } = require("./utils");
 const { generateAIReply } = require("./ai/chain");
+const { detectSkill, buildSkillContext } = require("./ai/skills");
 const { extractSticker } = require("./ai/sticker-resolver");
 const {
   buildStickerCatalog,
@@ -126,10 +127,39 @@ async function handleMention(message, client) {
   }
 
   const stickerCatalog = await buildStickerCatalog(message.guild);
-  const aiReply = await generateAIReply(message, text, { stickerCatalog });
+
+  // Skill routing: a request shaped like one of the tuned prompt packs (講故事,
+  // …) gets that pack folded into THIS call — no extra round trip. On any miss
+  // the skill resolves to null and she answers as usual.
+  const skill = detectSkill(text);
+  const skillCtx = await buildSkillContext(skill, { message, text });
+  if (skillCtx) {
+    console.log(`[skill] hit id=${skill.id} user=${message.author.id}`);
+  }
+
+  const aiReply = await generateAIReply(message, text, {
+    stickerCatalog,
+    ...(skillCtx
+      ? {
+          personaSuffix: skillCtx.personaSuffix,
+          minTokens: skillCtx.minTokens,
+          minReplyChars: skillCtx.minReplyChars,
+        }
+      : {}),
+  });
   if (aiReply) {
-    console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
-    await sendAIReply(message, aiReply, stickerCatalog);
+    // A skill may normalise its own output format (the story pack forces the
+    // first line into a `## ` heading). Never let that throw away the reply.
+    let finalReply = aiReply;
+    if (skillCtx?.postProcess) {
+      try {
+        finalReply = skillCtx.postProcess(aiReply) || aiReply;
+      } catch (err) {
+        console.warn(`[skill] postProcess failed id=${skill.id}: ${err.message}`);
+      }
+    }
+    console.log(`[ai] reply len=${finalReply.length} user=${message.author.id}`);
+    await sendAIReply(message, finalReply, stickerCatalog);
     return;
   }
 
