@@ -3,6 +3,8 @@ const { replaceHostFixer } = require("../url-routing");
 const { resolveThreadsUrl } = require("../threads-url");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
+// Module reference (not destructured) so the smoke tests can stub the fetch.
+const ogFallback = require("../og-fallback");
 const {
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
@@ -84,11 +86,54 @@ function threadsAuthorFromUrl(url) {
   }
 }
 
+// A walled post's author page is usually still public, so its og:image gives
+// the fallback card a face. Only ever fetched on the already-failed path, on
+// the official host, for a username that passed a strict charset check.
+const AVATAR_TIMEOUT_MS = 3000;
+const AVATAR_CACHE_TTL_MS = 60 * 60 * 1000;
+const AVATAR_CACHE_MAX = 200;
+const AVATAR_HOST_RE = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/i;
+const avatarCache = new Map();
+
+function isSafeAvatarUrl(imageUrl) {
+  try {
+    const parsed = new URL(imageUrl);
+    return parsed.protocol === "https:" && AVATAR_HOST_RE.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchThreadsAvatar(author) {
+  if (!author || !/^[A-Za-z0-9._]{1,64}$/.test(author)) return null;
+  const cached = avatarCache.get(author);
+  if (cached && Date.now() - cached.at < AVATAR_CACHE_TTL_MS) {
+    return cached.url;
+  }
+
+  let avatarUrl = null;
+  try {
+    const meta = await ogFallback.fetchOgMetadata(
+      `https://www.threads.com/@${author}`,
+      { timeoutMs: AVATAR_TIMEOUT_MS },
+    );
+    avatarUrl = isSafeAvatarUrl(meta?.image) ? meta.image : null;
+  } catch (error) {
+    console.log(`[preview] threads avatar miss @${author}: ${error.message}`);
+  }
+
+  if (avatarCache.size >= AVATAR_CACHE_MAX) {
+    avatarCache.delete(avatarCache.keys().next().value);
+  }
+  avatarCache.set(author, { url: avatarUrl, at: Date.now() });
+  return avatarUrl;
+}
+
 function buildThreadsLocalFallback(
   url,
   metadata = null,
   video = false,
-  { walled = false } = {},
+  { walled = false, avatarUrl = null } = {},
 ) {
   const author = threadsAuthorFromUrl(url);
   const kind = video ? "Threads 影片貼文" : "Threads 貼文";
@@ -102,7 +147,9 @@ function buildThreadsLocalFallback(
     embed.setAuthor({
       name: `@${author}`,
       url: `https://www.threads.com/@${encodeURIComponent(author)}`,
+      ...(avatarUrl ? { iconURL: avatarUrl } : {}),
     });
+    if (avatarUrl) embed.setThumbnail(avatarUrl);
   }
   if (video) {
     const description = metadata?.description
@@ -224,9 +271,11 @@ async function buildThreadsPayload(url) {
   }
 
   // Discord unfurls viewer URLs. The bot intentionally never fetches viewer
-  // HTML, keeping the SSRF boundary limited to the exact official share URL.
+  // HTML, keeping the SSRF boundary on the official host (share URL + the
+  // author's profile page for the avatar).
+  const avatarUrl = await fetchThreadsAvatar(threadsAuthorFromUrl(canonicalUrl));
   console.log(
-    `[preview] threads viewer fallback walled=${walled} ${canonicalUrl}`,
+    `[preview] threads viewer fallback walled=${walled} avatar=${Boolean(avatarUrl)} ${canonicalUrl}`,
   );
   return {
     content: viewerUrls[0],
@@ -234,6 +283,7 @@ async function buildThreadsPayload(url) {
     viewerValidation: "threads",
     embedFallback: buildThreadsLocalFallback(canonicalUrl, null, false, {
       walled,
+      avatarUrl,
     }),
     sourceUrl: canonicalUrl,
   };
@@ -245,4 +295,5 @@ module.exports = {
   buildThreadsViewerUrls,
   buildThreadsLocalFallback,
   threadsAuthorFromUrl,
+  resetThreadsAvatarCacheForTests: () => avatarCache.clear(),
 };

@@ -60,7 +60,20 @@ global.fetch = async (...args) => {
   return _origFetch(...args);
 };
 
-const { buildThreadsPayload } = require("../src/platforms/threads");
+const ogFallbackModule = require("../src/og-fallback");
+let _mockAvatarMeta = null;
+const realFetchOgMetadata = ogFallbackModule.fetchOgMetadata;
+ogFallbackModule.fetchOgMetadata = async (url, options) => {
+  if (url.startsWith("https://www.threads.com/@")) {
+    if (_mockAvatarMeta instanceof Error) throw _mockAvatarMeta;
+    return _mockAvatarMeta || {};
+  }
+  return realFetchOgMetadata(url, options);
+};
+const {
+  buildThreadsPayload,
+  resetThreadsAvatarCacheForTests,
+} = require("../src/platforms/threads");
 const { buildInstagramPayload } = require("../src/platforms/instagram");
 const { buildBahamutPayload } = require("../src/platforms/bahamut");
 const { buildPttPayload } = require("../src/platforms/ptt");
@@ -749,6 +762,37 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       assert.ok(!embed.description.includes("未登入"), "no wall claim");
     } finally {
       _mockProbeError = null;
+    }
+  });
+
+  await it("walled post → author avatar from the public profile page", async () => {
+    const avatar = "https://scontent-tpe1-1.cdninstagram.com/v/a.jpg";
+    resetThreadsAvatarCacheForTests();
+    _mockAvatarMeta = { image: avatar };
+    _mockProbeError = Object.assign(new Error("stub"), { walled: true });
+    try {
+      const embed = (await buildThreadsPayload(THREADS_URL)).embedFallback
+        .embeds[0].data;
+      assert.equal(embed.author.icon_url, avatar);
+      assert.equal(embed.thumbnail.url, avatar);
+
+      // off-CDN image or a failed fetch → card still renders, no avatar
+      for (const meta of [
+        { image: "https://evil.example/a.jpg" },
+        new Error("timeout"),
+      ]) {
+        resetThreadsAvatarCacheForTests();
+        _mockAvatarMeta = meta;
+        const plain = (await buildThreadsPayload(THREADS_URL)).embedFallback
+          .embeds[0].data;
+        assert.equal(plain.author.name, "@a");
+        assert.equal(plain.author.icon_url, undefined);
+        assert.equal(plain.thumbnail, undefined);
+      }
+    } finally {
+      _mockProbeError = null;
+      _mockAvatarMeta = null;
+      resetThreadsAvatarCacheForTests();
     }
   });
 
