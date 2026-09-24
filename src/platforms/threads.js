@@ -3,6 +3,8 @@ const { replaceHostFixer } = require("../url-routing");
 const { resolveThreadsUrl } = require("../threads-url");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
+// Module reference (not destructured) so the smoke tests can stub the fetch.
+const ogFallback = require("../og-fallback");
 const {
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
@@ -69,12 +71,86 @@ function buildThreadsViewerUrls(url) {
   return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
 
-function buildThreadsLocalFallback(url, metadata = null, video = false) {
+const WALLED_DESCRIPTION =
+  "Threads 不讓未登入的人看這篇，所以抓不到內容——可能是作者限定了觀看對象、被標成敏感內容，或已經刪除。請點標題登入 Threads 觀看。";
+const GENERIC_DESCRIPTION = "預覽目前無法載入，請點標題前往原始貼文。";
+
+// The canonical permalink is /@user/post/ID, so the author survives even when
+// every fetch came back empty — the card should at least say whose post it is.
+function threadsAuthorFromUrl(url) {
+  try {
+    const match = new URL(url).pathname.match(/^\/@([^/]+)\/post\//);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+// A walled post's author page is usually still public, so its og:image gives
+// the fallback card a face. Only ever fetched on the already-failed path, on
+// the official host, for a username that passed a strict charset check.
+const AVATAR_TIMEOUT_MS = 3000;
+const AVATAR_CACHE_TTL_MS = 60 * 60 * 1000;
+const AVATAR_CACHE_MAX = 200;
+const AVATAR_HOST_RE = /(^|\.)(cdninstagram\.com|fbcdn\.net)$/i;
+const avatarCache = new Map();
+
+function isSafeAvatarUrl(imageUrl) {
+  try {
+    const parsed = new URL(imageUrl);
+    return parsed.protocol === "https:" && AVATAR_HOST_RE.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function fetchThreadsAvatar(author) {
+  if (!author || !/^[A-Za-z0-9._]{1,64}$/.test(author)) return null;
+  const cached = avatarCache.get(author);
+  if (cached && Date.now() - cached.at < AVATAR_CACHE_TTL_MS) {
+    return cached.url;
+  }
+
+  let avatarUrl = null;
+  try {
+    const meta = await ogFallback.fetchOgMetadata(
+      `https://www.threads.com/@${author}`,
+      { timeoutMs: AVATAR_TIMEOUT_MS },
+    );
+    avatarUrl = isSafeAvatarUrl(meta?.image) ? meta.image : null;
+  } catch (error) {
+    console.log(`[preview] threads avatar miss @${author}: ${error.message}`);
+  }
+
+  if (avatarCache.size >= AVATAR_CACHE_MAX) {
+    avatarCache.delete(avatarCache.keys().next().value);
+  }
+  avatarCache.set(author, { url: avatarUrl, at: Date.now() });
+  return avatarUrl;
+}
+
+function buildThreadsLocalFallback(
+  url,
+  metadata = null,
+  video = false,
+  { walled = false, avatarUrl = null } = {},
+) {
+  const author = threadsAuthorFromUrl(url);
+  const kind = video ? "Threads 影片貼文" : "Threads 貼文";
   const embed = buildThreadsCompactEmbed(url, {
-    title: metadata?.title || (video ? "Threads 影片貼文" : "Threads 貼文"),
+    title: metadata?.title || (author ? `@${author} 的 ${kind}` : kind),
     description:
-      metadata?.description || "預覽目前無法載入，請點標題前往原始貼文。",
+      metadata?.description ||
+      (walled ? WALLED_DESCRIPTION : GENERIC_DESCRIPTION),
   });
+  if (author) {
+    embed.setAuthor({
+      name: `@${author}`,
+      url: `https://www.threads.com/@${encodeURIComponent(author)}`,
+      ...(avatarUrl ? { iconURL: avatarUrl } : {}),
+    });
+    if (avatarUrl) embed.setThumbnail(avatarUrl);
+  }
   if (video) {
     const description = metadata?.description
       ? `${trimDescription(metadata.description, 3900)}\n\n（影片無法載入，請點連結觀看）`
@@ -87,6 +163,7 @@ function buildThreadsLocalFallback(url, metadata = null, video = false) {
 async function buildThreadsPayload(url) {
   const canonicalUrl = await resolveThreadsUrl(url);
   const viewerUrls = buildThreadsViewerUrls(canonicalUrl);
+  let walled = false;
 
   try {
     const rawMetadata = await fetchThreadsMetadata(canonicalUrl);
@@ -190,16 +267,24 @@ async function buildThreadsPayload(url) {
       `Could not fetch Threads metadata for ${canonicalUrl}:`,
       error.message,
     );
+    walled = Boolean(error.walled);
   }
 
   // Discord unfurls viewer URLs. The bot intentionally never fetches viewer
-  // HTML, keeping the SSRF boundary limited to the exact official share URL.
-  console.log(`[preview] threads viewer fallback ${canonicalUrl}`);
+  // HTML, keeping the SSRF boundary on the official host (share URL + the
+  // author's profile page for the avatar).
+  const avatarUrl = await fetchThreadsAvatar(threadsAuthorFromUrl(canonicalUrl));
+  console.log(
+    `[preview] threads viewer fallback walled=${walled} avatar=${Boolean(avatarUrl)} ${canonicalUrl}`,
+  );
   return {
     content: viewerUrls[0],
     fallbackContents: viewerUrls.slice(1),
     viewerValidation: "threads",
-    embedFallback: buildThreadsLocalFallback(canonicalUrl),
+    embedFallback: buildThreadsLocalFallback(canonicalUrl, null, false, {
+      walled,
+      avatarUrl,
+    }),
     sourceUrl: canonicalUrl,
   };
 }
@@ -209,4 +294,6 @@ module.exports = {
   buildReplyDescription,
   buildThreadsViewerUrls,
   buildThreadsLocalFallback,
+  threadsAuthorFromUrl,
+  resetThreadsAvatarCacheForTests: () => avatarCache.clear(),
 };

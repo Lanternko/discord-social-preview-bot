@@ -191,11 +191,19 @@ function salvageLoginWallMedia(metadata, url) {
   };
 }
 
+// Every "Threads won't show this to a logged-out visitor" outcome is tagged so
+// the fallback card can say WHY instead of a generic "couldn't load".
+function walledError(message) {
+  const error = new Error(message);
+  error.walled = true;
+  return error;
+}
+
 async function fetchThreadsMetadataViaProbe(url) {
   const metadata = await runProbe(url);
 
   if (isRedirectedOffPost(metadata)) {
-    throw new Error(
+    throw walledError(
       `Threads redirected the probe off the post (walled / unavailable logged-out) for ${url}`,
     );
   }
@@ -203,7 +211,7 @@ async function fetchThreadsMetadataViaProbe(url) {
   if (isThreadsLoginWall(metadata)) {
     const salvaged = salvageLoginWallMedia(metadata, url);
     if (!salvaged) {
-      throw new Error(
+      throw walledError(
         `Threads served a logged-out login wall (no public metadata) for ${url}`,
       );
     }
@@ -212,7 +220,7 @@ async function fetchThreadsMetadataViaProbe(url) {
   }
 
   if (isContentlessStub(metadata)) {
-    throw new Error(
+    throw walledError(
       `Threads served a content-less stub (walled / unavailable logged-out) for ${url}`,
     );
   }
