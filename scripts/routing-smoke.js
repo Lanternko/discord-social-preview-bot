@@ -730,6 +730,28 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     }
   });
 
+  await it("walled post → fallback card names the author and says why", async () => {
+    _mockProbeError = Object.assign(new Error("stub"), { walled: true });
+    try {
+      const p = await buildThreadsPayload(THREADS_URL);
+      const embed = p.embedFallback.embeds[0].data;
+      assert.equal(embed.author.name, "@a");
+      assert.equal(embed.title, "@a 的 Threads 貼文");
+      assert.ok(embed.description.includes("未登入"), "explains the wall");
+    } finally {
+      _mockProbeError = null;
+    }
+    _mockProbeError = new Error("network boom");
+    try {
+      const p = await buildThreadsPayload(THREADS_URL);
+      const embed = p.embedFallback.embeds[0].data;
+      assert.equal(embed.author.name, "@a", "author even on plain errors");
+      assert.ok(!embed.description.includes("未登入"), "no wall claim");
+    } finally {
+      _mockProbeError = null;
+    }
+  });
+
   await it("Threads viewer validation advances through arbitrary fallbacks and stops at first useful embed", async () => {
     const edits = [];
     const target = {

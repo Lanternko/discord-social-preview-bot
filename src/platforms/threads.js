@@ -69,12 +69,41 @@ function buildThreadsViewerUrls(url) {
   return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
 
-function buildThreadsLocalFallback(url, metadata = null, video = false) {
+const WALLED_DESCRIPTION =
+  "Threads 不讓未登入的人看這篇，所以抓不到內容——可能是作者限定了觀看對象、被標成敏感內容，或已經刪除。請點標題登入 Threads 觀看。";
+const GENERIC_DESCRIPTION = "預覽目前無法載入，請點標題前往原始貼文。";
+
+// The canonical permalink is /@user/post/ID, so the author survives even when
+// every fetch came back empty — the card should at least say whose post it is.
+function threadsAuthorFromUrl(url) {
+  try {
+    const match = new URL(url).pathname.match(/^\/@([^/]+)\/post\//);
+    return match ? decodeURIComponent(match[1]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildThreadsLocalFallback(
+  url,
+  metadata = null,
+  video = false,
+  { walled = false } = {},
+) {
+  const author = threadsAuthorFromUrl(url);
+  const kind = video ? "Threads 影片貼文" : "Threads 貼文";
   const embed = buildThreadsCompactEmbed(url, {
-    title: metadata?.title || (video ? "Threads 影片貼文" : "Threads 貼文"),
+    title: metadata?.title || (author ? `@${author} 的 ${kind}` : kind),
     description:
-      metadata?.description || "預覽目前無法載入，請點標題前往原始貼文。",
+      metadata?.description ||
+      (walled ? WALLED_DESCRIPTION : GENERIC_DESCRIPTION),
   });
+  if (author) {
+    embed.setAuthor({
+      name: `@${author}`,
+      url: `https://www.threads.com/@${encodeURIComponent(author)}`,
+    });
+  }
   if (video) {
     const description = metadata?.description
       ? `${trimDescription(metadata.description, 3900)}\n\n（影片無法載入，請點連結觀看）`
@@ -87,6 +116,7 @@ function buildThreadsLocalFallback(url, metadata = null, video = false) {
 async function buildThreadsPayload(url) {
   const canonicalUrl = await resolveThreadsUrl(url);
   const viewerUrls = buildThreadsViewerUrls(canonicalUrl);
+  let walled = false;
 
   try {
     const rawMetadata = await fetchThreadsMetadata(canonicalUrl);
@@ -190,16 +220,21 @@ async function buildThreadsPayload(url) {
       `Could not fetch Threads metadata for ${canonicalUrl}:`,
       error.message,
     );
+    walled = Boolean(error.walled);
   }
 
   // Discord unfurls viewer URLs. The bot intentionally never fetches viewer
   // HTML, keeping the SSRF boundary limited to the exact official share URL.
-  console.log(`[preview] threads viewer fallback ${canonicalUrl}`);
+  console.log(
+    `[preview] threads viewer fallback walled=${walled} ${canonicalUrl}`,
+  );
   return {
     content: viewerUrls[0],
     fallbackContents: viewerUrls.slice(1),
     viewerValidation: "threads",
-    embedFallback: buildThreadsLocalFallback(canonicalUrl),
+    embedFallback: buildThreadsLocalFallback(canonicalUrl, null, false, {
+      walled,
+    }),
     sourceUrl: canonicalUrl,
   };
 }
@@ -209,4 +244,5 @@ module.exports = {
   buildReplyDescription,
   buildThreadsViewerUrls,
   buildThreadsLocalFallback,
+  threadsAuthorFromUrl,
 };
