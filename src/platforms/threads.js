@@ -72,7 +72,7 @@ function buildThreadsViewerUrls(url) {
 }
 
 const WALLED_DESCRIPTION =
-  "未登入看不到這篇（可能限定觀看、敏感或已刪除），請點標題登入觀看。";
+  "未登入看不到這篇（限定或敏感內容），請跳轉至原文。";
 const GENERIC_DESCRIPTION = "預覽目前無法載入，請點標題前往原始貼文。";
 
 // The canonical permalink is /@user/post/ID, so the author survives even when
