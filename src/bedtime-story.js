@@ -1,8 +1,20 @@
 const { updateSchedule } = require("./schedule-store");
 const { trimDescription, sanitizeName } = require("./utils");
+const { collectFromMessage } = require("./ai/vision");
 
 const BEDTIME_LOOKBACK_MS = 18 * 60 * 60 * 1000;
 const MAX_INGREDIENTS = 8;
+// Preceding lines shown with each ingredient. A line lifted out of its thread
+// loses the joke — 「專家都用vscode 寫黃文的」 is only funny next to SAB's
+// 「預設讀 txt 的軟體是 vscode」 right before it.
+const CONTEXT_LINES = 2;
+const CONTEXT_WINDOW_MS = 10 * 60 * 1000;
+// Someone else talking within this window (either side) = a back-and-forth,
+// which makes better story material than a line nobody answered.
+const EXCHANGE_WINDOW_MS = 5 * 60 * 1000;
+// One busy thread (a game-stats argument) once filled 4 of 8 slots with
+// near-identical number talk. Cap the recency fill per channel.
+const MAX_RECENT_PER_CHANNEL = 2;
 
 function localDateKey(now = new Date(), timeZone = "Asia/Taipei") {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -48,14 +60,70 @@ function messagePreview(message) {
   return "";
 }
 
+function messageTimestamp(message) {
+  return message?.createdTimestamp || message?.createdAt?.getTime?.() || 0;
+}
+
+// What's left of a message once links, custom emoji, mentions and symbols are
+// gone. 26% of 30 nights' ingredients were 「圖片或附件」/[連結]/emoji/@ — the
+// story model can't build anything on those.
+function storyText(message) {
+  const raw = (message?.content || "").replace(/\s+/g, " ").trim();
+  if (!raw) return "";
+  const text = raw.replace(/https?:\/\/\S+/g, "[連結]").trim();
+  const substance = text
+    .replace(/\[連結\]/g, "")
+    .replace(/<a?:\w+:\d+>/g, "")
+    .replace(/<(@[!&]?|#)\d+>/g, "")
+    .replace(/[\p{P}\p{S}\p{Z}\p{Extended_Pictographic}\u200d\ufe0f]/gu, "");
+  if ([...substance].length < 2) return "";
+  return trimDescription(text, 90);
+}
+
+function sameChannel(a, b) {
+  const idA = a?.channel?.id ?? a?.channelId ?? a?.channel?.name;
+  const idB = b?.channel?.id ?? b?.channelId ?? b?.channel?.name;
+  return idA === idB;
+}
+
+function storyContext(message, humans) {
+  const at = messageTimestamp(message);
+  return humans
+    .filter((m) => m !== message && sameChannel(m, message))
+    .filter((m) => {
+      const t = messageTimestamp(m);
+      return t < at && at - t <= CONTEXT_WINDOW_MS;
+    })
+    .sort((a, b) => messageTimestamp(b) - messageTimestamp(a))
+    .map((m) => ({ m, text: storyText(m) }))
+    .filter((entry) => entry.text)
+    .slice(0, CONTEXT_LINES)
+    .reverse()
+    .map((entry) => `${messageDisplayName(entry.m)}：${entry.text}`);
+}
+
+function hasExchange(message, humans) {
+  const at = messageTimestamp(message);
+  const authorId = message.author?.id;
+  return humans.some(
+    (m) =>
+      m.author?.id !== authorId &&
+      sameChannel(m, message) &&
+      Math.abs(messageTimestamp(m) - at) <= EXCHANGE_WINDOW_MS,
+  );
+}
+
+// An ingredient is either real text or an image the vision step can describe.
+// Stickers, bare links, emoji and embeds are dropped.
 function selectStoryIngredients(messages, channelStats, limit = MAX_INGREDIENTS) {
-  const nonBot = messages
-    .filter((m) => !m.author?.bot)
-    .filter((m) => messagePreview(m));
+  const humans = messages.filter((m) => !m.author?.bot);
+  const usable = humans.filter(
+    (m) => storyText(m) || collectFromMessage(m).length > 0,
+  );
 
   const reacted = [];
   const reactedAuthors = new Set();
-  const ranked = [...nonBot]
+  const ranked = [...usable]
     .map((m) => ({ message: m, reactions: messageReactionCount(m) }))
     .filter((entry) => entry.reactions > 0)
     .sort((a, b) => b.reactions - a.reactions);
@@ -67,25 +135,33 @@ function selectStoryIngredients(messages, channelStats, limit = MAX_INGREDIENTS)
     if (reacted.length >= 4) break;
   }
 
-  const recent = [...nonBot]
-    .sort((a, b) => {
-      const atA = a.createdTimestamp || a.createdAt?.getTime?.() || 0;
-      const atB = b.createdTimestamp || b.createdAt?.getTime?.() || 0;
-      return atB - atA;
+  const recent = [...usable]
+    .map((m) => ({ message: m, exchange: hasExchange(m, humans) }))
+    .sort(
+      (a, b) =>
+        Number(b.exchange) - Number(a.exchange) ||
+        messageTimestamp(b.message) - messageTimestamp(a.message),
+    )
+    .map((entry) => entry.message)
+    .filter((m, _i, all) => {
+      const sameCh = all.filter((other) => sameChannel(other, m));
+      return sameCh.indexOf(m) < MAX_RECENT_PER_CHANNEL;
     })
     .slice(0, 10);
 
   const seen = new Set();
   const ingredients = [];
   for (const message of [...reacted, ...recent]) {
-    const preview = messagePreview(message);
-    const key = `${message.author?.id || "unknown"}:${preview}`;
-    if (!preview || seen.has(key)) continue;
+    const preview = storyText(message);
+    const key = preview ? `${message.author?.id || "unknown"}:${preview}` : message;
+    if (seen.has(key)) continue;
     seen.add(key);
     ingredients.push({
       authorName: messageDisplayName(message),
       channelName: sanitizeName(message.channel?.name || "未知頻道"),
       preview,
+      context: storyContext(message, humans),
+      images: collectFromMessage(message).slice(0, 1),
       reactions: messageReactionCount(message),
     });
     if (ingredients.length >= limit) break;
@@ -98,17 +174,13 @@ function selectStoryIngredients(messages, channelStats, limit = MAX_INGREDIENTS)
   return { ingredients, activeChannels };
 }
 
-// 每晚只挑幾條，不要全套上去 —— 全部照做會變成另一種公式。
 const STORY_CRAFT_MOVES = [
   "開場直接從一句對話或一個動作進去，不要先交代時間、地點、天氣或人物長相。",
-  "結局不要靠主角想通了、成長了、和好了來收；讓別人、意外、或某個東西替他決定。",
   "情緒有一半用白話直說（「他很緊張」）或用動作演，不要整篇都是心跳、胸口、氣味。",
-  "放一段互相打臉的敘述：同一件事有人記得不一樣，或有人當場否認前面說過的話。",
-  "留一個沒有回收的小線頭：某個東西出現過、被提過，最後就擱在那裡沒人處理。",
   "指名一個真實存在的東西（真的歌手、店家、地名、遊戲），不要用「某個知名歌手」這種虛指。",
 ];
 
-const STORY_CRAFT_MOVE_COUNT = 3;
+const STORY_CRAFT_MOVE_COUNT = 2;
 
 function pickStoryCraftMoves(moves, count, rng = Math.random) {
   const pool = [...moves];
@@ -176,9 +248,12 @@ function buildStoryCraftBlock({
   // block appended below; chat reads the 【最近群組對話】 turn chain.js injects
   // — whose own header says "不要直接複述", so this lifts that for this turn
   // only (same move target-context.js makes for imitation).
+  // One strong line beats two forced together: blind tests (2026-09-25) scored
+  // every story that glued two unrelated lines 2/5 (「後門和良善沒有關聯」).
+  const pickRule = "挑一則單獨看就懂、有情境的當主軸；只有另一個人的某一則跟它真的接得上時才加第二則，接不上就只用一則。其餘完全忽略。";
   const sourceRule = chat
-    ? "- 整個故事只有一個場景、一條主線。從上面【最近群組對話】裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。（那份紀錄平常標著「不要直接複述」，只有在你確定要寫故事、真的動筆寫的時候不算——就是要你拿它當材料；判斷成不用寫故事的話，「不要直接複述」照舊。）"
-    : "- 整個故事只有一個場景、一條主線。從素材裡挑剛好兩則、且來自兩個不同的人，融進主線；其餘完全忽略。";
+    ? `- 整個故事只有一個場景、一條主線。從上面【最近群組對話】裡${pickRule}（那份紀錄平常標著「不要直接複述」，只有在你確定要寫故事、真的動筆寫的時候不算——就是要你拿它當材料；判斷成不用寫故事的話，「不要直接複述」照舊。）`
+    : `- 整個故事只有一個場景、一條主線。從素材裡${pickRule}`;
 
   const inspirationRule = chat
     ? "- 可以用群聊內容當靈感，但不要做今日回顧，不要流水帳。"
@@ -198,8 +273,13 @@ function buildStoryCraftBlock({
     "",
     "寫作要求：",
     "- 第一行必須是 Markdown 標題：`## ` 加上具體標題（例如 `## 會替人照相的魔法鏡`）。標題裡不要出現「床邊故事」四個字，也不要寫「睡前故事」「今日故事」。故事本文裡提不提都可以。",
-    "- 寫一個 180～420 字的原創短故事，有趣、有一個小轉折或誤會。",
+    "- 寫一個 150～300 字的原創短故事，目標是好笑，不是奇幻。",
     sourceRule,
+    "- 動筆前先想清楚這個梗到底好笑在哪（誰吐槽誰、誰說了暴論、哪裡荒謬；有附前文的，笑點常常在前文和這句的落差）。整個故事就圍著這個梗，情節只負責把它鋪出來，觀眾看得懂就好，不用把笑點講破。",
+    "- 素材可能是歌詞、迷因、動漫台詞，或在接別人的梗，不是字面意思。看不出它在接什麼的就不要挑，更不要照字面寫成劇情（例如把一句歌詞寫成真的在做菜）。",
+    "- 最後一句交給角色說出口，回扣前面出現過的東西；不要用旁白總結、不要下雙關結論。",
+    "- 不要寫否認再被抓包的橋段（「我沒說過」「你剛剛明明說了」）：素材就是那個人真的說過的話，讓他否認只會變成來回鬼打牆，不好笑。",
+    "- 因果要講得通：轉折必須是前面已經出現的人、話或東西造成的，讀者回頭看會覺得「啊，原來是這樣」。不准有東西自己動起來、自動跳出、突然發光，不准靠魔法或巧合收尾，也不要留懸念或沒交代的伏筆。",
     ...(chat && hasExtraMaterial
       ? [
           "- 除了這個頻道的對話，上面還有一塊【這個群最近的其他材料】：別的房間最近在聊什麼、群友各自的取向。主線可以整個長在那些材料上——不必侷限在這個頻道剛剛的話題。兩則要融進主線的真實訊息仍然從【最近群組對話】挑，但場景、角色的愛好、支線細節都可以取自那塊材料（例如某人喜歡的遊戲、某個房間在吵的東西）。",
@@ -214,6 +294,7 @@ function buildStoryCraftBlock({
     inspirationRule,
     "- 只有住址、電話、真實姓名這類個資才抽象。",
     "- 排版：標題下一行空白，之後 2～5 段，每段之間空一行。",
+    "- 全文用繁體中文（台灣用語），不要出現簡體字。",
     endingRule,
     "",
     movesHeader,
@@ -222,6 +303,14 @@ function buildStoryCraftBlock({
     ),
     "）",
   ].join("\n");
+}
+
+// An image ingredient only exists once the vision step has described it; an
+// undescribed one (vision off / failed) has nothing to say and is skipped.
+function ingredientSaid(item) {
+  const image = item.imageCaption ? `（貼了一張圖：${item.imageCaption}）` : "";
+  if (item.preview && image) return `${item.preview} ${image}`;
+  return item.preview || image;
 }
 
 // The scheduled task's curated buffet. Chat has no equivalent — its ingredients
@@ -235,12 +324,15 @@ function buildStoryIngredientsBlock({ ingredients = [], activeChannels = [] } = 
   }
 
   if (ingredients.length > 0) {
-    lines.push("【可用靈感素材】（挑兩個不同人的各一則，用了就要認得出是哪一則）");
+    lines.push("【可用靈感素材】（主軸挑一則，第二則要真的接得上才加；用了就要認得出是哪一則。「貼了一張圖」是你看過那張圖寫下的描述）");
     for (const item of ingredients) {
+      const said = ingredientSaid(item);
+      if (!said) continue;
       const reacted = item.reactions > 0 ? `，反應 ${item.reactions}` : "";
-      lines.push(
-        `- ${item.authorName} 在 #${item.channelName}：${item.preview}${reacted}`,
-      );
+      lines.push(`- ${item.authorName} 在 #${item.channelName}：${said}${reacted}`);
+      if (item.context?.length) {
+        lines.push(`  （前文：${item.context.join("／")}）`);
+      }
     }
   } else {
     lines.push("【可用靈感素材】今天聊天素材很少，請自己創作一個安靜但有趣的小故事。");
@@ -256,12 +348,14 @@ function buildBedtimeStoryPrompt({
   schedule = {},
   now = new Date(),
   rng = Math.random,
+  selection = null,
 }) {
   const dateKey = localDateKey(now, schedule?.timezone || "Asia/Taipei");
-  const { ingredients, activeChannels } = selectStoryIngredients(
-    messages,
-    channelStats,
-  );
+  // The scheduler passes a selection whose images were already described
+  // (async vision step); tests and the fallback path let us select here.
+  const { ingredients: selected, activeChannels } =
+    selection || selectStoryIngredients(messages, channelStats);
+  const ingredients = selected.filter((item) => ingredientSaid(item));
 
   const prompt = [
     buildStoryCraftBlock({ guildName, mode: "scheduled", rng }),
@@ -274,7 +368,7 @@ function buildBedtimeStoryPrompt({
     dateKey,
     ingredientCount: ingredients.length,
     buffet: ingredients.map(
-      (item) => `${item.authorName}/#${item.channelName}:${item.preview}`,
+      (item) => `${item.authorName}/#${item.channelName}:${ingredientSaid(item)}`,
     ),
   };
 }
@@ -283,6 +377,7 @@ module.exports = {
   BEDTIME_LOOKBACK_MS,
   localDateKey,
   messagePreview,
+  storyText,
   selectStoryIngredients,
   markBedtimeStoryUsed,
   sanitizeBedtimeTitle,

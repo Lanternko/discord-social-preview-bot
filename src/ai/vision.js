@@ -192,7 +192,9 @@ function attachImagesToTurns(turns, images) {
 module.exports = {
   SUPPORTED_IMAGE_TYPES,
   resolveImageType,
+  collectFromMessage,
   collectVisionImages,
+  fetchImageData,
   loadVisionImages,
   buildImageNote,
   attachImagesToTurns,

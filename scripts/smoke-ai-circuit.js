@@ -200,14 +200,23 @@ async function main() {
   });
 
   console.log("bedtime story provider policy");
-  it("uses OpenAI Luna then DeepSeek direct", () => {
+  it("uses DeepSeek v4-pro thinking, then flash direct, then OpenAI Luna", () => {
     assert.deepEqual(
       STORY_PROVIDER_CHAIN.map((provider) => provider.label),
-      ["openai:gpt-5.6-luna", `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-flash"}:direct`],
+      [
+        "deepseek:deepseek-v4-pro:story",
+        `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-flash"}:direct`,
+        "openai:gpt-5.6-luna",
+      ],
     );
-    assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 45000);
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 240000);
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.reasoningHeadroom, 16000);
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.rejectTruncated, true);
+    assert.equal(STORY_PROVIDER_CHAIN[1].options.rejectTruncated, true);
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.thinking, undefined);
     assert.equal(STORY_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
     assert.deepEqual(STORY_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
+    assert.equal(STORY_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
   });
 
   await itAsync("sends story prompt to OpenAI with max_completion_tokens", async () => {
@@ -226,7 +235,7 @@ async function main() {
       };
     };
     try {
-      const result = await STORY_PROVIDER_CHAIN[0].call(
+      const result = await STORY_PROVIDER_CHAIN[2].call(
         [{ role: "user", content: "講故事" }],
         "persona",
         900,
@@ -273,6 +282,27 @@ async function main() {
       assert.deepEqual(requestBody.thinking, { type: "enabled" });
       assert.equal(requestBody.reasoning_effort, "medium");
       assert.equal(requestBody.max_tokens, 5696);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await itAsync("story chain rejects a length-truncated story; chat keeps it", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({
+      ok: true,
+      headers: { get: () => null },
+      json: async () => ({
+        choices: [{ message: { content: "小翔指著自己" }, finish_reason: "length" }],
+      }),
+    });
+    try {
+      const turns = [{ role: "user", content: "故事" }];
+      const story = await STORY_PROVIDER_CHAIN[0].call(turns, "persona", 1500);
+      assert.equal(story.ok, false);
+      assert.equal(story.kind, "empty");
+      const chat = await callDeepSeek(turns, "persona", 180, {});
+      assert.equal(chat.ok, true, "chat replies keep clipped text");
     } finally {
       global.fetch = originalFetch;
     }

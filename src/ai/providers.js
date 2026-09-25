@@ -393,6 +393,12 @@ async function callDeepSeek(turns, persona, maxTokens, overrides = {}) {
       console.warn(`[ai] ${label} empty response, finishReason=${finishReason}`);
       return fail("empty", { detail: finishReason });
     }
+    // Opt-in: chat replies keep a clipped answer (better than nothing), but a
+    // caller that would rather fall through than post a half-sentence says so.
+    if (overrides.rejectTruncated && meta.finishReason === "length") {
+      console.warn(`[ai] ${label} truncated response, finishReason=length`);
+      return fail("empty", { detail: "length" });
+    }
     return ok(text, { meta });
   });
 }

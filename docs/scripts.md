@@ -103,7 +103,7 @@ Guards the natural-language prompt packs in [src/ai/skills/](../src/ai/skills/) 
 |---|---|
 | Story triggers fire on real requests (`講個故事`, `tell me a story`) | a dead trigger means the tuned spec silently never loads |
 | Story triggers stay silent on commentary (`剛剛那個故事很好笑`) | a false positive makes her write 400 字 instead of chatting — the expensive direction |
-| Chat pack keeps the spec (`## ` title, 180～420 字, 不准消音, cast size) | the whole point is reusing the tuned rules, not paraphrasing them |
+| Chat pack keeps the spec (`## ` title, 150～300 字, 不准消音, cast size) | the whole point is reusing the tuned rules, not paraphrasing them |
 | Chat pack points at `【最近群組對話】` and lifts its 「不要直接複述」 rule | without the lift, the group-context header forbids exactly what the story needs |
 | Scheduled pack keeps bedtime framing and reads the buffet, not group context | the two modes must not bleed into each other |
 | `buildBedtimeStoryPrompt` still composes spec + ingredients | splitting the builder must not change the nightly output |
