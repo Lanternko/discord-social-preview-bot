@@ -346,6 +346,28 @@ module.exports = {
     "STORY_OPENAI_TIMEOUT_MS",
     45000,
   ),
+  // Bedtime stories lead with DeepSeek's thinking model: two blind tests
+  // (2026-09-25) ranked it the only model with no bad story. It needs ~50 s and
+  // a big reasoning budget: runs burned 6180 (→ empty) and 9375 (→ story cut
+  // mid-sentence) reasoning tokens, both finish_reason=length. Unused headroom
+  // is not billed, so it sits far above that. The story is scheduled, so
+  // latency is free; a miss just falls through to flash.
+  STORY_DEEPSEEK_MODEL: process.env.STORY_DEEPSEEK_MODEL || "deepseek-v4-pro",
+  STORY_DEEPSEEK_TIMEOUT_MS: parsePositiveIntEnv(
+    "STORY_DEEPSEEK_TIMEOUT_MS",
+    240000,
+  ),
+  STORY_DEEPSEEK_REASONING_HEADROOM: parsePositiveIntEnv(
+    "STORY_DEEPSEEK_REASONING_HEADROOM",
+    16000,
+  ),
+  // Display budget floor for a story. The scheduler used to hand stories the
+  // guild tier's chat budget — 180 on 入門, which cut flash mid-sentence and
+  // left v4-pro nothing after thinking. 150～300 字 fits comfortably in 1500.
+  STORY_MAX_TOKENS: parsePositiveIntEnv("STORY_MAX_TOKENS", 1500),
+  // How many image-only/image-bearing ingredients get described by the vision
+  // model before the story is written (one vision call each).
+  STORY_IMAGE_MAX: parsePositiveIntEnv("STORY_IMAGE_MAX", 3),
   // gpt-5.6-luna reasons too, and OpenAI counts those hidden tokens against
   // max_completion_tokens — so the same starvation that hit DeepSeek applies
   // here (111 empty finish_reason=length calls, all completion == reasoning).

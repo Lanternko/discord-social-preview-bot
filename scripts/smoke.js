@@ -146,6 +146,7 @@ const { isTrashEmoji } = require("../src/reaction-delete");
 const {
   localDateKey,
   messagePreview,
+  storyText,
   selectStoryIngredients,
   sanitizeBedtimeTitle,
   buildBedtimeStoryPrompt,
@@ -2858,6 +2859,63 @@ it("selectStoryIngredients prefers reacted then recent messages", () => {
   assert.equal(selected.ingredients[0].authorName, "hot");
   assert.match(selected.activeChannels[0], /#general/);
 });
+it("storyText drops links, emoji, mentions and stickers-only noise", () => {
+  assert.equal(storyText({ content: "https://x.com/a/status/1" }), "");
+  assert.equal(storyText({ content: "<:kek:123456> 😂😂" }), "");
+  assert.equal(storyText({ content: "<@123456> ？" }), "");
+  assert.equal(storyText({ content: "" }), "");
+  assert.equal(storyText({ content: "專家都用vscode 寫黃文的" }), "專家都用vscode 寫黃文的");
+});
+it("selectStoryIngredients skips junk, keeps images, attaches preceding context", () => {
+  const ch = { id: "c1", name: "general" };
+  const mk = (id, author, content, ts, extra = {}) => ({
+    id, content, createdTimestamp: ts, channel: ch,
+    author: { id: author, username: author }, member: { displayName: author },
+    reactions: { cache: new Map() }, ...extra,
+  });
+  const img = {
+    attachments: new Map([["a", { url: "https://cdn/x.png", contentType: "image/png", name: "x.png", size: 1000 }]]),
+  };
+  const { ingredients } = selectStoryIngredients([
+    mk("1", "SAB", "下載黃色小說點開，預設讀 txt 的軟體是 vscode", 1000),
+    mk("2", "濤濤", "專家都用vscode 寫黃文的", 2000),
+    mk("3", "Astra", "https://example.com/x", 3000),
+    mk("4", "黑寶", "", 4000, img),
+  ], []);
+  const byAuthor = Object.fromEntries(ingredients.map((i) => [i.authorName, i]));
+  assert.ok(!byAuthor.Astra, "bare link must be dropped");
+  assert.deepEqual(byAuthor["濤濤"].context, ["SAB：下載黃色小說點開，預設讀 txt 的軟體是 vscode"]);
+  assert.equal(byAuthor["黑寶"].images.length, 1);
+  assert.equal(byAuthor["黑寶"].preview, "");
+});
+it("selectStoryIngredients caps the recency fill at two per channel", () => {
+  const mk = (i, chId) => ({
+    id: String(i), content: `第${i}則有內容的訊息`, createdTimestamp: i * 1000,
+    channel: { id: chId, name: chId }, author: { id: `u${i}`, username: `u${i}` },
+    member: null, reactions: { cache: new Map() },
+  });
+  const msgs = [1, 2, 3, 4, 5].map((i) => mk(i, "busy")).concat([mk(6, "quiet")]);
+  const { ingredients } = selectStoryIngredients(msgs, []);
+  assert.equal(ingredients.filter((i) => i.channelName === "busy").length, 2);
+  assert.equal(ingredients.filter((i) => i.channelName === "quiet").length, 1);
+});
+it("buildBedtimeStoryPrompt renders captions and drops undescribed images", () => {
+  const built = buildBedtimeStoryPrompt({
+    guildName: "g",
+    selection: {
+      activeChannels: [],
+      ingredients: [
+        { authorName: "濤濤", channelName: "c", preview: "專家都用vscode 寫黃文的", context: ["SAB：預設用 vscode 開"], images: [], reactions: 0 },
+        { authorName: "黑寶", channelName: "c", preview: "", images: [{}], imageCaption: "一隻貓坐在鍵盤上", reactions: 0 },
+        { authorName: "小本", channelName: "c", preview: "", images: [{}], reactions: 0 },
+      ],
+    },
+  });
+  assert.match(built.prompt, /（前文：SAB：預設用 vscode 開）/);
+  assert.match(built.prompt, /黑寶 在 #c：（貼了一張圖：一隻貓坐在鍵盤上）/);
+  assert.doesNotMatch(built.prompt, /小本/);
+  assert.equal(built.ingredientCount, 2);
+});
 it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", () => {
   const msg = {
     content: "今天有人說晚安故事要像太空任務",
@@ -2877,7 +2935,7 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /搖E露營/);
   assert.match(built.prompt, /可用靈感素材/);
   assert.match(built.prompt, /自己發明今晚的故事/);
-  assert.match(built.prompt, /兩個不同的人/);
+  assert.match(built.prompt, /接不上就只用一則/);
   assert.match(built.prompt, /登場人物 2～5 人/);
   assert.match(built.prompt, /## /);
   assert.match(built.prompt, /標題裡不要出現「床邊故事」/);
@@ -2892,7 +2950,10 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.doesNotMatch(built.prompt, /今晚故事模式/);
   assert.doesNotMatch(built.prompt, /哄大家睡覺/);
   // coherence: the story is built around the joke, twists must be causal
-  assert.match(built.prompt, /這個關係就是整個故事的梗/);
+  assert.match(built.prompt, /整個故事就圍著這個梗/);
+  assert.match(built.prompt, /歌詞、迷因/);
+  assert.match(built.prompt, /最後一句交給角色說出口/);
+  assert.match(built.prompt, /繁體中文/);
   assert.match(built.prompt, /因果要講得通/);
   assert.match(built.prompt, /不准有東西自己動起來/);
   assert.match(built.prompt, /不要寫否認再被抓包的橋段/);
@@ -4265,6 +4326,33 @@ const ogRaceCases = [
     await itAsync(name, fn);
   }
   bahamutSessionAsyncCases.reset();
+
+  await itAsync("describeStoryImages captions images, caps count, survives failures", async () => {
+    const { describeStoryImages } = require("../src/story-images");
+    const items = [
+      { preview: "看這個", images: [{ url: "a" }] },
+      { preview: "", images: [{ url: "b" }] },
+      { preview: "", images: [{ url: "c" }] },
+      { preview: "純文字", images: [] },
+    ];
+    const seenTurns = [];
+    const n = await describeStoryImages(items, {
+      enabled: true,
+      max: 2,
+      fetchImage: async (img) => (img.url === "b" ? null : { ...img, dataUrl: "data:x" }),
+      callVision: async (turns, persona, maxTokens, opts) => {
+        seenTurns.push(turns[0].content);
+        assert.equal(opts.images.length, 1);
+        return { ok: true, text: "  一隻貓\n在鍵盤上 " };
+      },
+    });
+    assert.equal(n, 1);
+    assert.equal(items[0].imageCaption, "一隻貓 在鍵盤上");
+    assert.equal(items[1].imageCaption, undefined); // download failed
+    assert.equal(items[2].imageCaption, undefined); // over the cap
+    assert.match(seenTurns[0], /貼圖的人同時說：「看這個」/);
+    assert.equal(await describeStoryImages(items, { enabled: false }), 0);
+  });
 
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);

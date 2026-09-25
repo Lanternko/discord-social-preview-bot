@@ -1,5 +1,9 @@
 const cron = require("node-cron");
-const { EMOJI_TRUSTED_GUILD_IDS, RECAP_DEEPSEEK_MAX_TOKENS } = require("./config");
+const {
+  EMOJI_TRUSTED_GUILD_IDS,
+  RECAP_DEEPSEEK_MAX_TOKENS,
+  STORY_MAX_TOKENS,
+} = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
 const { trimDescription } = require("./utils");
@@ -29,7 +33,9 @@ const {
   buildBedtimeStoryPrompt,
   markBedtimeStoryUsed,
   sanitizeBedtimeTitle,
+  selectStoryIngredients,
 } = require("./bedtime-story");
+const { describeStoryImages } = require("./story-images");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -51,11 +57,12 @@ const TASK_TYPES = {
         guild,
         BEDTIME_LOOKBACK_MS,
       );
+      const selection = selectStoryIngredients(messages, channelStats);
+      await describeStoryImages(selection.ingredients);
       const built = buildBedtimeStoryPrompt({
         guildName: guild.name,
-        messages,
-        channelStats,
         schedule,
+        selection,
       });
       console.log(
         `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length}`,
@@ -181,7 +188,9 @@ async function executeScheduledTask(schedule, client, options = {}) {
   const turns = [{ role: "user", content: prompt }];
   const maxTokens = taskType === "daily_recap"
     ? Math.max(tierConfig.maxTokens, RECAP_DEEPSEEK_MAX_TOKENS)
-    : tierConfig.maxTokens;
+    : taskType === "bedtime_story"
+      ? Math.max(tierConfig.maxTokens, STORY_MAX_TOKENS)
+      : tierConfig.maxTokens;
   if (taskType === "daily_recap") {
     console.log(
       `[daily-recap] promptChars=${prompt.length} personaChars=${persona.length} maxTokens=${maxTokens}`,

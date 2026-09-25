@@ -8,6 +8,9 @@ const {
   OPENAI_API_KEY,
   OPENAI_MODEL,
   STORY_OPENAI_TIMEOUT_MS,
+  STORY_DEEPSEEK_MODEL,
+  STORY_DEEPSEEK_TIMEOUT_MS,
+  STORY_DEEPSEEK_REASONING_HEADROOM,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
@@ -220,12 +223,39 @@ function buildRecapProviderChain() {
 
 const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
 
-// Bedtime stories used to sit on the 25s chat chain; v4-pro thinking
-// regularly aborted and Groq (now 404) was the only thing still publishing.
-// Luna goes first so 22:00 does not wait out a doomed DeepSeek call.
+// Bedtime stories: v4-pro thinking first (blind-tested best, ~50 s — fine for
+// a scheduled post), then flash no-think, then Luna. Luna used to lead, but it
+// scored last in both blind tests (2026-09-25): tidy prose, weak jokes.
 function buildStoryProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const thinkOptions = {
+      model: STORY_DEEPSEEK_MODEL,
+      timeoutMs: STORY_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: STORY_DEEPSEEK_REASONING_HEADROOM,
+      // A story cut mid-sentence is worse than the next layer's story.
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${STORY_DEEPSEEK_MODEL}:story`,
+      options: thinkOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, thinkOptions),
+    });
+    const directOptions = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: 0,
+      thinking: { type: "disabled" },
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
+      options: directOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, directOptions),
+    });
+  }
   if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
     const options = { timeoutMs: STORY_OPENAI_TIMEOUT_MS };
     chain.push({
@@ -233,19 +263,6 @@ function buildStoryProviderChain() {
       options,
       call: (turns, persona, maxTokens) =>
         callOpenAI(turns, persona, maxTokens, options),
-    });
-  }
-  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
-    const options = {
-      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
-      reasoningHeadroom: 0,
-      thinking: { type: "disabled" },
-    };
-    chain.push({
-      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
-      options,
-      call: (turns, persona, maxTokens) =>
-        callDeepSeek(turns, persona, maxTokens, options),
     });
   }
   return chain;
