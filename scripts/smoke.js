@@ -2895,6 +2895,7 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /這個關係就是整個故事的梗/);
   assert.match(built.prompt, /因果要講得通/);
   assert.match(built.prompt, /不准有東西自己動起來/);
+  assert.match(built.prompt, /不要寫否認再被抓包的橋段/);
   assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
 });
@@ -2916,6 +2917,7 @@ it("craft moves no longer ask for dream-logic endings or loose threads", () => {
   const all = STORY_CRAFT_MOVES.join("\n");
   assert.doesNotMatch(all, /替他決定/);
   assert.doesNotMatch(all, /沒有回收/);
+  assert.doesNotMatch(all, /否認|打臉/);
 });
 it("pickStoryCraftMoves never repeats a move", () => {
   const picked = pickStoryCraftMoves(STORY_CRAFT_MOVES, 3, () => 0.999999);
