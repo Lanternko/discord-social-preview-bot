@@ -2891,10 +2891,14 @@ it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", (
   assert.match(built.prompt, /角色之間有互動和對話/);
   assert.doesNotMatch(built.prompt, /今晚故事模式/);
   assert.doesNotMatch(built.prompt, /哄大家睡覺/);
+  // coherence: the story is built around the joke, twists must be causal
+  assert.match(built.prompt, /這個關係就是整個故事的梗/);
+  assert.match(built.prompt, /因果要講得通/);
+  assert.match(built.prompt, /不准有東西自己動起來/);
   assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
 });
-it("buildBedtimeStoryPrompt rotates exactly three craft moves", () => {
+it("buildBedtimeStoryPrompt rotates exactly two craft moves", () => {
   const built = buildBedtimeStoryPrompt({
     guildName: "搖E露營",
     messages: [],
@@ -2905,8 +2909,13 @@ it("buildBedtimeStoryPrompt rotates exactly three craft moves", () => {
     .split("【今晚要用的寫法】")[1]
     .split("\n")
     .filter((line) => line.startsWith("- "));
-  assert.equal(moves.length, 3);
+  assert.equal(moves.length, 2);
   assert.equal(moves[0], `- ${STORY_CRAFT_MOVES[0]}`);
+});
+it("craft moves no longer ask for dream-logic endings or loose threads", () => {
+  const all = STORY_CRAFT_MOVES.join("\n");
+  assert.doesNotMatch(all, /替他決定/);
+  assert.doesNotMatch(all, /沒有回收/);
 });
 it("pickStoryCraftMoves never repeats a move", () => {
   const picked = pickStoryCraftMoves(STORY_CRAFT_MOVES, 3, () => 0.999999);

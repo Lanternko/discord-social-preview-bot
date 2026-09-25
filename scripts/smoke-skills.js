@@ -245,7 +245,7 @@ asyncChecks.push(
 check("chat pack keeps the tuned spec", () => {
   const chat = buildStoryCraftBlock({ guildName: "測試群", mode: "chat" });
   assert.ok(chat.includes("`## `"), "lost the markdown title rule");
-  assert.ok(chat.includes("180～420 字"), "lost the length rule");
+  assert.ok(chat.includes("150～300 字"), "lost the length rule");
   assert.ok(chat.includes("不准消音"), "lost the no-censoring rule");
   assert.ok(chat.includes("登場人物 2～5 人"), "lost the cast-size rule");
   assert.ok(chat.includes("寫法"), "lost the craft-moves block");
