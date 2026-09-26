@@ -24,7 +24,7 @@ const {
   buildPixivSpoilerEmbed,
   buildPixivCarouselEmbeds,
 } = require("./embeds");
-const { fetchPixivMeta } = require("./platforms/pixiv");
+const { fetchPixivMeta, fetchPixivPageSizes } = require("./platforms/pixiv");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
 
@@ -161,12 +161,26 @@ async function buildPixivPayload(url) {
     };
   }
   if (meta.images.length > 1) {
+    const panorama = await isPixivPanoramaCandidate(meta);
     console.log(
-      `[pixiv] gallery images=${meta.images.length}/${meta.pageCount} ${url}`,
+      `[pixiv] gallery images=${meta.images.length}/${meta.pageCount}${panorama ? " panorama?" : ""} ${url}`,
     );
-    return { embeds: buildPixivCarouselEmbeds(url, meta), sourceUrl: url };
+    return {
+      embeds: buildPixivCarouselEmbeds(url, meta),
+      ...(panorama ? { panoramaImages: meta.images } : {}),
+      sourceUrl: url,
+    };
   }
   return payload;
+}
+
+// Same idea as the X slices: a whole, untruncated work of 2-4 equal pages may
+// be one wide picture. The page sizes cost one more lookup, so it's only made
+// when the page count already fits.
+async function isPixivPanoramaCandidate(meta) {
+  if (meta.pageCount !== meta.images.length) return false;
+  if (meta.pageCount < 2 || meta.pageCount > 4) return false;
+  return isPanoramaCandidate(await fetchPixivPageSizes(meta.illustId));
 }
 
 async function buildPreviewPayloads(urls) {

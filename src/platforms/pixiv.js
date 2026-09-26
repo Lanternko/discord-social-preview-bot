@@ -65,6 +65,28 @@ async function fetchPixivMeta(url) {
   }
 }
 
+// Every page's upload size, in page order — only needed to spot a panorama
+// sliced across pages, so it's a separate call made just for galleries.
+// Null when unknown; never throws.
+async function fetchPixivPageSizes(illustId) {
+  try {
+    const response = await fetch(
+      `https://www.pixiv.net/ajax/illust/${illustId}/pages`,
+      {
+        headers: { "User-Agent": BROWSER_UA },
+        signal: AbortSignal.timeout(PIXIV_LOOKUP_TIMEOUT_MS),
+      },
+    );
+    if (!response.ok) return null;
+    const pages = (await response.json())?.body;
+    if (!Array.isArray(pages)) return null;
+    return pages.map((page) => ({ width: page.width, height: page.height }));
+  } catch (error) {
+    console.warn(`[pixiv] pages lookup failed ${illustId}: ${error.message}`);
+    return null;
+  }
+}
+
 async function fetchPhixivFirstPageUrl(illustId) {
   try {
     const response = await fetch(
@@ -87,4 +109,4 @@ async function fetchPhixivFirstPageUrl(illustId) {
   }
 }
 
-module.exports = { fetchPixivMeta, toPhixivProxyUrl };
+module.exports = { fetchPixivMeta, fetchPixivPageSizes, toPhixivProxyUrl };

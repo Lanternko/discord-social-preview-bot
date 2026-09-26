@@ -1736,6 +1736,25 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       create: { width: 100, height, channels: 3, background: "#fff" },
     }).png().toBuffer();
     assert.equal(await stitchPanorama([blank, blank]), null, "blank margins prove nothing");
+    // Two different pages inside the same textured frame: the frame edges
+    // match each other, but they match the page's own opposite edge just as
+    // well — a shared border, not a continuing picture.
+    const framed = (shade) => {
+      const w = 100;
+      const buf = Buffer.alloc(w * height * 3);
+      for (let y = 0; y < height; y += 1)
+        for (let x = 0; x < w; x += 1) {
+          const edge = x < 6 || x >= w - 6;
+          const v = edge ? (y * 2) % 256 : (shade + x * 3 + y) % 256;
+          buf.fill(v, (y * w + x) * 3, (y * w + x) * 3 + 3);
+        }
+      return sharp(buf, { raw: { width: w, height, channels: 3 } }).png().toBuffer();
+    };
+    assert.equal(
+      await stitchPanorama([await framed(0), await framed(120)]),
+      null,
+      "a shared frame is not a seam",
+    );
   });
 
   await it("single-image and video posts stay on the fixer unfurl", async () => {
@@ -1930,6 +1949,44 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
             `https://www.phixiv.net/i/img-master/img/2024/04/28/17/13/43/118216884_p${n}_master1200.jpg`,
         ),
       );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("pixiv work of equal-size pages → gallery flagged as a panorama candidate", async () => {
+    const pageSizes = [
+      { width: 800, height: 1200 },
+      { width: 800, height: 1200 },
+    ];
+    _mockFetch = async (input) => {
+      if (String(input).endsWith("/pages"))
+        return new Response(JSON.stringify({ body: pageSizes }));
+      return new Response(
+        JSON.stringify({
+          body: {
+            title: "t",
+            userName: "u",
+            pageCount: 2,
+            xRestrict: 0,
+            urls: {
+              regular:
+                "https://i.pximg.net/img-master/img/2024/04/28/17/13/43/1_p0_master1200.jpg",
+            },
+          },
+        }),
+      );
+    };
+    try {
+      const [p] = await buildPreviewPayloads(["https://www.pixiv.net/artworks/1"]);
+      assert.equal(p.embeds.length, 2, "gallery stays as the fallback");
+      assert.deepEqual(
+        p.panoramaImages,
+        p.embeds.map((e) => e.data.image.url),
+      );
+      pageSizes[1] = { width: 800, height: 1100 };
+      const [q] = await buildPreviewPayloads(["https://www.pixiv.net/artworks/1"]);
+      assert.equal(q.panoramaImages, undefined, "unequal pages aren't slices");
     } finally {
       _mockFetch = null;
     }

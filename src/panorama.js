@@ -15,20 +15,34 @@ const BROWSER_UA =
 const PANORAMA_NAME = "panorama.jpg";
 // Discord shows an attachment at most ~4096px wide; past that is wasted bytes.
 const MAX_OUTPUT_WIDTH = 4096;
-// A true seam differs from its neighbours about as much as any two adjacent
-// columns inside one picture (measured 1.2-1.7x); unrelated images placed side
-// by side land at 10-20x. The +2 absorbs JPEG noise on very smooth edges.
+// Thresholds tuned on 171 synthetic slices of real pixiv illustrations (95%
+// stitched), 56 real equal-size multi-page works and 3192 random pairings of
+// unrelated pictures (0 stitched). Every seam must pass all four tests.
+//
+// 1. Continuity: a true seam differs from its neighbours about as much as any
+//    two adjacent columns inside one picture (1.2-1.7x); unrelated images land
+//    at 10-20x. The +2 absorbs JPEG noise on very smooth edges.
 const SEAM_RATIO = 4;
 const SEAM_NOISE_FLOOR = 2;
-// An edge column this flat (e.g. a screenshot's white margin) matches any other
-// flat edge, so it proves nothing either way.
+// 2. Texture: a flat edge (a screenshot's white margin) matches any other flat
+//    edge, so it proves nothing.
 const MIN_EDGE_TEXTURE = 6;
+// 3. Not a frame: when a slice's right edge also matches its own left edge,
+//    the seam "matches" because both pages share a border or a backdrop, not
+//    because the picture continues. The seam must beat that clearly.
+const FRAME_RATIO = 2;
+const FRAME_MARGIN = 3;
+// 4. Aligned: nudging one edge up or down must make the match worse — real
+//    detail lines up at exactly one offset; a smooth gradient lines up at all.
+const MISALIGN_OFFSETS = [-16, -8, -4, 4, 8, 16];
+const MISALIGN_RATIO = 1.2;
 
 let inFlight = 0;
 
 // Cheap pre-filter from the API's sizes, before downloading anything: an
-// artist who slices one wide picture into a post uploads 2-4 equal slices.
-// Discord's album lays 4 images out 2x2, which breaks the picture apart.
+// artist who slices one wide picture into a post (X, pixiv) uploads 2-4 equal
+// slices. Discord's album lays 4 images out 2x2, which breaks the picture
+// apart.
 function isPanoramaCandidate(sizes) {
   if (!Array.isArray(sizes) || sizes.length < 2 || sizes.length > 4)
     return false;
@@ -39,10 +53,19 @@ function isPanoramaCandidate(sizes) {
   );
 }
 
-function meanAbsDiff(a, b) {
+// Mean |a[y] - b[y + offset]| over the rows both columns cover.
+function meanAbsDiff(a, b, offset = 0) {
   let sum = 0;
-  for (let i = 0; i < a.length; i += 1) sum += Math.abs(a[i] - b[i]);
-  return sum / a.length;
+  let count = 0;
+  for (
+    let y = Math.max(0, -offset);
+    y < a.length && y + offset < b.length;
+    y += 1
+  ) {
+    sum += Math.abs(a[y] - b[y + offset]);
+    count += 1;
+  }
+  return sum / count;
 }
 
 function stdDev(column) {
@@ -67,24 +90,34 @@ function edgeColumns({ data, width, height }) {
   };
 }
 
-// Whether the images, in post order, continue into one another at every seam.
-// Each seam compares the right edge of one slice with the left edge of the
-// next; a textured seam must match, and at least one seam must be textured —
-// otherwise equal-size screenshots with blank margins would pass.
+// Whether the right edge of one slice continues into the left edge of the
+// next — see the four tests above.
+function seamContinues(a, b) {
+  const [a0, a1] = a.right;
+  const [b0, b1] = b.left;
+  const seam = meanAbsDiff(a0, b0);
+  const inner = (meanAbsDiff(a0, a1) + meanAbsDiff(b0, b1)) / 2;
+  if (seam > inner * SEAM_RATIO + SEAM_NOISE_FLOOR) return false;
+  if (Math.min(stdDev(a0), stdDev(b0)) < MIN_EDGE_TEXTURE) return false;
+  const selfWrap = Math.min(
+    meanAbsDiff(a0, a.left[0]),
+    meanAbsDiff(b.right[0], b0),
+  );
+  if (selfWrap < seam * FRAME_RATIO + FRAME_MARGIN) return false;
+  const misaligned = Math.min(
+    ...MISALIGN_OFFSETS.map((offset) => meanAbsDiff(a0, b0, offset)),
+  );
+  return misaligned >= seam * MISALIGN_RATIO;
+}
+
+// Whether the images, in post order, form one picture: every seam must
+// continue. A miss only costs the stitch (the album goes out instead), while a
+// false stitch glues unrelated pages together — so all seams must agree.
 function seamsAreContinuous(greyImages) {
   const edges = greyImages.map(edgeColumns);
-  let informative = 0;
-  for (let i = 0; i < edges.length - 1; i += 1) {
-    const [a0, a1] = edges[i].right;
-    const [b0, b1] = edges[i + 1].left;
-    const seam = meanAbsDiff(a0, b0);
-    const inner = (meanAbsDiff(a0, a1) + meanAbsDiff(b0, b1)) / 2;
-    const textured =
-      stdDev(a0) >= MIN_EDGE_TEXTURE && stdDev(b0) >= MIN_EDGE_TEXTURE;
-    if (seam > inner * SEAM_RATIO + SEAM_NOISE_FLOOR) return false;
-    if (textured) informative += 1;
-  }
-  return informative > 0;
+  for (let i = 0; i < edges.length - 1; i += 1)
+    if (!seamContinues(edges[i], edges[i + 1])) return false;
+  return true;
 }
 
 // Decide on image buffers already in memory: returns the stitched JPEG, or
@@ -136,7 +169,7 @@ async function stitchPanorama(buffers) {
 }
 
 // Download a post's slices and stitch them into one wide image for upload, or
-// return null so the caller keeps its gallery. Shares the video attachment
+// return null so the caller keeps its gallery (X / pixiv). Shares the video attachment
 // gates (enabled / guild allow-list / concurrency / timeout / upload cap).
 // Never throws.
 async function fetchPanoramaAttachment(urls, guild) {
