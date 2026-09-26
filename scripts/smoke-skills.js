@@ -396,6 +396,7 @@ check("help skill matches questions about 西寶 herself", () => {
     "deepseek key 要怎麼設定",
     "API key 放哪裡",
     "怎麼排程每日回顧",
+    "權限要開哪些",
     "help",
     "what commands do you have",
   ];
@@ -446,7 +447,7 @@ check("help changelog: newest entries only, comments stripped", () => {
   const log = help.readChangelog(3);
   const lines = log.split("\n");
   assert.equal(lines.length, 3);
-  for (const line of lines) assert.match(line, /^- \d{4}-\d{2}-\d{2}：/);
+  for (const line of lines) assert.match(line, /^- \d{4}-\d{2}-\d{2}(：|【重點】)/);
 });
 
 check("help status block handles DMs", () => {
