@@ -24,6 +24,7 @@ const {
 } = require("./discord-io");
 const { isMentioningBot, handleMention } = require("./mention");
 const { handleReactionDelete } = require("./reaction-delete");
+const { sendGuildWelcome } = require("./guild-welcome");
 const { loadStickerLibrary } = require("./stickers");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
@@ -102,10 +103,14 @@ client.once("clientReady", async () => {
   startScheduler(client);
 });
 
-client.on("guildCreate", (guild) => {
+// guildCreate fires only for genuine joins after ready — a guild coming back
+// from an outage emits guildAvailable instead — so this won't re-greet on
+// reconnect. sendGuildWelcome never throws.
+client.on("guildCreate", async (guild) => {
   console.log(
     `加入新伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
+  await sendGuildWelcome(guild);
 });
 
 client.on("guildDelete", (guild) => {

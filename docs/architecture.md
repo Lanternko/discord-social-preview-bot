@@ -17,6 +17,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - **Discord I/O** — [discord-io.js](../src/discord-io.js) handles send/suppress/empty-embed/dedup state/permissions. `resolveOutgoing` resolves a payload's optional `videoAttachment` (download + upload the mp4 as a file) right before sending.
 - **Video** — [video.js](../src/video.js) downloads a Threads mp4 and hands back a Discord attachment, gated by a size cap, a global concurrency cap, a per-fetch timeout, and an optional guild allowlist. Returns null → caller falls back to the fixer chain.
 - **Reaction delete** — [reaction-delete.js](../src/reaction-delete.js) is the `messageReactionAdd` handler: a 🗑️ reaction on one of 西寶's own messages deletes it, authorized by the link poster (via the reply reference) or a `ManageMessages` mod. No persistent state. See [routing.md](routing.md).
+- **Guild welcome** — [guild-welcome.js](../src/guild-welcome.js): on `guildCreate` 西寶 posts a fixed self-intro (system channel, else top-most text channel she can post in). Fixed text, not an AI call — must work with the chain dead and must not spend the new guild's quota. Grep `[welcome]`.
 - **Mention** — [mention.js](../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
 - **Stickers** — [stickers.js](../src/stickers.js) is the sticker half that touches Discord + disk: it merges the current guild's stickers (sent by id) with 西寶's own image library under `assets/stickers/` (sent as an attachment, because Discord has no application-owned sticker API) into one catalog, and turns a picked entry into the send payload. The pure prompt/parse half is [ai/sticker-resolver.js](../src/ai/sticker-resolver.js). See [persona.md](persona.md).
 - **Slash commands** — [commands.js](../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, `/schedule`, and the opt-in `/voice`. [tier-store.js](../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
@@ -68,6 +69,7 @@ src/
 ├── mention.js            # @西寶 dispatcher (抽籤 / 道歉 / AI / hardcoded fallback)
 ├── stickers.js           # 貼圖 catalog (guild stickers + assets/stickers/) → send payload
 ├── reaction-delete.js    # 🗑️ reaction on 西寶's own message → delete it (poster or ManageMessages)
+├── guild-welcome.js      # guildCreate → fixed self-intro in system/first postable channel
 ├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
 ├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
