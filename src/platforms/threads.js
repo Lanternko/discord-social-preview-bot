@@ -3,6 +3,7 @@ const { replaceHostFixer } = require("../url-routing");
 const { resolveThreadsUrl } = require("../threads-url");
 const { fetchThreadsMetadata } = require("../probe");
 const { trimDescription } = require("../utils");
+const { isPanoramaCandidate } = require("../panorama");
 // Module reference (not destructured) so the smoke tests can stub the fetch.
 const ogFallback = require("../og-fallback");
 const {
@@ -203,8 +204,17 @@ async function buildThreadsPayload(url) {
         console.log(
           `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${tailHint ? `"${tailHint}"` : "none"} ${canonicalUrl}`,
         );
+        // Equal-size image-only slides may be one wide picture split up;
+        // discord-io stitches them if the seams line up (all slides, not just
+        // the previewed ones), and keeps this carousel otherwise.
+        const panorama =
+          !hasVideo &&
+          allImages.length === metadata.imageCount &&
+          isPanoramaCandidate(metadata.imageSizes);
+        if (panorama) console.log(`[preview] threads panorama? ${canonicalUrl}`);
         return {
           ...(videoAttachment ? { videoAttachment } : {}),
+          ...(panorama ? { panoramaImages: allImages } : {}),
           embeds: buildThreadsCarouselEmbeds(
             canonicalUrl,
             metadata,

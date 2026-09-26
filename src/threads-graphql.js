@@ -115,29 +115,39 @@ function buildTitle(user) {
 // A carousel slide is either a video (with a cover frame in image_versions2) or
 // a plain image. Keeping the cover in `images` matches what the DOM probe used
 // to report and is what makes a MIXED post stay a carousel in buildPreviewPayloads.
+// `imageSizes` runs parallel to `images` (the probe path has no sizes, so it
+// never offers a panorama).
 function collectMedia(post) {
   const images = [];
+  const imageSizes = [];
   const videos = [];
+  const addImage = (candidates) => {
+    const image = firstUrl(candidates);
+    if (!image) return;
+    images.push(image);
+    imageSizes.push({
+      width: candidates[0].width,
+      height: candidates[0].height,
+    });
+  };
 
   if (Array.isArray(post.carousel_media) && post.carousel_media.length > 0) {
     for (const item of post.carousel_media) {
       const video = firstUrl(item?.video_versions);
       if (video) videos.push(video);
-      const image = firstUrl(item?.image_versions2?.candidates);
-      if (image) images.push(image);
+      addImage(item?.image_versions2?.candidates);
     }
-    return { images, videos };
+    return { images, imageSizes, videos };
   }
 
   const video = firstUrl(post.video_versions);
   if (video) videos.push(video);
-  const image = firstUrl(post.image_versions2?.candidates);
-  if (image) images.push(image);
-  return { images, videos };
+  addImage(post.image_versions2?.candidates);
+  return { images, imageSizes, videos };
 }
 
 function buildMetadata(post, code, ancestors = []) {
-  const { images, videos } = collectMedia(post);
+  const { images, imageSizes, videos } = collectMedia(post);
   const description = post?.caption?.text || null;
   const hasMedia = images.length > 0 || videos.length > 0;
 
@@ -146,6 +156,7 @@ function buildMetadata(post, code, ancestors = []) {
     description,
     image: images[0] || null,
     images,
+    imageSizes,
     // buildThreadsPayload reads this to force a text-only post into the compact
     // embed, so it has to mirror the card Threads would have served.
     twitterCard: hasMedia ? "summary_large_image" : "summary",

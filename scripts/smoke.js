@@ -37,6 +37,7 @@ const {
   isRedirectedOffPost,
   isContentlessStub,
   salvageLoginWallMedia,
+  normalizeThreadsMetadata,
 } = require("../src/probe");
 
 const {
@@ -3770,6 +3771,31 @@ it("keeps a MIXED carousel at imageCount > 1 so it stays a gallery", () => {
     "https://cdn.example/2.jpg",
   ]);
   assert.equal(metadata.title, "阿佐 (@zynxyzouo) on Threads");
+});
+it("reports each slide's size, parallel to images, for the panorama check", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "bodies622" },
+      carousel_media: [1, 2].map((n) => ({
+        image_versions2: {
+          candidates: [
+            { url: `https://cdn.example/${n}.jpg`, width: 1440, height: 1800 },
+          ],
+        },
+      })),
+    },
+    "DawXYouCQ5S",
+  );
+  assert.deepEqual(metadata.imageSizes, [
+    { width: 1440, height: 1800 },
+    { width: 1440, height: 1800 },
+  ]);
+  // normalizeThreadsMetadata rebuilds the object field by field — the sizes
+  // must survive it or no Threads post ever reaches the panorama check.
+  assert.deepEqual(
+    normalizeThreadsMetadata(metadata).imageSizes,
+    metadata.imageSizes,
+  );
 });
 it("marks a text-only post summary so it renders as a compact embed", () => {
   const metadata = buildMetadata(
