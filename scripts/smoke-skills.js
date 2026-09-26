@@ -380,6 +380,89 @@ check("answer letter follows the correct option through the shuffle", () => {
   assert.match(text, /正確答案：\|\|[ABCD]\|\|$/);
 });
 
+// ── 5. Help pack (說明書) ─────────────────────────────────────────────────
+const help = require("../src/ai/skills/help");
+
+check("help skill matches questions about 西寶 herself", () => {
+  const asks = [
+    "你會什麼",
+    "妳會做什麼",
+    "你可以幹嘛",
+    "指令有哪些",
+    "有什麼功能",
+    "最近有什麼更新",
+    "每天可以用幾次",
+    "額度用完了怎麼辦",
+    "deepseek key 要怎麼設定",
+    "API key 放哪裡",
+    "怎麼排程每日回顧",
+    "help",
+    "what commands do you have",
+  ];
+  for (const text of asks) {
+    assert.equal(detectSkill(text)?.id, "help", `expected help for: ${text}`);
+  }
+});
+
+check("help outranks story on questions about the story feature", () => {
+  assert.equal(detectSkill("床邊故事怎麼設定")?.id, "help");
+  assert.equal(detectSkill("講個故事")?.id, "story");
+});
+
+check("help does not load on ordinary chat", () => {
+  for (const text of ["你好可愛", "晚餐要吃什麼", "今天天氣真好", "keyboard 壞了", "monkey"]) {
+    assert.equal(detectSkill(text), null, `unexpected skill for: ${text}`);
+  }
+});
+
+check("help pack carries the veto clause and the no-invention rule", () => {
+  const block = help.buildHelpBlock({ knowledge: "K", status: "S", changelog: "- c" });
+  assert.ok(block.includes("當作不存在"), "loose detection is only safe while she can opt out");
+  assert.ok(block.includes("不准自己編"), "lost the answer-only-from-the-manual rule");
+  assert.ok(block.includes("/ai-key set"), "lost the pasted-key warning");
+});
+
+check("help knowledge names every registered slash command", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const knowledge = fs.readFileSync(
+    path.join(__dirname, "../src/ai/skills/help-knowledge.md"),
+    "utf8",
+  );
+  const commands = require("../src/commands");
+  const slash = Object.values(commands).filter(
+    (c) => c && typeof c === "object" && c.name && c.description,
+  );
+  assert.ok(slash.length >= 5, "found too few commands — export shape changed?");
+  for (const cmd of slash) {
+    assert.ok(
+      knowledge.includes(`/${cmd.name}`),
+      `help-knowledge.md does not mention /${cmd.name} — 西寶 would not know it exists`,
+    );
+  }
+});
+
+check("help changelog: newest entries only, comments stripped", () => {
+  const log = help.readChangelog(3);
+  const lines = log.split("\n");
+  assert.equal(lines.length, 3);
+  for (const line of lines) assert.match(line, /^- \d{4}-\d{2}-\d{2}：/);
+});
+
+check("help status block handles DMs", () => {
+  assert.match(help.buildGuildStatusBlock(null), /私訊/);
+});
+
+asyncChecks.push([
+  "help pack raises the reply budget for 入門",
+  async () => {
+    const ctx = await buildSkillContext(help, { message: { guild: null }, text: "你會什麼" });
+    assert.ok(ctx.personaSuffix.includes("<說明書>"));
+    assert.ok(ctx.personaSuffix.includes("/ai-tier"));
+    assert.ok(ctx.minTokens >= 600 && ctx.minReplyChars >= 900);
+  },
+]);
+
 (async () => {
   for (const [name, fn] of asyncChecks) {
     try {
