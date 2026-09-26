@@ -625,6 +625,36 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
+  await it("equal-size image-only slides → carousel flagged as a panorama candidate", async () => {
+    const images = ["https://x/1.jpg", "https://x/2.jpg", "https://x/3.jpg"];
+    const size = { width: 1080, height: 1350 };
+    _mockThreadsMetadata = {
+      image: images[0],
+      title: "t",
+      description: "d",
+      twitterCard: "summary_large_image",
+      images,
+      imageSizes: [size, size, size],
+      imageCount: 3,
+      videoCount: 0,
+      video: null,
+    };
+    const p = await buildThreadsPayload(THREADS_URL);
+    assert.equal(shapeOf(p).embedCount, 3, "carousel stays as the fallback");
+    assert.deepEqual(p.panoramaImages, images);
+
+    _mockThreadsMetadata.imageSizes = [size, size, { width: 1080, height: 1080 }];
+    const unequal = await buildThreadsPayload(THREADS_URL);
+    assert.equal(unequal.panoramaImages, undefined, "unequal sizes: no panorama");
+
+    _mockThreadsMetadata.imageSizes = [size, size, size];
+    _mockThreadsMetadata.videoCount = 1;
+    _mockThreadsMetadata.video = "https://cdn.example/v.mp4";
+    const mixed = await buildThreadsPayload(THREADS_URL);
+    assert.equal(mixed.panoramaImages, undefined, "MIXED: no panorama");
+    assert.equal(shapeOf(mixed).hasVideoAttachment, true);
+  });
+
   await it("video only (no multi-image) → video attachment + ordered viewer chain", async () => {
     _mockThreadsMetadata = {
       image: "https://x/thumb.jpg",

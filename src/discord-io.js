@@ -290,9 +290,9 @@ async function resolveSpoilerImages(base, message, options = {}) {
   return base;
 }
 
-// A payload may carry `panoramaImages` (an X post of equal-size slices): stitch
-// them into one wide attachment shown in the lead embed, replacing the album
-// that Discord would lay out 2x2. On any miss — including slices whose seams
+// A payload may carry `panoramaImages` (equal-size slices from X / pixiv /
+// Threads): stitch them into one wide attachment shown in the lead embed,
+// replacing the album that Discord would lay out 2x2. On any miss — including slices whose seams
 // don't line up, i.e. not a panorama after all — the gallery goes out as is.
 async function resolvePanorama(base, message, options = {}) {
   const urls = base.panoramaImages;

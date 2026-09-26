@@ -127,6 +127,8 @@ function normalizeThreadsMetadata(metadata) {
     description: metadata.description,
     image: metadata.image,
     images: metadata.images || [],
+    // GraphQL only; the probe has no sizes, so it never offers a panorama.
+    imageSizes: metadata.imageSizes || null,
     twitterCard: metadata.twitterCard,
     video: metadata.video,
     imageCount: metadata.imageCount || 0,
