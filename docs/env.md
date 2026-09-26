@@ -81,6 +81,7 @@
 | `STORY_DEEPSEEK_REASONING_HEADROOM` | `16000` | 思考預算。實測吃掉 6180 → 空回、9375 → 故事斷在半句（皆 finish_reason=length）；沒用到的不計費。被截斷的故事鏈會視為失敗往下掉 |
 | `STORY_MAX_TOKENS` | `1500` | 故事的顯示預算下限。原本直接用 guild tier 的聊天預算，入門 tier 只有 180，故事會被截斷 |
 | `STORY_IMAGE_MAX` | `3` | 睡前故事素材裡最多幾張圖先交給 vision 寫成一句描述（每張一次 flash vision 呼叫） |
+| `STORY_QUIZ_RATE` | `0.34` | 睡前故事附「閱讀測驗」的機率（0～1）。題目跟故事同一次呼叫產出、另發一則，答案包在 spoiler；格式不合就只發故事。grep `[story-quiz]` |
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_PEAK_PREFER_FALLBACK` | `true` | 尖峰時段（UTC 平日 01–04、06–10）把 owner key 的 DeepSeek 移到鏈尾，改由 luna 先跑；設 `false` 則永遠 DeepSeek 優先 |
 | `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |

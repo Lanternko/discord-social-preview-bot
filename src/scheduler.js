@@ -3,6 +3,7 @@ const {
   EMOJI_TRUSTED_GUILD_IDS,
   RECAP_DEEPSEEK_MAX_TOKENS,
   STORY_MAX_TOKENS,
+  STORY_QUIZ_RATE,
 } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
@@ -36,6 +37,11 @@ const {
   selectStoryIngredients,
 } = require("./bedtime-story");
 const { describeStoryImages } = require("./story-images");
+const {
+  QUIZ_EXTRA_TOKENS,
+  formatStoryQuiz,
+  parseStoryQuiz,
+} = require("./story-quiz");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -63,15 +69,17 @@ const TASK_TYPES = {
         guildName: guild.name,
         schedule,
         selection,
+        quiz: Math.random() < STORY_QUIZ_RATE,
       });
       console.log(
-        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length}`,
+        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length} quiz=${built.quiz}`,
       );
       if (built.buffet?.length) {
         console.log(`[bedtime-story] buffet=${built.buffet.join(" | ")}`);
       }
       return {
         prompt: built.prompt,
+        quiz: built.quiz,
         onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
       };
     },
@@ -145,11 +153,13 @@ async function executeScheduledTask(schedule, client, options = {}) {
 
   let prompt;
   let onSuccess;
+  let wantsQuiz = false;
   if (taskDef && taskDef.buildPrompt) {
     const built = await taskDef.buildPrompt(channel, client, schedule);
     if (built && typeof built === "object" && !Array.isArray(built)) {
       prompt = built.prompt;
       onSuccess = built.onSuccess;
+      wantsQuiz = Boolean(built.quiz);
     } else {
       prompt = built;
     }
@@ -189,7 +199,8 @@ async function executeScheduledTask(schedule, client, options = {}) {
   const maxTokens = taskType === "daily_recap"
     ? Math.max(tierConfig.maxTokens, RECAP_DEEPSEEK_MAX_TOKENS)
     : taskType === "bedtime_story"
-      ? Math.max(tierConfig.maxTokens, STORY_MAX_TOKENS)
+      ? Math.max(tierConfig.maxTokens, STORY_MAX_TOKENS) +
+        (wantsQuiz ? QUIZ_EXTRA_TOKENS : 0)
       : tierConfig.maxTokens;
   if (taskType === "daily_recap") {
     console.log(
@@ -212,7 +223,12 @@ async function executeScheduledTask(schedule, client, options = {}) {
       return;
     }
 
-    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
+    // Split the quiz off BEFORE the length cap — capping first would cut the
+    // quiz in half, or leave half a quiz glued to the story.
+    const { story, quiz } = taskType === "bedtime_story"
+      ? parseStoryQuiz(result.text)
+      : { story: result.text, quiz: null };
+    const capped = trimDescription(story, tierConfig.maxReplyChars);
     const titled = taskType === "bedtime_story"
       ? sanitizeBedtimeTitle(capped)
       : capped;
@@ -226,6 +242,19 @@ async function executeScheduledTask(schedule, client, options = {}) {
       options.notBeforeMs,
       options,
     );
+    const quizText = quiz ? formatStoryQuiz(quiz) : null;
+    if (quizText) {
+      try {
+        await channel.send({ content: quizText });
+      } catch (quizErr) {
+        console.warn(
+          `[story-quiz] send failed schedule=${schedule.id}: ${quizErr.message}`,
+        );
+      }
+    }
+    if (wantsQuiz) {
+      console.log(`[story-quiz] schedule=${schedule.id} posted=${Boolean(quizText)}`);
+    }
 
     // Record this post into the channel's short-term memory so that when
     // someone @s or replies to 西寶 shortly after, she remembers having
@@ -245,7 +274,9 @@ async function executeScheduledTask(schedule, client, options = {}) {
       tierConfig.memoryMaxTurns,
       { guildId },
     );
-    recordAITurn(channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+    // The quiz (answer included) rides along so she can tell whoever asks.
+    const remembered = quizText ? `${capped}\n\n${quizText}` : capped;
+    recordAITurn(channelId, "assistant", remembered, tierConfig.memoryMaxTurns, {
       guildId,
       userId: client.user?.id,
       displayName: client.user?.username || "西寶",

@@ -1,6 +1,7 @@
 const { updateSchedule } = require("./schedule-store");
 const { trimDescription, sanitizeName } = require("./utils");
 const { collectFromMessage } = require("./ai/vision");
+const { buildStoryQuizBlock } = require("./story-quiz");
 
 const BEDTIME_LOOKBACK_MS = 18 * 60 * 60 * 1000;
 const MAX_INGREDIENTS = 8;
@@ -349,6 +350,7 @@ function buildBedtimeStoryPrompt({
   now = new Date(),
   rng = Math.random,
   selection = null,
+  quiz = false,
 }) {
   const dateKey = localDateKey(now, schedule?.timezone || "Asia/Taipei");
   // The scheduler passes a selection whose images were already described
@@ -361,11 +363,13 @@ function buildBedtimeStoryPrompt({
     buildStoryCraftBlock({ guildName, mode: "scheduled", rng }),
     "",
     buildStoryIngredientsBlock({ ingredients, activeChannels }),
+    ...(quiz ? [buildStoryQuizBlock()] : []),
   ].join("\n");
 
   return {
     prompt,
     dateKey,
+    quiz,
     ingredientCount: ingredients.length,
     buffet: ingredients.map(
       (item) => `${item.authorName}/#${item.channelName}:${ingredientSaid(item)}`,
