@@ -43,6 +43,7 @@ const {
   parseStoryQuiz,
 } = require("./story-quiz");
 const { repairNames } = require("./name-repair");
+const { STORY_MIN_REPLY_CHARS } = require("./ai/skills/story");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -239,7 +240,12 @@ async function executeScheduledTask(schedule, client, options = {}) {
     const { story, quiz } = taskType === "bedtime_story"
       ? parseStoryQuiz(repaired)
       : { story: repaired, quiz: null };
-    const capped = trimDescription(story, tierConfig.maxReplyChars);
+    // A story (title + 150～300 字 + punctuation) overruns 入門's 300-char
+    // reply cap, which cut it off mid-sentence. Same floor as the chat skill.
+    const maxChars = taskType === "bedtime_story"
+      ? Math.max(tierConfig.maxReplyChars, STORY_MIN_REPLY_CHARS)
+      : tierConfig.maxReplyChars;
+    const capped = trimDescription(story, maxChars);
     const titled = taskType === "bedtime_story"
       ? sanitizeBedtimeTitle(capped)
       : capped;
