@@ -12,6 +12,7 @@
 const { buildPinterestEmbed } = require("../embeds");
 const { buildFallbackUrl, isPinterestShortHost } = require("../url-routing");
 const { trimDescription } = require("../utils");
+const { decodeHtmlEntities } = require("../og-fallback");
 
 const PIDGETS_ENDPOINT = "https://widgets.pinterest.com/v3/pidgets/pins/info/";
 const TIMEOUT_MS = 6000;
@@ -53,14 +54,13 @@ async function fetchPinterestMetadata(pinId) {
   const pin = payload?.data?.[0];
   if (!pin) throw new Error("pidgets empty");
 
-  const description = pin.description?.trim() || null;
+  // pidgets 的文字欄位是 HTML entity 編碼的（日文整串變 `&#12304;…`），
+  // 不解碼就原樣進 embed。
+  const text = (value) => decodeHtmlEntities(value || "").trim() || null;
   return {
-    title:
-      pin.rich_metadata?.title?.trim() ||
-      pin.attribution?.title?.trim() ||
-      null,
-    description,
-    author: pin.pinner?.full_name || null,
+    title: text(pin.rich_metadata?.title) || text(pin.attribution?.title),
+    description: text(pin.description),
+    author: text(pin.pinner?.full_name),
     authorUrl: pin.pinner?.profile_url || null,
     image: pickImage(pin.images),
     video: pin.videos?.video_list?.V_720P?.url || null,

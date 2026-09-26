@@ -1305,7 +1305,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
   await it("pinterest image pin (slug url) → custom embed with cover", async () => {
     _mockFetch = pidgets({
       description: "desc",
-      rich_metadata: { title: "Title" },
+      rich_metadata: { title: "&#12304;Title&#12305; &amp; co" },
       pinner: { full_name: "Pinner" },
       images: IMG,
       videos: null,
@@ -1318,7 +1318,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       assert.equal(p.content, undefined);
       assert.equal(p.videoAttachment, undefined);
       const e = p.embeds[0].data;
-      assert.equal(e.title, "Title");
+      assert.equal(e.title, "【Title】 & co");
       assert.equal(e.description, "desc");
       assert.equal(e.author.name, "Pinner");
       assert.equal(e.image.url, "https://i.pinimg.com/564x/a.jpg");
