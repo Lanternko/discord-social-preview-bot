@@ -156,6 +156,7 @@ const {
   STORY_CRAFT_MOVES,
   pickStoryCraftMoves,
 } = require("../src/bedtime-story");
+const { repairNames } = require("../src/name-repair");
 
 let pass = 0;
 let fail = 0;
@@ -3003,6 +3004,23 @@ it("pickStoryCraftMoves never repeats a move", () => {
   const all = pickStoryCraftMoves(STORY_CRAFT_MOVES, 99, Math.random);
   assert.equal(all.length, STORY_CRAFT_MOVES.length);
 });
+it("repairNames restores a name with kana spliced in", () => {
+  const names = ["linchien", "KaoWYK", "orangelin", "fallsnow小翔"];
+  assert.equal(
+    repairNames("lインchien 丟出截圖，lインchien 回得飛快", names),
+    "linchien 丟出截圖，linchien 回得飛快",
+  );
+  assert.equal(repairNames("Kaoウィック說 orangeリン 來了", names), "KaoWYK說 orangelin 來了");
+});
+
+it("repairNames leaves real Japanese and ambiguous tokens alone", () => {
+  const names = ["linchien", "lintest"];
+  assert.equal(repairNames("我重看Re:ゼロ，看了リゼロ", names), "我重看Re:ゼロ，看了リゼロ");
+  assert.equal(repairNames("linイン", names), "linイン");
+  assert.equal(repairNames("沒有假名 linchien", names), "沒有假名 linchien");
+  assert.equal(repairNames("lインchien", []), "lインchien");
+});
+
 it("sanitizeBedtimeTitle strips 床邊故事 from the first line only", () => {
   const out = sanitizeBedtimeTitle(
     "**床邊故事｜會替人照相的魔法鏡**\n\n魔法使濤濤對著鏡子。",

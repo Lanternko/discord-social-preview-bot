@@ -42,6 +42,7 @@ const {
   formatStoryQuiz,
   parseStoryQuiz,
 } = require("./story-quiz");
+const { repairNames } = require("./name-repair");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -80,6 +81,7 @@ const TASK_TYPES = {
       return {
         prompt: built.prompt,
         quiz: built.quiz,
+        names: selection.ingredients.map((item) => item.authorName),
         onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
       };
     },
@@ -154,12 +156,14 @@ async function executeScheduledTask(schedule, client, options = {}) {
   let prompt;
   let onSuccess;
   let wantsQuiz = false;
+  let taskNames = [];
   if (taskDef && taskDef.buildPrompt) {
     const built = await taskDef.buildPrompt(channel, client, schedule);
     if (built && typeof built === "object" && !Array.isArray(built)) {
       prompt = built.prompt;
       onSuccess = built.onSuccess;
       wantsQuiz = Boolean(built.quiz);
+      taskNames = built.names || [];
     } else {
       prompt = built;
     }
@@ -223,11 +227,18 @@ async function executeScheduledTask(schedule, client, options = {}) {
       return;
     }
 
+    // Put back member names the model spelled with kana spliced in
+    // (lインchien) — see src/name-repair.js. Before the quiz split so the
+    // quiz gets the fix too.
+    const repaired = repairNames(result.text, [
+      ...roster.map((r) => r.name),
+      ...taskNames,
+    ]);
     // Split the quiz off BEFORE the length cap — capping first would cut the
     // quiz in half, or leave half a quiz glued to the story.
     const { story, quiz } = taskType === "bedtime_story"
-      ? parseStoryQuiz(result.text)
-      : { story: result.text, quiz: null };
+      ? parseStoryQuiz(repaired)
+      : { story: repaired, quiz: null };
     const capped = trimDescription(story, tierConfig.maxReplyChars);
     const titled = taskType === "bedtime_story"
       ? sanitizeBedtimeTitle(capped)
