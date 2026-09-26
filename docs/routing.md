@@ -57,6 +57,18 @@ Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXE
 
 API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success → custom embed (title / desc / cover / UP 主) **carrying a `videoAttachment`** — the direct mp4 at `https://media.<FIXER_BILIBILI>/video/<bvid>/1` (verified: `200 video/mp4`, no auth token; the `?_=` query is a cache-buster only). `resolveOutgoing` downloads + re-uploads it as a playable Discord video (MIXED-style, same mechanism as Threads). When the upload succeeds it **swaps the cover embed for a cover-less `videoAttachmentEmbeds`** (title / UP 主 / desc only) — the cover is just a still frame of the video, so keeping it would duplicate the player. On any miss (disabled / guild not allow-listed / over the upload cap / at `VIDEO_ATTACHMENT_MAX_CONCURRENT` / fetch fail) the attachment resolves to null and the payload keeps its full cover embed — no regression. (The embed swap is generic: `resolveOutgoing` applies `videoAttachmentEmbeds` whenever a video attaches; the Threads MIXED carousel omits it, so its gallery — whose images differ from the video — is untouched.) Bilibili is a video platform, so the mp4 is constructed straight from the BVID (no extra fetch). Failure (API error) → `FIXER_BILIBILI` (vxbilibili.com) with OG recovery. b23.tv short links are followed via redirect first.
 
+## Pinterest
+
+Hosts: `pinterest.com` + any country subdomain/TLD (`tw.pinterest.com`, `pinterest.co.uk`, …, matched by pattern in `url-routing.js`) and `pin.it`.
+
+| Case | Result |
+|---|---|
+| pidgets hit, image only | custom embed (title / pinner / 564x image) |
+| pidgets hit, `videos.video_list.V_720P` present | same embed + `videoAttachment`; uploaded → cover-less embed (`videoAttachmentEmbeds`) |
+| pin.it that doesn't land on `/pin/<id>/`, deleted/private pin, API error | fixembed + OG recovery (fixer URL, then the pin page) |
+
+Why pidgets and not og tags: the pin page's og:title/og:url frequently belong to a *different* (related) pin. Why not `is_video`: it's true on pins with no video list and false on pins that have one.
+
 ## Other platforms
 
 | Platform | Hosts (`isXxxUrl`) | Fixer env var | Default |

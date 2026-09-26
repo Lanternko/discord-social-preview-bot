@@ -24,6 +24,8 @@ const {
   isBilibiliUrl,
   isBahamutUrl,
   isPttUrl,
+  isPinterestUrl,
+  extractSupportedUrls: extractSupportedUrlsForPinterest,
   extractBilibiliBvid,
   shouldIgnoreMessage,
 } = require("../src/url-routing");
@@ -994,6 +996,19 @@ it("isBilibiliUrl / isBahamutUrl / isPttUrl", () => {
   assert.equal(isBahamutUrl("https://forum.gamer.com.tw/foo"), true);
   assert.equal(isPttUrl("https://www.ptt.cc/bbs/X/M.123.html"), true);
   assert.equal(isPttUrl("https://example.com"), false);
+});
+it("isPinterestUrl: 國別子網域/國別網域/pin.it，不吃仿冒", () => {
+  assert.equal(isPinterestUrl("https://www.pinterest.com/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://tw.pinterest.com/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pinterest.co.uk/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pinterest.jp/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pin.it/abc"), true);
+  assert.equal(isPinterestUrl("https://notpinterest.com/pin/1/"), false);
+  assert.equal(isPinterestUrl("https://pinterest.com.evil.io/pin/1/"), false);
+  assert.deepEqual(
+    extractSupportedUrlsForPinterest("看 https://tw.pinterest.com/pin/1/ 跟 https://pin.it/x"),
+    ["https://tw.pinterest.com/pin/1/", "https://pin.it/x"],
+  );
 });
 it("extractBilibiliBvid", () => {
   assert.equal(

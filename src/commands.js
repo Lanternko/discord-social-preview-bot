@@ -288,7 +288,7 @@ function buildHelpMessage() {
     "把支援的社群連結貼到頻道，我會自動回覆比較完整的預覽；也可以 `@西寶` 跟我聊天。",
     "",
     "**主要功能**",
-    "- 支援 Threads、X、Instagram、Reddit、Pixiv、Bluesky、Bilibili、Facebook、巴哈姆特與 PTT",
+    "- 支援 Threads、X、Instagram、Reddit、Pixiv、Bluesky、Bilibili、Facebook、Pinterest、巴哈姆特與 PTT",
     "- 自動移除常見追蹤參數、避免短時間內重複預覽",
     "- 對西寶的訊息按 🗑️，或右鍵選「Apps → 刪除西寶訊息」即可請我刪除",
     "",

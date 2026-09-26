@@ -77,6 +77,7 @@ const {
 const { buildInstagramPayload } = require("../src/platforms/instagram");
 const { buildBahamutPayload } = require("../src/platforms/bahamut");
 const { buildPttPayload } = require("../src/platforms/ptt");
+const { buildPinterestPayload } = require("../src/platforms/pinterest");
 const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
 const { handleReactionDelete } = require("../src/reaction-delete");
@@ -1289,6 +1290,80 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       assert.equal(s.contentStartsWithHttp, true);
     } finally {
       _mockProbeError = null;
+    }
+  });
+
+  // === PINTEREST CASES ===
+  console.log("buildPinterestPayload");
+
+  const pidgets = (pin) => async (url) => {
+    assert.ok(url.includes("pin_ids=123456789"), url);
+    return new Response(JSON.stringify({ data: pin ? [pin] : [] }));
+  };
+  const IMG = { "564x": { url: "https://i.pinimg.com/564x/a.jpg" } };
+
+  await it("pinterest image pin (slug url) → custom embed with cover", async () => {
+    _mockFetch = pidgets({
+      description: "desc",
+      rich_metadata: { title: "Title" },
+      pinner: { full_name: "Pinner" },
+      images: IMG,
+      videos: null,
+    });
+    try {
+      const p = await buildPinterestPayload(
+        "https://tw.pinterest.com/pin/some-slug--123456789/",
+      );
+      assert.equal(p.embeds.length, 1);
+      assert.equal(p.content, undefined);
+      assert.equal(p.videoAttachment, undefined);
+      const e = p.embeds[0].data;
+      assert.equal(e.title, "Title");
+      assert.equal(e.description, "desc");
+      assert.equal(e.author.name, "Pinner");
+      assert.equal(e.image.url, "https://i.pinimg.com/564x/a.jpg");
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("pinterest video pin → videoAttachment + cover-less swap embed", async () => {
+    _mockFetch = pidgets({
+      description: "#a #b",
+      is_video: false, // is_video 不可靠，要看 video_list
+      images: IMG,
+      videos: { video_list: { V_720P: { url: "https://v1.pinimg.com/v.mp4" } } },
+    });
+    try {
+      const p = await buildPinterestPayload("https://www.pinterest.com/pin/123456789/");
+      assert.equal(p.videoAttachment, "https://v1.pinimg.com/v.mp4");
+      assert.ok(p.embeds[0].data.image, "miss 時保留封面");
+      assert.equal(p.videoAttachmentEmbeds[0].data.image, undefined);
+      assert.equal(p.embeds[0].data.title, "#a #b");
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("pinterest deleted pin → fixer + OG recovery", async () => {
+    _mockFetch = pidgets(null);
+    try {
+      const p = await buildPinterestPayload("https://www.pinterest.com/pin/123456789/");
+      assert.equal(p.embeds, undefined);
+      assert.ok(p.content.startsWith("http"));
+      assert.ok(p.recoverUrls.length >= 1);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("pinterest dead pin.it (lands on home) → fixer", async () => {
+    _mockFetch = async () => ({ url: "https://www.pinterest.com/" });
+    try {
+      const p = await buildPinterestPayload("https://pin.it/abc");
+      assert.ok(p.content.startsWith("http"));
+    } finally {
+      _mockFetch = null;
     }
   });
 

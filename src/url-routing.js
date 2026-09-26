@@ -52,6 +52,16 @@ const REDDIT_HOSTS = new Set([
 ]);
 const PIXIV_HOSTS = new Set(["pixiv.net", "www.pixiv.net"]);
 const BLUESKY_HOSTS = new Set(["bsky.app", "www.bsky.app"]);
+// Pinterest 有一整排國別子網域（tw./jp./in./…），也有 pinterest.jp 這類國別
+// 網域，列舉不完 —— 用 pattern 判。pin.it 是 app 分享的短網址。
+const PINTEREST_HOST_RE = /^(?:[a-z]{2,3}\.)?pinterest\.(?:com|[a-z]{2}|co\.[a-z]{2}|com\.[a-z]{2})$/;
+const PINTEREST_SHORT_HOSTS = new Set(["pin.it"]);
+function isPinterestShortHost(hostname) {
+  return PINTEREST_SHORT_HOSTS.has(hostname);
+}
+function isPinterestHost(hostname) {
+  return PINTEREST_HOST_RE.test(hostname) || isPinterestShortHost(hostname);
+}
 
 const SUPPORTED_HOSTS = new Set([
   ...THREADS_HOSTS,
@@ -148,7 +158,11 @@ function extractSupportedUrls(content) {
     } catch {
       continue;
     }
-    if (!SUPPORTED_HOSTS.has(parsed.hostname)) continue;
+    if (
+      !SUPPORTED_HOSTS.has(parsed.hostname) &&
+      !isPinterestHost(parsed.hostname)
+    )
+      continue;
 
     const normalized = normalizeUrl(parsed.toString());
     if (seen.has(normalized)) continue;
@@ -243,6 +257,9 @@ function isBlueskyUrl(url) {
 function isFacebookUrl(url) {
   return FACEBOOK_HOSTS.has(new URL(url).hostname);
 }
+function isPinterestUrl(url) {
+  return isPinterestHost(new URL(url).hostname);
+}
 function extractBilibiliBvid(url) {
   const parsed = new URL(url);
   const match = parsed.pathname.match(/\/video\/(BV[a-zA-Z0-9]+)/);
@@ -283,5 +300,8 @@ module.exports = {
   isPixivUrl,
   isBlueskyUrl,
   isFacebookUrl,
+  isPinterestUrl,
+  isPinterestHost,
+  isPinterestShortHost,
   extractBilibiliBvid,
 };
