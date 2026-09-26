@@ -4395,6 +4395,53 @@ const ogRaceCases = [
     assert.equal(await describeStoryImages(items, { enabled: false }), 0);
   });
 
+  await itAsync("guild welcome: picks a postable channel and never throws", async () => {
+    const { ChannelType } = require("discord.js");
+    const {
+      pickWelcomeChannel,
+      buildWelcomeMessage,
+      sendGuildWelcome,
+    } = require("../src/guild-welcome");
+    const me = { id: "bot" };
+    const ch = (id, rawPosition, canSend, extra = {}) => ({
+      id,
+      rawPosition,
+      type: ChannelType.GuildText,
+      permissionsFor: () => ({ has: () => canSend }),
+      ...extra,
+    });
+    const voice = { ...ch("v", 0, true), type: ChannelType.GuildVoice };
+    const guildOf = (systemChannel, list) => ({
+      id: "g",
+      name: "g",
+      members: { me },
+      systemChannel,
+      channels: { cache: new Map(list.map((c) => [c.id, c])) },
+    });
+
+    const sys = ch("sys", 5, true);
+    assert.equal(pickWelcomeChannel(guildOf(sys, [ch("a", 0, true), sys])).id, "sys");
+    // Locked system channel → top-most text channel we can speak in (not voice).
+    const lockedSys = ch("sys", 0, false);
+    const g = guildOf(lockedSys, [lockedSys, voice, ch("b", 3, true), ch("a", 2, true)]);
+    assert.equal(pickWelcomeChannel(g).id, "a");
+    assert.equal(pickWelcomeChannel(guildOf(null, [ch("x", 0, false)])), null);
+    assert.equal(pickWelcomeChannel({ members: {} }), null);
+
+    const msg = buildWelcomeMessage({ dailyLimit: 7 });
+    assert.match(msg, /每天免費 7 次/);
+    assert.match(msg, /@我問/);
+    assert.ok(msg.length < 2000, "fits in one Discord message");
+
+    const sent = [];
+    const ok = ch("ok", 0, true, { send: async (p) => sent.push(p.content) });
+    assert.equal(await sendGuildWelcome(guildOf(null, [ok])), true);
+    assert.equal(sent.length, 1);
+    const boom = ch("boom", 0, true, { send: async () => { throw new Error("403"); } });
+    assert.equal(await sendGuildWelcome(guildOf(null, [boom])), false);
+    assert.equal(await sendGuildWelcome(guildOf(null, [])), false);
+  });
+
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
   process.exit(fail > 0 ? 1 : 0);
