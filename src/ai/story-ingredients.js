@@ -19,7 +19,7 @@
 // chain.js) and never into the system prompt.
 
 const { sanitizeName, trimDescription } = require("../utils");
-const { listUserProfiles } = require("../user-profile-store");
+const { listUserProfiles, profileTextOf } = require("../user-profile-store");
 const { getFamiliarityRoster } = require("../familiarity");
 
 const DISCORD_EPOCH = 1420070400000n;
@@ -110,7 +110,7 @@ async function fetchChannelTopics(guild, { excludeChannelId, botUserId } = {}) {
 // they talk (familiarity roster), because a story about the server's regulars
 // lands harder than one about someone who posted twice.
 function pickInterestGist(entry) {
-  const profileLines = (entry.profile || "").split(/\n+/).map((l) => l.trim());
+  const profileLines = profileTextOf(entry).split(/\n+/).map((l) => l.trim());
   for (const line of profileLines) {
     const m = line.match(INTEREST_FIELD_RE);
     if (m && m[2]) return m[2].trim();

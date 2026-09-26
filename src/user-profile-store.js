@@ -11,6 +11,26 @@ const PENDING_TEXT_MAX_LEN = 500;
 const PENDING_MAX_COUNT = 60;
 const EVIDENCE_MAX_PER_OBSERVATION = 10;
 const RECENT_OBSERVATIONS_PROMPT_COUNT = 3;
+
+// Structured profile: fixed fields, each a short dot list. Every item carries
+// its own evidence + lastSeenAt, so an impression that stops being confirmed
+// fades out on its own instead of being carried forward forever by prose
+// rewrites (the old single-string profile was a game of telephone).
+const PROFILE_FIELDS = [
+  { key: "style", label: "說話風格", max: 3 },
+  { key: "topics", label: "常聊話題", max: 4 },
+  { key: "interaction", label: "互動偏好", max: 3 },
+  { key: "notes", label: "注意", max: 2 },
+];
+const ITEM_TEXT_MAX_LEN = 40;
+const ITEM_STALE_MS = 120 * 24 * 60 * 60 * 1000;
+const PROFILE_HISTORY_MAX = 5;
+
+// The bar an observation (or item) must clear before it may be stated as a
+// fact: at least 3 distinct source messages, or 2 distinct messages far
+// enough apart in time that it wasn't one burst of the same moment.
+const STABLE_MIN_DISTINCT_MESSAGES = 3;
+const STABLE_TIME_GAP_MS = 6 * 60 * 60 * 1000;
 const CONTROL_CHARS_RE = /[\x00-\x1f\x7f-\x9f]/g;
 
 let cache = null;
@@ -158,6 +178,106 @@ function mergeEvidence(existing, incoming) {
   return sanitizeEvidence([...(existing || []), ...(incoming || [])]);
 }
 
+// Pooled item evidence keeps the NEWEST messages when it hits the cap — an
+// item's support should track what the person does now, not what they did
+// the first week.
+function mergeEvidenceNewest(...lists) {
+  const all = lists.flat().filter(Boolean);
+  all.sort((a, b) => (b?.at ?? 0) - (a?.at ?? 0));
+  return sanitizeEvidence(all);
+}
+
+function isStableEvidence(evidence) {
+  const list = Array.isArray(evidence) ? evidence : [];
+  const ids = new Set(list.map((e) => e?.messageId).filter(Boolean));
+  if (ids.size >= STABLE_MIN_DISTINCT_MESSAGES) return true;
+  if (ids.size >= 2) {
+    const ats = list
+      .map((e) => (typeof e?.at === "number" ? e.at : null))
+      .filter((v) => v !== null);
+    if (ats.length >= 2 && Math.max(...ats) - Math.min(...ats) >= STABLE_TIME_GAP_MS) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function fieldByKeyOrLabel(value) {
+  if (typeof value !== "string") return null;
+  const v = value.trim();
+  return PROFILE_FIELDS.find((f) => f.key === v || f.label === v) || null;
+}
+
+function isItemStale(item, now = Date.now()) {
+  const last = typeof item?.lastSeenAt === "number" ? item.lastSeenAt : 0;
+  return now - last >= ITEM_STALE_MS;
+}
+
+function sanitizeItemText(text) {
+  if (!text || typeof text !== "string") return null;
+  const clean = text
+    .replace(CONTROL_CHARS_RE, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[-・•*\s]+/, "")
+    .trim();
+  if (!clean) return null;
+  return clean.slice(0, ITEM_TEXT_MAX_LEN);
+}
+
+// Normalises an items map: known fields only, per-field cap, text dedup.
+function sanitizeItems(items) {
+  const out = {};
+  for (const f of PROFILE_FIELDS) {
+    const list = Array.isArray(items?.[f.key]) ? items[f.key] : [];
+    const seen = new Set();
+    const kept = [];
+    for (const it of list) {
+      const text = sanitizeItemText(it?.text);
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      const now = Date.now();
+      kept.push({
+        text,
+        evidence: sanitizeEvidence(it.evidence),
+        firstAt: typeof it.firstAt === "number" ? it.firstAt : now,
+        lastSeenAt: typeof it.lastSeenAt === "number" ? it.lastSeenAt : now,
+        tentative: Boolean(it.tentative),
+      });
+      if (kept.length >= f.max) break;
+    }
+    out[f.key] = kept;
+  }
+  return out;
+}
+
+function liveItems(items, field, now = Date.now()) {
+  return (items?.[field.key] || []).filter((it) => it?.text && !isItemStale(it, now));
+}
+
+function itemLabel(it) {
+  return it.tentative ? `（或許）${it.text}` : it.text;
+}
+
+// The legacy single-string form (field-per-line, items joined with 「；」).
+// Kept because target-context / story ingredients / /memory consume it, and
+// derived at read time so stale items drop out without a rewrite.
+function renderProfileText(items, now = Date.now()) {
+  if (!items) return "";
+  const lines = [];
+  for (const f of PROFILE_FIELDS) {
+    const live = liveItems(items, f, now);
+    if (live.length === 0) continue;
+    lines.push(`${f.label}：${live.map(itemLabel).join("；")}`);
+  }
+  return lines.join("\n");
+}
+
+function profileTextOf(entry, now = Date.now()) {
+  if (!entry) return "";
+  if (entry.items) return renderProfileText(entry.items, now);
+  return entry.profile || "";
+}
+
 function appendObservations(guildId, userId, displayName, observations) {
   if (!guildId || !userId) return;
   if (!Array.isArray(observations) || observations.length === 0) return;
@@ -223,10 +343,52 @@ function setConsolidatedProfile(guildId, userId, profileText) {
   save();
 }
 
+// Replaces the profile with a structured items map. The previous rendering is
+// pushed onto profileHistory first, so drift between consolidations can be
+// audited (which "plank" got swapped, and when). Observations are consumed:
+// their evidence now lives on the items that cite them.
+function setProfileItems(guildId, userId, items) {
+  if (!guildId || !userId) return;
+  const data = load();
+  const entry = data[guildId]?.[userId];
+  if (!entry) return;
+
+  const now = Date.now();
+  const clean = sanitizeItems(items);
+  const nextText = renderProfileText(clean, now);
+  const prevText = profileTextOf(entry, now);
+  if (prevText && prevText !== nextText) {
+    const history = Array.isArray(entry.profileHistory) ? entry.profileHistory : [];
+    history.push({ at: entry.profileAt ?? null, profile: prevText });
+    entry.profileHistory = history.slice(-PROFILE_HISTORY_MAX);
+  }
+
+  entry.items = clean;
+  entry.profile = nextText || null;
+  entry.profileAt = now;
+  entry.observations = [];
+  entry.updatedAt = now;
+  save();
+}
+
 const PROFILE_PROMPT_MAX_LEN = 300;
 
+function buildItemsLines(items) {
+  const now = Date.now();
+  const lines = [];
+  for (const f of PROFILE_FIELDS) {
+    const live = liveItems(items, f, now);
+    if (live.length === 0) continue;
+    lines.push(`- ${f.label}：`);
+    for (const it of live) lines.push(`  - ${itemLabel(it)}`);
+  }
+  return lines;
+}
+
 function buildUserProfileBlock(entry) {
-  if (!entry?.profile && !entry?.observations?.length) return "";
+  const itemLines = entry?.items ? buildItemsLines(entry.items) : [];
+  const hasLegacy = !entry?.items && entry?.profile;
+  if (itemLines.length === 0 && !hasLegacy && !entry?.observations?.length) return "";
   const name = entry.name || "未知";
   const lines = [
     "\n\n## 當前使用者長期記憶",
@@ -234,7 +396,9 @@ function buildUserProfileBlock(entry) {
     `- 暱稱：${name}`,
   ];
 
-  if (entry.profile) {
+  if (itemLines.length > 0) {
+    lines.push(...itemLines);
+  } else if (hasLegacy) {
     // Prompt block stays one bullet per item — flatten the field-per-line
     // profile into a single line for injection.
     const flat = entry.profile.replace(/\n+/g, "；");
@@ -315,6 +479,20 @@ module.exports = {
   PENDING_MAX_COUNT,
   EVIDENCE_MAX_PER_OBSERVATION,
   RECENT_OBSERVATIONS_PROMPT_COUNT,
+  PROFILE_FIELDS,
+  ITEM_TEXT_MAX_LEN,
+  ITEM_STALE_MS,
+  PROFILE_HISTORY_MAX,
+  STABLE_MIN_DISTINCT_MESSAGES,
+  STABLE_TIME_GAP_MS,
+  isStableEvidence,
+  isItemStale,
+  mergeEvidenceNewest,
+  fieldByKeyOrLabel,
+  sanitizeItems,
+  renderProfileText,
+  profileTextOf,
+  setProfileItems,
   getUserProfile,
   listPendingBacklog,
   appendPendingInteraction,

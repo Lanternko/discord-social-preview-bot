@@ -16,6 +16,8 @@ const {
 const {
   getUserProfile,
   deleteUserProfile,
+  PROFILE_FIELDS,
+  isItemStale,
 } = require("./user-profile-store");
 const {
   getGuildProfile,
@@ -611,6 +613,27 @@ async function handleScheduleCommand(interaction, client) {
   }
 }
 
+// /memory show: one line per item with its support and when it was last
+// confirmed, so a user can see WHY 西寶 thinks something and that it will
+// fade if it stops being true.
+function formatProfileItemsForShow(items, now = Date.now()) {
+  const lines = ["\n📝 **人格摘要**"];
+  let any = false;
+  for (const f of PROFILE_FIELDS) {
+    const live = (items[f.key] || []).filter((it) => !isItemStale(it, now));
+    if (live.length === 0) continue;
+    any = true;
+    lines.push(`**${f.label}**`);
+    for (const it of live) {
+      const n = new Set((it.evidence || []).map((e) => e?.messageId).filter(Boolean)).size;
+      const day = typeof it.lastSeenAt === "number" ? new Date(it.lastSeenAt).toISOString().slice(0, 10) : "?";
+      const hedge = it.tentative ? "（或許）" : "";
+      lines.push(`• ${hedge}${it.text}（${n} 則佐證，最後確認 ${day}）`);
+    }
+  }
+  return any ? lines : [];
+}
+
 async function handleMemoryCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -636,7 +659,9 @@ async function handleMemoryCommand(interaction) {
     const lines = [`**西寶對你的記憶**`];
     lines.push(`暱稱：${profile.name || "未知"}`);
 
-    if (profile.profile) {
+    if (profile.items) {
+      lines.push(...formatProfileItemsForShow(profile.items));
+    } else if (profile.profile) {
       lines.push(`\n📝 **人格摘要**\n${profile.profile}`);
     }
 

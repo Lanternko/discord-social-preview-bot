@@ -58,6 +58,7 @@ const {
   buildUserProfileBlock,
   appendPendingInteraction,
   listUserProfiles,
+  profileTextOf,
 } = require("../user-profile-store");
 const {
   maybeExtractObservations,
@@ -628,7 +629,7 @@ async function generateAIReply(message, userText, options = {}) {
       const enriched = targets.map((t) => ({
         ...t,
         profile: AI_LONG_TERM_MEMORY_ENABLED
-          ? getUserProfile(message.guildId, t.userId)?.profile || null
+          ? profileTextOf(getUserProfile(message.guildId, t.userId)) || null
           : null,
       }));
       targetBlock = buildTargetContextBlock(enriched, {

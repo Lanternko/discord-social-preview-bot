@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// One-shot migration: rewrite every existing consolidated user profile with
-// the current (neutral, field-per-line) consolidation persona.
+// One-shot migration: rewrite every existing consolidated user profile into
+// the current structured form (fixed fields, short items, each with its own
+// provenance) using the current consolidation persona.
 //
 // Why a standalone script and not a bot feature: the running bot holds the
 // profile store in an in-memory cache and rewrites the whole JSON file on
@@ -14,23 +15,21 @@
 //   node scripts/redistill-profiles.js --guild <id>       # one guild
 //   node scripts/redistill-profiles.js --all              # include already-migrated
 //
-// Old observations (no evidence — pre-#56) are folded into the rewrite as
-// 證據不足 hints and then cleared by setConsolidatedProfile; that is their
-// normal consolidation lifecycle, just triggered in bulk.
+// Pending observations are folded into the rewrite and consumed by
+// setProfileItems; that is their normal consolidation lifecycle, just
+// triggered in bulk. Legacy profile lines become source items with no
+// per-item evidence and lastSeenAt = the old profileAt, so migrated
+// impressions still age out unless something re-confirms them.
 require("dotenv").config();
 
 const { execSync } = require("node:child_process");
 const {
   listUserProfiles,
-  setConsolidatedProfile,
+  setProfileItems,
+  renderProfileText,
   STORE_PATH,
 } = require("../src/user-profile-store");
-const {
-  CONSOLIDATION_PERSONA,
-  CONSOLIDATE_MAX_TOKENS,
-  buildConsolidationTurns,
-  parseConsolidationResult,
-} = require("../src/ai/observation-extractor");
+const { runConsolidation, countItems } = require("../src/ai/observation-extractor");
 const { buildRunChainForGuild } = require("../src/ai/profile-sweep");
 
 const args = process.argv.slice(2);
@@ -41,14 +40,10 @@ const guildFlag = args.indexOf("--guild");
 const ONLY_GUILD = guildFlag !== -1 ? args[guildFlag + 1] : null;
 
 const CALL_GAP_MS = 1500;
-// A field-per-line profile always contains this label; its presence means the
-// entry was already written (or migrated) by the new persona.
-const NEW_FORMAT_MARKER = "說話風格：";
-
 const MIGRATION_NOTE =
-  "（系統維護說明：上面的既有摘要是舊版系統寫的，可能含吹捧、貶低性判詞、或把暱稱裝飾字當「自稱」的過度解讀。" +
-  "請把它改寫成新的欄位格式（說話風格／常聊話題／互動偏好／注意），刪去沒有行為佐證的評價句、保留具體行為描述。" +
-  "這是一次性的格式遷移：就算沒有新觀察，也請輸出改寫後的 profile，不要回空字串。）";
+  "（系統維護說明：這是一次性的格式遷移。既有條目是舊版的整段摘要，一條裡常塞了好幾件事。" +
+  "請把它們拆成短條目（每條只講一件事），from 填原本的 I 編號；刪去沒有行為佐證的評價句、只描述西寶反應的句子。" +
+  "就算沒有新觀察，也請輸出完整的檔案，不要回空的 items。）";
 
 function botIsRunning() {
   try {
@@ -88,7 +83,7 @@ async function main() {
   let failed = 0;
 
   for (const guildId of guildIds) {
-    const profiles = listUserProfiles(guildId).filter((p) => p.profile);
+    const profiles = listUserProfiles(guildId).filter((p) => p.profile || p.items);
     if (profiles.length === 0) continue;
 
     const runChain = buildRunChainForGuild(guildId);
@@ -100,27 +95,26 @@ async function main() {
 
     for (const entry of profiles) {
       const label = `guild=${guildId} user=${entry.userId} name=${entry.name}`;
-      if (!INCLUDE_MIGRATED && entry.profile.includes(NEW_FORMAT_MARKER)) {
-        console.log(`[redistill] SKIP (already new format) ${label}`);
+      if (!INCLUDE_MIGRATED && entry.items) {
+        console.log(`[redistill] SKIP (already structured) ${label}`);
         skipped++;
         continue;
       }
 
-      const turns = buildConsolidationTurns(entry);
-      turns.push({ role: "user", content: MIGRATION_NOTE });
-
       try {
-        const result = await runChain(turns, CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
-        const profile = parseConsolidationResult(result?.text);
-        if (!profile) {
+        const { result, items } = await runConsolidation(entry, runChain, [
+          { role: "user", content: MIGRATION_NOTE },
+        ]);
+        const oldText = entry.profile || "";
+        if (!items) {
           console.warn(`[redistill] FAIL (no usable output) ${label}`);
           failed++;
         } else if (DRY_RUN) {
-          console.log(`[redistill] DRY ${label}\n  舊(${entry.profile.length}字): ${entry.profile.slice(0, 80)}…\n  新(${profile.length}字): ${profile.replace(/\n/g, " / ")}`);
+          console.log(`[redistill] DRY ${label}\n  舊: ${oldText.replace(/\n/g, " / ")}\n  新(${countItems(items)}條): ${renderProfileText(items, 0).replace(/\n/g, " / ")}`);
           rewritten++;
         } else {
-          setConsolidatedProfile(guildId, entry.userId, profile);
-          console.log(`[redistill] OK ${label} ${entry.profile.length}→${profile.length}字 provider=${result.provider.label}`);
+          setProfileItems(guildId, entry.userId, items);
+          console.log(`[redistill] OK ${label} items=${countItems(items)} provider=${result.provider.label}`);
           rewritten++;
         }
       } catch (err) {
