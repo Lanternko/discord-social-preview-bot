@@ -2182,6 +2182,10 @@ const {
   STABLE_TIME_GAP_MS,
   EXTRACTION_PERSONA,
   CONSOLIDATION_PERSONA,
+  collectConsolidationSources,
+  resolveConsolidatedItems,
+  runConsolidation,
+  parseGuildConsolidationResult,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
 
@@ -2316,22 +2320,21 @@ it("buildConsolidationTurns works without existing profile", () => {
   assert.ok(!turns[0].content.includes("既有人格摘要"));
   assert.match(turns[0].content, /Bob/);
 });
-it("parseConsolidationResult parses valid JSON", () => {
-  const p = parseConsolidationResult('{"profile":"愛聊動漫、常吐槽"}');
-  assert.equal(p, "愛聊動漫、常吐槽");
+it("parseConsolidationResult parses items with normalised source ids", () => {
+  const p = parseConsolidationResult(
+    '以下是檔案：\n{"items":[{"field":"topics","text":" 棒球 ","from":["i1","O2"]},{"field":"style","text":""}]}\n完成',
+  );
+  assert.deepEqual(p, [{ field: "topics", text: "棒球", from: ["I1", "O2"] }]);
 });
-it("parseConsolidationResult handles LLM preamble", () => {
-  const p = parseConsolidationResult('以下是摘要：\n{"profile":"test"}\n完成');
-  assert.equal(p, "test");
-});
-it("parseConsolidationResult returns null for empty profile", () => {
-  assert.equal(parseConsolidationResult('{"profile":""}'), null);
-  assert.equal(parseConsolidationResult('{"profile":"  "}'), null);
-});
-it("parseConsolidationResult returns null for garbage", () => {
+it("parseConsolidationResult returns null for empty items or garbage", () => {
+  assert.equal(parseConsolidationResult('{"items":[]}'), null);
+  assert.equal(parseConsolidationResult('{"profile":"舊格式"}'), null);
   assert.equal(parseConsolidationResult("not json"), null);
   assert.equal(parseConsolidationResult(null), null);
-  assert.equal(parseConsolidationResult(""), null);
+});
+it("parseGuildConsolidationResult keeps the prose guild format", () => {
+  assert.equal(parseGuildConsolidationResult('前言{"profile":"愛聊遊戲"}'), "愛聊遊戲");
+  assert.equal(parseGuildConsolidationResult('{"profile":""}'), null);
 });
 // --- memory evidence pipeline ---
 console.log("memory evidence");
@@ -2623,7 +2626,7 @@ it("personas demand evidence and ban unsupported praise", () => {
     /強詞奪理/,
     "put-down words named as banned examples",
   );
-  assert.match(CONSOLIDATION_PERSONA, /不可寫成斷言/);
+  assert.match(CONSOLIDATION_PERSONA, /或許/);
   assert.match(
     CONSOLIDATION_PERSONA,
     /以新觀察為準/,
@@ -2631,8 +2634,8 @@ it("personas demand evidence and ban unsupported praise", () => {
   );
   assert.match(
     CONSOLIDATION_PERSONA,
-    /說話風格：/,
-    "field-per-line output format defined",
+    /"items":\[\{"field"/,
+    "structured items output format defined",
   );
   assert.match(
     CONSOLIDATION_PERSONA,
@@ -2647,7 +2650,8 @@ it("buildConsolidationTurns labels old profile and nickname sections", () => {
     observations: [],
   });
   const content = turns[0].content;
-  assert.match(content, /既有人格摘要（舊印象/);
+  assert.match(content, /既有條目（舊印象/);
+  assert.match(content, /\[I1\] 注意｜舊摘要內容（舊版摘要轉入/);
   assert.match(content, /以新觀察為準/);
   assert.match(content, /暱稱（Discord 顯示名稱/);
 });
@@ -2737,6 +2741,298 @@ function withGuildStore(fn) {
     guildStore.resetCacheForTests();
   });
 }
+
+
+console.log("structured profile items");
+const DAY_MS = 24 * 60 * 60 * 1000;
+const evAt = (id, at, source = "direct") => ({ messageId: id, at, source });
+
+it("legacy field-per-line profile becomes numbered source items", () => {
+  const sources = collectConsolidationSources({
+    profile: "說話風格：多用日文\n常聊話題：越南旅遊、翻譯\n注意：會開玩笑；或許會用刪除線調侃",
+    profileAt: 1000,
+    observations: [{ text: "常聊棒球", confidence: 0.8, evidence: [] }],
+  });
+  assert.equal(sources.get("I1").field, "style");
+  assert.equal(sources.get("I2").field, "topics");
+  assert.equal(sources.get("I2").text, "越南旅遊、翻譯");
+  assert.equal(sources.get("I2").lastSeenAt, 1000);
+  assert.equal(sources.get("I2").legacy, true);
+  assert.equal(sources.get("I3").text, "會開玩笑", "clauses split on 「；」");
+  assert.equal(sources.get("I3").tentative, false);
+  assert.equal(sources.get("I4").text, "會用刪除線調侃", "hedge word stripped");
+  assert.equal(sources.get("I4").tentative, true, "old hedge stays a guess");
+  assert.equal(sources.get("O1").kind, "obs");
+});
+it("stale items are left out of consolidation sources", () => {
+  const now = 1000 * DAY_MS;
+  const sources = collectConsolidationSources(
+    {
+      items: {
+        topics: [
+          { text: "舊話題", evidence: [], lastSeenAt: now - 200 * DAY_MS },
+          { text: "新話題", evidence: [], lastSeenAt: now - DAY_MS },
+        ],
+      },
+      observations: [],
+    },
+    now,
+  );
+  assert.equal(sources.size, 1);
+  assert.equal(sources.get("I1").text, "新話題");
+});
+it("resolveConsolidatedItems enforces provenance, decay and hedging", () => {
+  const now = 1000 * DAY_MS;
+  const sources = new Map([
+    ["I1", { kind: "item", field: "style", text: "多用日文", evidence: [], firstAt: 5, lastSeenAt: 50, tentative: false, legacy: true }],
+    ["O1", { kind: "obs", text: "常聊棒球", stable: true, evidence: [evAt("m1", 100), evAt("m2", 200), evAt("m3", 300)] }],
+    ["O2", { kind: "obs", text: "問過星座", stable: false, evidence: [evAt("m4", 400)] }],
+  ]);
+  const items = resolveConsolidatedItems(
+    [
+      { field: "style", text: "多用日文", from: ["I1"] },
+      { field: "topics", text: "棒球", from: ["O1"] },
+      { field: "topics", text: "星座", from: ["O2"] },
+      { field: "notes", text: "憑空捏造", from: ["X9"] },
+      { field: "bogus", text: "沒這欄", from: ["O1"] },
+      { field: "常聊話題", text: "日本觀光", from: ["I1", "O2"] },
+    ],
+    sources,
+    now,
+  );
+  assert.equal(items.style[0].lastSeenAt, 50, "carried forward: not re-confirmed");
+  assert.equal(items.style[0].tentative, false, "legacy item is not hedged");
+  const baseball = items.topics.find((i) => i.text === "棒球");
+  assert.equal(baseball.lastSeenAt, 300, "backed by new obs → lastSeenAt moves");
+  assert.equal(baseball.firstAt, 100);
+  assert.equal(baseball.evidence.length, 3);
+  assert.equal(baseball.tentative, false);
+  assert.equal(items.topics.find((i) => i.text === "星座").tentative, true, "weak-only → 或許");
+  assert.equal(items.topics.find((i) => i.text === "日本觀光").tentative, false, "label accepted, legacy source lifts hedge");
+  assert.equal(items.notes.length, 0, "uncited item dropped");
+  assert.equal(resolveConsolidatedItems([{ field: "style", text: "x", from: [] }], sources, now), null);
+});
+it("setProfileItems renders dot list, keeps history, consumes observations", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    profileStore.appendObservations("g1", "u1", "Alice", [{ text: "a", confidence: 0.5 }]);
+    profileStore.setConsolidatedProfile("g1", "u1", "說話風格：舊的");
+    profileStore.appendObservations("g1", "u1", "Alice", [{ text: "b", confidence: 0.5 }]);
+    profileStore.setProfileItems("g1", "u1", {
+      style: [{ text: "常夾日文", evidence: [evAt("m1", now)], lastSeenAt: now }],
+      topics: [
+        { text: "棒球", lastSeenAt: now, tentative: true },
+        { text: "過期話題", lastSeenAt: now - 200 * DAY_MS },
+      ],
+    });
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(p.observations.length, 0);
+    assert.equal(p.profile, "說話風格：常夾日文\n常聊話題：（或許）棒球");
+    assert.deepEqual(p.profileHistory.map((h) => h.profile), ["說話風格：舊的"]);
+    const block = profileStore.buildUserProfileBlock(p);
+    assert.match(block, /- 說話風格：\n  - 常夾日文/);
+    assert.match(block, /  - （或許）棒球/);
+    assert.ok(!block.includes("過期話題"), "stale item not injected");
+    assert.ok(!block.includes("摘要："), "no legacy flat line");
+  });
+});
+it("setProfileItems caps each field and history length", () => {
+  withProfileStore(() => {
+    profileStore.appendObservations("g1", "u1", "x", [{ text: "a" }]);
+    for (let i = 0; i < profileStore.PROFILE_HISTORY_MAX + 3; i++) {
+      profileStore.setProfileItems("g1", "u1", {
+        style: Array.from({ length: 6 }, (_, j) => ({ text: `s${i}-${j}` })),
+      });
+    }
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(p.items.style.length, 3);
+    assert.equal(p.profileHistory.length, profileStore.PROFILE_HISTORY_MAX);
+  });
+});
+const memoryAsyncCases = [];
+memoryAsyncCases.push(["runConsolidation wires sources → model → resolved items", async () => {
+  let seenTurns = null;
+  const fakeChain = async (turns) => {
+    seenTurns = turns;
+    return {
+      provider: { label: "fake" },
+      text: '{"items":[{"field":"style","text":"多用日文","from":["I1"]},{"field":"topics","text":"棒球","from":["O1"]}]}',
+    };
+  };
+  const { items } = await runConsolidation(
+    {
+      name: "Alice",
+      profile: "說話風格：多用日文",
+      profileAt: Date.now(),
+      observations: [{ text: "常聊棒球", confidence: 0.7, evidence: [evAt("m1", Date.now())] }],
+    },
+    fakeChain,
+    [{ role: "user", content: "note" }],
+  );
+  assert.equal(seenTurns.length, 2, "extra turns appended");
+  assert.match(seenTurns[0].content, /\[I1\] 說話風格｜多用日文/);
+  assert.match(seenTurns[0].content, /\[O1\] 常聊棒球/);
+  assert.equal(items.style[0].text, "多用日文");
+  assert.equal(items.topics[0].tentative, true);
+}]);
+
+memoryAsyncCases.push(["runConsolidation retries once on a truncated answer", async () => {
+  let calls = 0;
+  const answers = [
+    '{"items":[{"field":"style","text":"多用日文","from":["I1"]},{"field":"topics","text":"棒',
+    '{"items":[{"field":"style","text":"多用日文","from":["I1"]}]}',
+  ];
+  const fakeChain = async () => ({ provider: { label: "fake" }, text: answers[calls++] });
+  const entry = { name: "A", profile: "說話風格：多用日文", profileAt: Date.now(), observations: [] };
+  const { items } = await runConsolidation(entry, fakeChain);
+  assert.equal(calls, 2);
+  assert.equal(items.style[0].text, "多用日文");
+
+  calls = 0;
+  const alwaysBad = async () => { calls++; return { provider: { label: "fake" }, text: "{\"items\":[" }; };
+  const bad = await runConsolidation(entry, alwaysBad);
+  assert.equal(calls, 2, "gives up after two attempts");
+  assert.equal(bad.items, null, "never salvages a truncated array");
+}]);
+
+console.log("alias learning");
+const aliasEx = require("../src/ai/alias-extractor");
+const aliasRow = (id, speakerId, content, extra = {}) => ({
+  messageId: id, speakerId, speakerName: null, content, at: Number(id.replace(/\D/g, "")) || 1, replyToUserId: null, ...extra,
+});
+const aliasCtx = () => ({
+  people: new Map([
+    ["u1", { pid: "P1", name: "峰【曉未散】" }],
+    ["u2", { pid: "P2", name: "萱萱" }],
+  ]),
+  rows: [
+    aliasRow("m1", "u2", "峰哥你又來了", { replyToUserId: "u1" }),
+    aliasRow("m2", "u1", "叫我峰哥幹嘛"),
+    aliasRow("m3", "u2", "今天好熱"),
+  ],
+});
+
+it("resolveAliasCandidates keeps only aliases another person literally typed", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [{ person: "P1", alias: "峰哥", evidence: ["L1", "L2", "L3"] }],
+    aliasCtx(),
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].userId, "u1");
+  assert.deepEqual(out[0].evidence.map((e) => e.messageId), ["m1"], "self-use and non-containing lines dropped");
+  assert.equal(out[0].evidence[0].speakerId, "u2");
+});
+it("resolveAliasCandidates rejects stopwords/kinship, display names, unknown people, lines aimed at someone else", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [
+      { person: "P1", alias: "你", evidence: ["L1"] },
+      { person: "P1", alias: "萱萱", evidence: ["L1"] },
+      { person: "P9", alias: "峰哥", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L1"] },
+      { person: "P1", alias: "峰哥", evidence: ["L2"] },
+      { person: "P1", alias: "姐姐", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L4", "L5"] },
+    ],
+    aliasCtx(),
+  );
+  assert.deepEqual(out, []);
+});
+it("recordAliasContext dedups by messageId and skips link previews / empty text", () => {
+  aliasEx.resetAliasBuffersForTests();
+  const rows = [
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: null, messageId: "a2", content: "預覽", isLinkPreview: true },
+    { userId: "u2", messageId: "a3", content: "", at: 2 },
+  ];
+  assert.equal(aliasEx.recordAliasContext("g", rows), 1);
+  assert.equal(aliasEx.recordAliasContext("g", rows), 0);
+  aliasEx.resetAliasBuffersForTests();
+});
+it("buildAliasPrompt numbers people and lines, marks replies and @mentions", () => {
+  withProfileStore(() => {
+    const { turns } = aliasEx.buildAliasPrompt("g", [
+      aliasRow("m1", "u2", "<@u1>".replace("u1", "111") + " 峰哥", { speakerName: "萱萱", replyToUserId: "111" }),
+      aliasRow("m2", "111", "幹嘛", { speakerName: "峰" }),
+    ]);
+    assert.match(turns[0].content, /P1＝萱萱/);
+    assert.match(turns[0].content, /P2＝峰/);
+    assert.match(turns[0].content, /L1 P1（回覆 P2）: @P2 峰哥/);
+  });
+});
+it("aliases confirm at 2 distinct messages and show up in the profile block", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [{ messageId: "m1", at: now, speakerId: "u2" }]);
+    let entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(profileStore.confirmedAliases(entry), [], "one message is only a guess");
+    assert.doesNotMatch(profileStore.buildUserProfileBlock(entry), /群友常叫他/);
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [
+      { messageId: "m1", at: now, speakerId: "u2" },
+      { messageId: "m2", at: now, speakerId: "u3" },
+    ]);
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.equal(entry.aliases.length, 1, "same alias pools, not duplicated");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    assert.match(profileStore.buildUserProfileBlock(entry), /- 群友常叫他：峰哥/);
+    assert.deepEqual(
+      profileStore.confirmedAliases(entry, now + 200 * DAY_MS), [], "aliases age out like items",
+    );
+  });
+});
+it("familiarity block renders aliases next to the roster name", () => {
+  const out = buildFamiliarityBlock([{ name: "峰", count: 600, tier: "摯友", aliases: ["峰哥"] }]);
+  assert.match(out, /峰（群友叫：峰哥）/);
+});
+it("nameMatchCandidates matches a confirmed alias absent from the display name", () => {
+  const ev = [{ messageId: "m1", at: Date.now() }, { messageId: "m2", at: Date.now() }];
+  const profiles = [{ userId: "u1", name: "峰【曉未散】", aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: Date.now() }] }];
+  assert.equal(nameMatchCandidates("模仿峰哥講話", profiles, [])[0]?.userId, "u1");
+});
+memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records aliases", async () => {
+  const storePath = profileStore.STORE_PATH;
+  const snap = snapshotFile(storePath);
+  const bakSnap = snapshotFile(`${storePath}.bak`);
+  profileStore.resetCacheForTests();
+  aliasEx.resetAliasBuffersForTests();
+  try {
+    let calls = 0;
+    const fakeChain = async () => {
+      calls++;
+      return {
+        provider: { label: "fake" },
+        text: '{"aliases":[{"person":"P2","alias":"峰哥","evidence":["L1","L3"]},{"person":"P2","alias":"幻想","evidence":["L1"]}]}',
+      };
+    };
+    const rows = [];
+    for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+      const fromU2 = i % 2 === 1;
+      rows.push({
+        userId: fromU2 ? "u2" : "u1",
+        displayName: fromU2 ? "萱萱" : "峰",
+        messageId: `x${i}`,
+        content: fromU2 ? "峰哥早" : "早",
+        at: Date.now() - 1000 + i,
+      });
+    }
+    aliasEx.recordAliasContext("g1", rows.slice(0, 5));
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 0, "waits for enough new lines");
+    aliasEx.recordAliasContext("g1", rows);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1);
+    const entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliases.map((a) => a.alias), ["峰哥"], "hallucinated alias rejected");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1, "counter resets after a batch");
+  } finally {
+    profileStore.resetCacheForTests();
+    aliasEx.resetAliasBuffersForTests();
+    restoreFile(storePath, snap);
+    restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
 
 console.log("guild-profile-store");
 it("getGuildProfile returns null for missing guild", () => {
@@ -4378,6 +4674,9 @@ const ogRaceCases = [
 ];
 
 (async () => {
+  for (const [name, fn] of memoryAsyncCases) {
+    await itAsync(name, fn);
+  }
   for (const [name, fn] of ogRaceCases) {
     await itAsync(name, fn);
   }

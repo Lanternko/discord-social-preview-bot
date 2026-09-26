@@ -58,11 +58,14 @@ const {
   buildUserProfileBlock,
   appendPendingInteraction,
   listUserProfiles,
+  profileTextOf,
+  confirmedAliases,
 } = require("../user-profile-store");
 const {
   maybeExtractObservations,
   maybeGuildExtract,
 } = require("./observation-extractor");
+const { recordAliasContext, maybeExtractAliases } = require("./alias-extractor");
 const {
   getGuildProfile,
   buildGuildProfileBlock,
@@ -91,6 +94,16 @@ const { hasGuildApiKey, getGuildApiKey } = require("./guild-key-store");
 const { checkAndIncrement } = require("./rate-limiter");
 
 const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
+
+// Decorates familiarity rows with the aliases group members actually use, so
+// 西寶 can map 「峰哥」 to a roster name. Skipped when long-term memory is off.
+function withConfirmedAliases(guildId, roster) {
+  if (!AI_LONG_TERM_MEMORY_ENABLED) return roster;
+  return roster.map((r) => {
+    const aliases = r.userId ? confirmedAliases(getUserProfile(guildId, r.userId)) : [];
+    return aliases.length > 0 ? { ...r, aliases } : r;
+  });
+}
 
 function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CONTEXT_MEMORY_COUNT) {
   if (!Array.isArray(groupContextLines) || count <= 0) return [];
@@ -551,7 +564,9 @@ async function generateAIReply(message, userText, options = {}) {
   // identity (not topic), so it goes in for ALL tiers including brief — the
   // ~300 token cost buys 西寶 the ability to greet 摯友 vs 剛認識 differently
   // without us hand-curating any list.
-  const roster = includeContext ? getFamiliarityRoster(message.guildId) : [];
+  const roster = includeContext
+    ? withConfirmedAliases(message.guildId, getFamiliarityRoster(message.guildId))
+    : [];
   if (roster.length > 0) {
     persona += buildFamiliarityBlock(roster);
   }
@@ -628,7 +643,7 @@ async function generateAIReply(message, userText, options = {}) {
       const enriched = targets.map((t) => ({
         ...t,
         profile: AI_LONG_TERM_MEMORY_ENABLED
-          ? getUserProfile(message.guildId, t.userId)?.profile || null
+          ? profileTextOf(getUserProfile(message.guildId, t.userId)) || null
           : null,
       }));
       targetBlock = buildTargetContextBlock(enriched, {
@@ -731,6 +746,9 @@ async function generateAIReply(message, userText, options = {}) {
         const ctxStrings = groupContextLines.map((e) => e.line);
         appendPendingContext(guildId, guildName, ctxStrings);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
+
+        recordAliasContext(guildId, groupContextLines);
+        maybeExtractAliases(guildId, runChain).catch(() => {});
 
         const personalContextLines = getPersonalMemoryContextEntries(groupContextLines);
         for (const entry of personalContextLines) {

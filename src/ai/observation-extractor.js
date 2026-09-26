@@ -3,9 +3,17 @@ const {
   getPendingInteractions,
   clearPending,
   appendObservations,
-  setConsolidatedProfile,
+  setProfileItems,
   listPendingBacklog,
-  PROFILE_MAX_LEN,
+  isStableEvidence,
+  isItemStale,
+  mergeEvidenceNewest,
+  fieldByKeyOrLabel,
+  sanitizeItems,
+  PROFILE_FIELDS,
+  ITEM_TEXT_MAX_LEN,
+  STABLE_MIN_DISTINCT_MESSAGES,
+  STABLE_TIME_GAP_MS,
 } = require("../user-profile-store");
 const {
   getGuildProfile,
@@ -26,7 +34,14 @@ const CONSOLIDATE_MIN_COUNT = 12;
 const CONSOLIDATE_MAX_TOTAL_CHARS = 1200;
 const CONSOLIDATE_MIN_COUNT_TIME = 5;
 const CONSOLIDATE_TIME_THRESHOLD_MS = 24 * 60 * 60 * 1000;
-const CONSOLIDATE_MAX_TOKENS = 500;
+// A full structured file (up to 12 items × field/text/from) runs ~600 tokens
+// of JSON, and reasoning models spend 2-3k thinking first; 500 truncated it
+// mid-array and the parse failed.
+const CONSOLIDATE_MAX_TOKENS = 1500;
+// A truncated/garbled answer is retried once — reasoning length varies run to
+// run, so the second try usually fits. Never salvage a truncated array: every
+// item cut off would read as "uncited" and silently vanish from the profile.
+const CONSOLIDATE_ATTEMPTS = 2;
 
 const extractInFlight = new Set();
 const consolidateInFlight = new Set();
@@ -170,25 +185,9 @@ function attachEvidence(observations, pending) {
   });
 }
 
-// The bar an observation must clear before consolidation may state it as a
-// fact: at least 3 distinct source messages, or 2 distinct messages far
-// enough apart in time that it wasn't one burst of the same moment.
-const STABLE_MIN_DISTINCT_MESSAGES = 3;
-const STABLE_TIME_GAP_MS = 6 * 60 * 60 * 1000;
-
+// Stability bar lives in the store (items share it); see isStableEvidence.
 function isStableObservation(obs) {
-  const evidence = Array.isArray(obs?.evidence) ? obs.evidence : [];
-  const ids = new Set(evidence.map((e) => e?.messageId).filter(Boolean));
-  if (ids.size >= STABLE_MIN_DISTINCT_MESSAGES) return true;
-  if (ids.size >= 2) {
-    const ats = evidence
-      .map((e) => (typeof e?.at === "number" ? e.at : null))
-      .filter((v) => v !== null);
-    if (ats.length >= 2 && Math.max(...ats) - Math.min(...ats) >= STABLE_TIME_GAP_MS) {
-      return true;
-    }
-  }
-  return false;
+  return isStableEvidence(obs?.evidence);
 }
 
 async function maybeExtractObservations(guildId, userId, displayName, runChain) {
@@ -235,31 +234,39 @@ async function maybeExtractObservations(guildId, userId, displayName, runChain) 
 
 // --- Consolidation ---
 
-const CONSOLIDATION_PERSONA = `你是一個中立的人格資料整理助手。你的工作是把零散的觀察合併成一份簡潔、可查證的人格檔案。
+const FIELD_LIST_TEXT = PROFILE_FIELDS.map((f) => `${f.key}（${f.label}，最多 ${f.max} 條）`).join("、");
 
-## 新舊資料的權重
-- 「既有人格摘要」只是舊印象：**新觀察與它矛盾時，一律以新觀察為準**，改寫或刪除舊描述
-- 舊摘要裡帶評價性、且沒有任何現存觀察支持的句子（例：強詞奪理、靈魂人物），能改寫成具體行為就改寫，改不出來就刪掉
-- 舊摘要裡中性的行為描述（常聊話題、口頭禪）可以保留
+const CONSOLIDATION_PERSONA = `你是一個中立的人格資料整理助手。你的工作是維護一份「條列式」人格檔案：固定欄位、每欄幾條短條目，每條都要標出處。
+
+## 欄位
+${FIELD_LIST_TEXT}
+- style：說話方式、口頭禪、語氣
+- topics：常聊的話題、興趣
+- interaction：怎麼跟人/西寶互動
+- notes：相處時值得知道的具體習慣（選填）
+
+## 條目來源與權重
+- 【既有條目 I*】是舊印象：沒被新觀察推翻就原樣保留（text 照抄、from 填它自己的編號）
+- 新觀察和既有條目矛盾時，**以新觀察為準**：刪掉或改寫舊條目
+- 既有條目裡帶評價、且沒有觀察支持的（例：強詞奪理、靈魂人物），改寫成具體行為或刪掉
+- 【新觀察 O*】可以新增條目，也可以補強既有條目（from 同時填 I 和 O）
+- 「證據不足」的觀察也可以寫，程式會自動標成「或許」——**不要自己在 text 裡寫「或許」「有時」**
 
 ## 規則
-- 檔案裡的每一句話都必須對應到某條觀察、或舊摘要中的行為描述；憑空的內容一律不寫
-- 用中性、行為式描述（他說了什麼、常聊什麼、怎麼互動）；**禁止**沒有直接佐證的評價或吹捧詞（例：靈魂人物、觀察精準、擅長、高情商、很有魅力），也不要用貶低性判詞（例：強詞奪理、耍賴）——描述行為本身即可
-- 「已達證據門檻」區的觀察可以直接寫進檔案
-- 「證據不足」區的觀察**不可寫成斷言**：要嘛忽略，要嘛用「或許」「有時」輕輕帶過
-- 暱稱只是 Discord 顯示名稱：使用者隨時可改、常含玩笑裝飾（版本後綴、tag）——只能當稱呼參考，**不要**寫成「自稱」，也不要從暱稱推斷人格或身份
-- 合併重複或相似的觀察，保留最具體的行為描述
+- 每條 text 是一個短句，不超過 ${ITEM_TEXT_MAX_LEN} 字、只講一件事；不要把一串話題塞進同一條
+- 每條都必須在 from 列出至少一個來源編號；沒有出處的條目會被程式丟掉
+- 用中性、行為式描述（說了什麼、常聊什麼、怎麼互動）；**禁止**吹捧詞（靈魂人物、觀察精準、擅長、高情商）和貶低性判詞（強詞奪理、耍賴）
+- 西寶的反應不是這個人的特徵：「西寶慌張」「被西寶吐槽」這類只描述西寶的內容不要寫
+- 暱稱只是 Discord 顯示名稱（可能含玩笑裝飾）：不要寫成「自稱」，也不要從暱稱推斷人格或身份
+- 合併重複或相似的條目，保留最具體的描述
 - **不寫**：敏感推測（政治傾向、健康、性取向、宗教、真實身份）、單次情緒、「某天說過什麼」流水帳
 
 ## 輸出格式
-嚴格回傳 JSON，不要加任何其他文字。profile 用固定欄位、一欄一行（\\n 分隔），總長不超過 300 字：
-{"profile":"說話風格：…\\n常聊話題：…\\n互動偏好：…\\n注意：…"}
+嚴格回傳 JSON，不要加任何其他文字。回傳**完整的新檔案**（要保留的舊條目也要列出）：
+{"items":[{"field":"topics","text":"越南、泰國旅遊","from":["I2","O1"]},{"field":"style","text":"常夾日文口語","from":["I1"]}]}
 
-- 「注意」欄選填（相處時值得知道的具體習慣，例如玩笑方式）；沒有就省略該行
-- 某欄沒有可靠資料就整行省略，不要硬編
-
-如果資料不足、沒什麼可更新的，回（會保留舊摘要）：
-{"profile":""}`;
+如果沒什麼可更新的，回（會保留原檔案）：
+{"items":[]}`;
 
 function shouldConsolidate(guildId, userId) {
   const entry = getUserProfile(guildId, userId);
@@ -286,31 +293,101 @@ function describeObservationEvidence(obs) {
   return `${ids.size} 則訊息佐證`;
 }
 
-function buildConsolidationTurns(entry) {
+function formatDay(ms) {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "?";
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+// Pre-items profiles were one string, field-per-line, clauses joined with
+// 「；」. Each clause becomes one source item (no per-item evidence — it
+// predates that), which the model then rewrites into short items citing it.
+// lastSeenAt = when that string was written, so migrated impressions still age
+// out unless a new observation re-confirms them. Clauses the old profile
+// already hedged (或許/可能/有時…) stay tentative, so a migration can't
+// promote a guess into an assertion.
+const LEGACY_HEDGE_RE = /^(或許|也許|可能|有時候?|偶爾)[，,、\s]*/;
+
+function legacySourceItems(entry) {
+  const lines = (entry?.profile || "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const at = typeof entry?.profileAt === "number" ? entry.profileAt : Date.now();
+  const out = [];
+  for (const line of lines) {
+    const m = line.match(/^([^:：]{1,8})[:：]\s*(.+)$/);
+    const field = (m && fieldByKeyOrLabel(m[1])) || PROFILE_FIELDS[PROFILE_FIELDS.length - 1];
+    const clauses = (m ? m[2] : line).split(/[；;]/).map((c) => c.trim()).filter(Boolean);
+    for (const clause of clauses) {
+      const hedged = LEGACY_HEDGE_RE.test(clause);
+      out.push({
+        field: field.key,
+        text: hedged ? clause.replace(LEGACY_HEDGE_RE, "") : clause,
+        evidence: [],
+        firstAt: at,
+        lastSeenAt: at,
+        tentative: hedged,
+        legacy: true,
+      });
+    }
+  }
+  return out;
+}
+
+// Numbered sources the consolidation model may cite: live items as I1…, new
+// observations as O1…. Stale items are left out entirely — not showing them is
+// how they get dropped.
+function collectConsolidationSources(entry, now = Date.now()) {
+  const items = [];
+  if (entry?.items) {
+    for (const f of PROFILE_FIELDS) {
+      for (const it of entry.items[f.key] || []) {
+        if (!it?.text || isItemStale(it, now)) continue;
+        items.push({ ...it, field: f.key });
+      }
+    }
+  } else if (entry?.profile) {
+    items.push(...legacySourceItems(entry));
+  }
+  const byId = new Map();
+  items.forEach((it, i) => byId.set(`I${i + 1}`, { kind: "item", ...it }));
+  (entry?.observations || []).forEach((o, i) => {
+    byId.set(`O${i + 1}`, { kind: "obs", ...o, stable: isStableObservation(o) });
+  });
+  return byId;
+}
+
+function buildConsolidationTurns(entry, now = Date.now()) {
+  const sources = collectConsolidationSources(entry, now);
   const parts = [];
-  if (entry.profile) {
-    parts.push(
-      `## 既有人格摘要（舊印象——與新觀察矛盾時以新觀察為準；無現存觀察支持的評價句應改寫或刪除）\n${entry.profile}`,
-    );
+  const labelOf = (key) => fieldByKeyOrLabel(key)?.label || key;
+
+  const itemLines = [];
+  const stableLines = [];
+  const weakLines = [];
+  for (const [id, src] of sources) {
+    if (src.kind === "item") {
+      const support = src.legacy
+        ? `舊版摘要轉入，無個別佐證${src.tentative ? "；原本就只是推測" : ""}`
+        : `${new Set((src.evidence || []).map((e) => e?.messageId).filter(Boolean)).size} 則佐證，最後確認 ${formatDay(src.lastSeenAt)}`;
+      itemLines.push(`[${id}] ${labelOf(src.field)}｜${src.text}（${support}）`);
+    } else {
+      const line = `[${id}] ${src.text}（信心 ${src.confidence}，${describeObservationEvidence(src)}）`;
+      (src.stable ? stableLines : weakLines).push(line);
+    }
+  }
+
+  if (itemLines.length > 0) {
+    parts.push(`## 既有條目（舊印象——與新觀察矛盾時以新觀察為準）\n${itemLines.join("\n")}`);
   }
   parts.push(`## 暱稱（Discord 顯示名稱，可能含玩笑裝飾，僅供稱呼）\n${entry.name || "未知"}`);
-
-  const stable = [];
-  const weak = [];
-  for (const o of entry.observations || []) {
-    (isStableObservation(o) ? stable : weak).push(o);
+  if (stableLines.length > 0) {
+    parts.push(`## 新觀察：已達證據門檻\n${stableLines.join("\n")}`);
   }
-  const fmt = (o) => `- ${o.text}（信心 ${o.confidence}，${describeObservationEvidence(o)}）`;
-  if (stable.length > 0) {
-    parts.push(`## 已達證據門檻的觀察（可寫進摘要）\n${stable.map(fmt).join("\n")}`);
-  }
-  if (weak.length > 0) {
-    parts.push(`## 證據不足的觀察（不可寫成斷言，可忽略或用「或許」帶過）\n${weak.map(fmt).join("\n")}`);
+  if (weakLines.length > 0) {
+    parts.push(`## 新觀察：證據不足（寫進檔案會被標成「或許」）\n${weakLines.join("\n")}`);
   }
   return [
     {
       role: "user",
-      content: `請根據以下資料，整合成一段簡潔的人格摘要：\n\n${parts.join("\n\n")}`,
+      content: `請根據以下資料，輸出更新後的條列式人格檔案：\n\n${parts.join("\n\n")}`,
     },
   ];
 }
@@ -320,13 +397,95 @@ function parseConsolidationResult(text) {
   const cleaned = text.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
   try {
     const parsed = JSON.parse(cleaned);
-    if (typeof parsed?.profile !== "string") return null;
-    const trimmed = parsed.profile.trim();
-    return trimmed || null;
+    if (!Array.isArray(parsed?.items)) return null;
+    const items = parsed.items
+      .filter((it) => it && typeof it.text === "string" && it.text.trim())
+      .map((it) => ({
+        field: typeof it.field === "string" ? it.field : "",
+        text: it.text.trim(),
+        from: Array.isArray(it.from) ? it.from.map((v) => String(v).trim().toUpperCase()) : [],
+      }));
+    return items.length > 0 ? items : null;
   } catch {
-    console.warn("[consolidate] failed to parse LLM output");
+    console.warn(`[consolidate] failed to parse LLM output len=${text.length} tail=${JSON.stringify(text.slice(-60))}`);
     return null;
   }
+}
+
+function latestEvidenceAt(evidence) {
+  const ats = (evidence || []).map((e) => e?.at).filter((v) => typeof v === "number");
+  return ats.length > 0 ? Math.max(...ats) : null;
+}
+
+function earliestEvidenceAt(evidence) {
+  const ats = (evidence || []).map((e) => e?.at).filter((v) => typeof v === "number");
+  return ats.length > 0 ? Math.min(...ats) : null;
+}
+
+// Code-enforced provenance: an item survives only if it cites at least one
+// real source. Its evidence is the union of what it cites; lastSeenAt only
+// moves forward when a NEW observation backs it (carrying an old item forward
+// verbatim does not re-confirm it — that's what lets impressions decay); and
+// it is hedged as 或許 unless the pooled evidence clears the stability bar or
+// it inherits from a source that already had.
+function resolveConsolidatedItems(parsed, sources, now = Date.now()) {
+  if (!Array.isArray(parsed)) return null;
+  const out = {};
+  for (const f of PROFILE_FIELDS) out[f.key] = [];
+
+  for (const it of parsed) {
+    const field = fieldByKeyOrLabel(it.field);
+    if (!field) continue;
+    const cited = [...new Set(it.from)].map((id) => sources.get(id)).filter(Boolean);
+    if (cited.length === 0) continue;
+
+    const evidence = mergeEvidenceNewest(...cited.map((c) => c.evidence || []));
+    const obsCited = cited.filter((c) => c.kind === "obs");
+    const itemCited = cited.filter((c) => c.kind === "item");
+
+    let lastSeenAt;
+    if (obsCited.length > 0) {
+      lastSeenAt = Math.max(
+        ...obsCited.map((o) => latestEvidenceAt(o.evidence) ?? (typeof o.at === "number" ? o.at : now)),
+      );
+    } else {
+      lastSeenAt = Math.max(...itemCited.map((c) => c.lastSeenAt ?? 0));
+    }
+    const firstCandidates = [
+      ...itemCited.map((c) => c.firstAt),
+      ...obsCited.map((o) => earliestEvidenceAt(o.evidence) ?? o.at),
+    ].filter((v) => typeof v === "number");
+    const firstAt = firstCandidates.length > 0 ? Math.min(...firstCandidates) : now;
+
+    const sourceTentative = (c) => (c.kind === "obs" ? !c.stable : Boolean(c.tentative));
+    const tentative = !isStableEvidence(evidence) && cited.every(sourceTentative);
+
+    out[field.key].push({ text: it.text, evidence, firstAt, lastSeenAt, tentative });
+  }
+
+  const clean = sanitizeItems(out);
+  const total = PROFILE_FIELDS.reduce((n, f) => n + clean[f.key].length, 0);
+  return total > 0 ? clean : null;
+}
+
+// Single consolidation pass: build → call → resolve. Returns the items map or
+// null. Shared with scripts/redistill-profiles.js.
+async function runConsolidation(entry, runChain, extraTurns = []) {
+  const now = Date.now();
+  const sources = collectConsolidationSources(entry, now);
+  const turns = [...buildConsolidationTurns(entry, now), ...extraTurns];
+  let result = null;
+  for (let attempt = 1; attempt <= CONSOLIDATE_ATTEMPTS; attempt++) {
+    result = await runChain(turns, CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
+    if (!result) return { result: null, items: null };
+    const parsed = parseConsolidationResult(result.text);
+    if (parsed) return { result, items: resolveConsolidatedItems(parsed, sources, now) };
+  }
+  return { result, items: null };
+}
+
+function countItems(items) {
+  return items ? PROFILE_FIELDS.reduce((n, f) => n + (items[f.key]?.length ?? 0), 0) : 0;
 }
 
 async function maybeConsolidateProfile(guildId, userId, runChain) {
@@ -341,25 +500,18 @@ async function maybeConsolidateProfile(guildId, userId, runChain) {
     const entry = getUserProfile(guildId, userId);
     if (!entry || (entry.observations?.length ?? 0) === 0) return;
 
-    const turns = buildConsolidationTurns(entry);
-    const result = await runChain(
-      turns,
-      CONSOLIDATION_PERSONA,
-      CONSOLIDATE_MAX_TOKENS,
-    );
-
+    const { result, items } = await runConsolidation(entry, runChain);
     if (!result) {
       console.warn("[consolidate] chain exhausted, skipping consolidation");
       return;
     }
 
-    const profile = parseConsolidationResult(result.text);
     console.log(
-      `[consolidate] user=${userId} provider=${result.provider.label} profile=${profile ? profile.length : 0}chars from=${entry.observations.length} obs`,
+      `[consolidate] user=${userId} provider=${result.provider.label} items=${countItems(items)} from=${entry.observations.length} obs`,
     );
 
-    if (profile) {
-      setConsolidatedProfile(guildId, userId, profile);
+    if (items) {
+      setProfileItems(guildId, userId, items);
     }
   } catch (err) {
     console.warn(`[consolidate] error: ${err.message}`);
@@ -473,6 +625,20 @@ function buildGuildConsolidationTurns(entry) {
   ];
 }
 
+function parseGuildConsolidationResult(text) {
+  if (!text) return null;
+  const cleaned = text.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (typeof parsed?.profile !== "string") return null;
+    const trimmed = parsed.profile.trim();
+    return trimmed || null;
+  } catch {
+    console.warn("[guild-consolidate] failed to parse LLM output");
+    return null;
+  }
+}
+
 async function maybeGuildExtract(guildId, guildName, runChain) {
   if (!guildId || !runChain) return;
   if (!shouldGuildExtract(guildId)) return;
@@ -529,7 +695,7 @@ async function maybeGuildConsolidate(guildId, runChain) {
       return;
     }
 
-    const profile = parseConsolidationResult(result.text);
+    const profile = parseGuildConsolidationResult(result.text);
     console.log(
       `[guild-consolidate] guild=${guildId} provider=${result.provider.label} profile=${profile ? profile.length : 0}chars from=${entry.observations.length} obs`,
     );
@@ -610,6 +776,10 @@ module.exports = {
   CONSOLIDATE_TIME_THRESHOLD_MS,
   CONSOLIDATE_MAX_TOKENS,
   CONSOLIDATION_PERSONA,
+  collectConsolidationSources,
+  resolveConsolidatedItems,
+  runConsolidation,
+  countItems,
   STABLE_MIN_DISTINCT_MESSAGES,
   STABLE_TIME_GAP_MS,
   BACKLOG_SWEEP_MAX_USERS,
@@ -627,6 +797,7 @@ module.exports = {
   shouldConsolidate,
   buildConsolidationTurns,
   parseConsolidationResult,
+  parseGuildConsolidationResult,
   maybeConsolidateProfile,
   GUILD_EXTRACT_MIN_COUNT,
   GUILD_EXTRACT_MIN_COUNT_TIME,
