@@ -9,6 +9,8 @@ const {
   OPENAI_MODEL,
   STORY_OPENAI_TIMEOUT_MS,
   STORY_DEEPSEEK_MODEL,
+  STORY_FLASH_MODEL,
+  STORY_FLASH_TIMEOUT_MS,
   STORY_DEEPSEEK_TIMEOUT_MS,
   STORY_DEEPSEEK_REASONING_HEADROOM,
   GEMINI_API_KEY,
@@ -223,13 +225,28 @@ function buildRecapProviderChain() {
 
 const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
 
-// Bedtime stories: v4-pro thinking first (blind-tested best, ~50 s — fine for
-// a scheduled post), then flash no-think, then Luna. Luna used to lead, but it
-// scored last in both blind tests (2026-09-25): tidy prose, weak jokes.
+// Bedtime stories: flash thinking first, then v4-pro thinking, then flash
+// no-think, then Luna. v4-pro led after the 2026-09-25 blind tests, but its
+// cost is almost all reasoning (3-9k tokens for a ~200-token story); on the
+// same ingredients flash thinking wrote stories as good at ~1/4 the price
+// (2026-09-26 cost test). Luna scored last in both blind tests.
 function buildStoryProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const flashThinkOptions = {
+      model: STORY_FLASH_MODEL,
+      timeoutMs: STORY_FLASH_TIMEOUT_MS,
+      reasoningHeadroom: STORY_DEEPSEEK_REASONING_HEADROOM,
+      thinking: { type: "enabled" },
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${STORY_FLASH_MODEL}:story`,
+      options: flashThinkOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, flashThinkOptions),
+    });
     const thinkOptions = {
       model: STORY_DEEPSEEK_MODEL,
       timeoutMs: STORY_DEEPSEEK_TIMEOUT_MS,

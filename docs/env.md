@@ -76,9 +76,11 @@
 | `VISION_TOTAL_MAX_BYTES` | `16777216` | 一次呼叫所有圖的總上限（base64 會膨脹 4/3，DeepSeek request body 上限 48 MiB） |
 | `VISION_FETCH_TIMEOUT_MS` | `10000` | 我們去 Discord CDN 抓圖的逾時 |
 | `VISION_TIMEOUT_MS` | `25000` | vision 呼叫本身的逾時，比文字的 `AI_TIMEOUT_MS` 長 |
-| `STORY_DEEPSEEK_MODEL` | `deepseek-v4-pro` | 睡前故事鏈的第一層（思考開）。兩輪盲測（2026-09-25）唯一沒有爛篇的模型；一篇約 40–60 s，排程不在乎 |
+| `STORY_FLASH_MODEL` | `deepseek-flash` | 睡前故事鏈的第一層（思考開）。2026-09-26 同素材實測：一篇約 15–25 s、思考 2–4k tokens，品質不輸 v4-pro，成本約 1/4 |
+| `STORY_FLASH_TIMEOUT_MS` | `120000` | 上面那層的逾時；失敗就掉到 v4-pro |
+| `STORY_DEEPSEEK_MODEL` | `deepseek-v4-pro` | 睡前故事鏈的第二層（思考開）。兩輪盲測（2026-09-25）唯一沒有爛篇的模型，但錢幾乎都花在思考（3–9k tokens 寫 ~200 tokens 的故事）；一篇約 40–60 s |
 | `STORY_DEEPSEEK_TIMEOUT_MS` | `240000` | 上面那層的逾時；逾時/空回就掉到 flash no-think，再掉 luna |
-| `STORY_DEEPSEEK_REASONING_HEADROOM` | `16000` | 思考預算。實測吃掉 6180 → 空回、9375 → 故事斷在半句（皆 finish_reason=length）；沒用到的不計費。被截斷的故事鏈會視為失敗往下掉 |
+| `STORY_DEEPSEEK_REASONING_HEADROOM` | `16000` | 思考預算（flash 與 v4-pro 兩層共用）。實測吃掉 6180 → 空回、9375 → 故事斷在半句（皆 finish_reason=length）；沒用到的不計費。被截斷的故事鏈會視為失敗往下掉 |
 | `STORY_MAX_TOKENS` | `1500` | 故事的顯示預算下限。原本直接用 guild tier 的聊天預算，入門 tier 只有 180，故事會被截斷 |
 | `STORY_IMAGE_MAX` | `3` | 睡前故事素材裡最多幾張圖先交給 vision 寫成一句描述（每張一次 flash vision 呼叫） |
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |

@@ -200,23 +200,28 @@ async function main() {
   });
 
   console.log("bedtime story provider policy");
-  it("uses DeepSeek v4-pro thinking, then flash direct, then OpenAI Luna", () => {
+  it("uses flash thinking, then v4-pro thinking, then flash direct, then OpenAI Luna", () => {
     assert.deepEqual(
       STORY_PROVIDER_CHAIN.map((provider) => provider.label),
       [
+        "deepseek:deepseek-flash:story",
         "deepseek:deepseek-v4-pro:story",
         `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-flash"}:direct`,
         "openai:gpt-5.6-luna",
       ],
     );
-    assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 240000);
+    assert.deepEqual(STORY_PROVIDER_CHAIN[0].options.thinking, { type: "enabled" });
+    assert.equal(STORY_PROVIDER_CHAIN[0].options.timeoutMs, 120000);
     assert.equal(STORY_PROVIDER_CHAIN[0].options.reasoningHeadroom, 16000);
     assert.equal(STORY_PROVIDER_CHAIN[0].options.rejectTruncated, true);
+    assert.equal(STORY_PROVIDER_CHAIN[1].options.timeoutMs, 240000);
+    assert.equal(STORY_PROVIDER_CHAIN[1].options.reasoningHeadroom, 16000);
     assert.equal(STORY_PROVIDER_CHAIN[1].options.rejectTruncated, true);
-    assert.equal(STORY_PROVIDER_CHAIN[0].options.thinking, undefined);
-    assert.equal(STORY_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
-    assert.deepEqual(STORY_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
-    assert.equal(STORY_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
+    assert.equal(STORY_PROVIDER_CHAIN[1].options.thinking, undefined);
+    assert.equal(STORY_PROVIDER_CHAIN[2].options.rejectTruncated, true);
+    assert.equal(STORY_PROVIDER_CHAIN[2].options.timeoutMs, 90000);
+    assert.deepEqual(STORY_PROVIDER_CHAIN[2].options.thinking, { type: "disabled" });
+    assert.equal(STORY_PROVIDER_CHAIN[3].options.timeoutMs, 45000);
   });
 
   await itAsync("sends story prompt to OpenAI with max_completion_tokens", async () => {
@@ -235,7 +240,7 @@ async function main() {
       };
     };
     try {
-      const result = await STORY_PROVIDER_CHAIN[2].call(
+      const result = await STORY_PROVIDER_CHAIN[3].call(
         [{ role: "user", content: "講故事" }],
         "persona",
         900,

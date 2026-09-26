@@ -50,9 +50,10 @@ module.exports = {
 兩輪盲測（使用者逐篇評分，2026-09-25）的結論：**爛故事主要是素材爛，其次才是模型**。4 分的故事全是圍著一則「本身就有情境」的素材寫的；2 分的都是硬把兩則不相干的句子黏起來，或把歌詞／迷因（「豬油骨拿來滷」「一份滷雞肉」）照字面寫成做菜劇情。所以：
 
 - **素材過濾**（`selectStoryIngredients`）：`storyText` 去掉連結、自訂 emoji、@、符號後少於 2 字就丟；貼圖、純嵌入不收。每則附**前文**（同頻道前 2 句、10 分鐘內）——一句話的笑點常常在前一句。近期補位優先「有別人在 5 分鐘內接話」的，且**每個頻道最多 2 則**（曾有一串遊戲數值討論吃掉 8 格裡的 4 格）。
-- **圖片**：只有圖的訊息現在也能當素材。排程先用 flash vision 把圖寫成一句描述（[src/story-images.js](../src/story-images.js)，最多 `STORY_IMAGE_MAX` 張，逐張、失敗就丟），素材欄寫成「（貼了一張圖：…）」。寫故事的 v4-pro 不吃圖，所以是先描述、再寫。
+- **圖片**：只有圖的訊息現在也能當素材。排程先用 flash vision 把圖寫成一句描述（[src/story-images.js](../src/story-images.js)，最多 `STORY_IMAGE_MAX` 張，逐張、失敗就丟），素材欄寫成「（貼了一張圖：…）」。鏈上有不吃圖的 v4-pro，所以一律先描述、再寫。
 - **prompt**：主軸挑**一則**，第二則真的接得上才加；看不懂的歌詞／迷因別照字面寫；最後一句交給角色、回扣前面的東西；全文繁體（v4-pro 曾整篇吐簡體）。
-- **模型鏈**：`deepseek-v4-pro`（思考開）→ `deepseek-flash` no-think → luna。luna 兩輪都墊底；flash 會無視字數上限。v4-pro 一篇 40–60 s，排程不在乎。
+- **模型鏈**：`deepseek-flash`（思考開）→ `deepseek-v4-pro`（思考開）→ `deepseek-flash` no-think → luna。v4-pro 盲測最穩，但一篇的錢幾乎都花在思考（約 $0.018）；flash 思考同素材實測品質相當、約 1/4 價（2026-09-26）。luna 兩輪都墊底；flash no-think 會無視字數上限。
+- **省錢實測結論（2026-09-26）**：`reasoning_effort=low` 能砍 v4-pro 思考但品質掉；先用 flash 挑素材再給 v4-pro 寫**完全省不到**（素材只占 prompt 一小塊，思考量不變）。錢在思考，不在 context。
 - **顯示預算下限 `STORY_MAX_TOKENS`**：故事以前直接吃 guild tier 的聊天預算，入門 tier 180 tokens —— flash 被砍半句、v4-pro 思考完沒額度而空回。
 
 ## 故事的素材從哪來（chat 模式）
