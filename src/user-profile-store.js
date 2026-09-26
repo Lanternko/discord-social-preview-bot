@@ -410,6 +410,51 @@ function sanitizeAliasEvidence(list) {
   return out.slice(0, ALIAS_EVIDENCE_MAX);
 }
 
+// Denials = aliases the person themselves told 西寶 not to use (「別叫我X」).
+// They outrank any amount of group evidence and never age out — an explicit
+// wish shouldn't quietly lapse after 120 days. Lifted only by the person
+// saying the opposite (「叫我X就好」), see alias-statements.js.
+const ALIAS_DENIALS_MAX = 10;
+
+function isAliasDenied(entry, alias) {
+  const key = aliasKey(alias || "");
+  return (entry?.aliasDenials || []).some((d) => aliasKey(d.alias) === key);
+}
+
+function denyAlias(guildId, userId, displayName, alias, meta = {}) {
+  if (!guildId || !userId) return false;
+  const clean = sanitizeAlias(alias);
+  if (!clean) return false;
+  const data = load();
+  if (!data[guildId]) data[guildId] = {};
+  const entry = data[guildId][userId] || makeEmptyEntry(displayName);
+  const at = typeof meta.at === "number" && Number.isFinite(meta.at) ? meta.at : Date.now();
+  const denials = (entry.aliasDenials || []).filter((d) => aliasKey(d.alias) !== aliasKey(clean));
+  denials.push({ alias: clean, at, messageId: meta.messageId ? String(meta.messageId) : null });
+  entry.aliasDenials = denials.slice(-ALIAS_DENIALS_MAX);
+  if (Array.isArray(entry.aliases)) {
+    entry.aliases = entry.aliases.filter((a) => aliasKey(a.alias) !== aliasKey(clean));
+  }
+  entry.updatedAt = Date.now();
+  data[guildId][userId] = entry;
+  save();
+  return true;
+}
+
+function allowAlias(guildId, userId, alias) {
+  const entry = guildId && userId ? load()[guildId]?.[userId] : null;
+  const clean = sanitizeAlias(alias);
+  if (!entry || !clean || !isAliasDenied(entry, clean)) return false;
+  entry.aliasDenials = entry.aliasDenials.filter((d) => aliasKey(d.alias) !== aliasKey(clean));
+  entry.updatedAt = Date.now();
+  save();
+  return true;
+}
+
+function deniedAliases(entry) {
+  return (entry?.aliasDenials || []).map((d) => d.alias);
+}
+
 function recordAliasEvidence(guildId, userId, displayName, alias, evidence) {
   if (!guildId || !userId) return false;
   const clean = sanitizeAlias(alias);
@@ -418,6 +463,7 @@ function recordAliasEvidence(guildId, userId, displayName, alias, evidence) {
 
   const data = load();
   if (!data[guildId]) data[guildId] = {};
+  if (isAliasDenied(data[guildId][userId], clean)) return false;
   const entry = data[guildId][userId] || makeEmptyEntry(displayName);
   if (displayName && !data[guildId][userId]) entry.name = sanitizeName(displayName);
   const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
@@ -448,7 +494,7 @@ function isAliasConfirmed(a, now = Date.now()) {
 // Confirmed aliases, most-used first.
 function confirmedAliases(entry, now = Date.now(), max = ALIAS_PROMPT_MAX) {
   return (entry?.aliases || [])
-    .filter((a) => isAliasConfirmed(a, now))
+    .filter((a) => isAliasConfirmed(a, now) && !isAliasDenied(entry, a.alias))
     .sort((a, b) => b.evidence.length - a.evidence.length)
     .slice(0, max)
     .map((a) => a.alias);
@@ -472,7 +518,11 @@ function buildUserProfileBlock(entry) {
   const itemLines = entry?.items ? buildItemsLines(entry.items) : [];
   const hasLegacy = !entry?.items && entry?.profile;
   const aliases = confirmedAliases(entry);
-  if (itemLines.length === 0 && !hasLegacy && !entry?.observations?.length && aliases.length === 0) return "";
+  const denied = deniedAliases(entry);
+  if (
+    itemLines.length === 0 && !hasLegacy && !entry?.observations?.length &&
+    aliases.length === 0 && denied.length === 0
+  ) return "";
   const name = entry.name || "未知";
   const lines = [
     "\n\n## 當前使用者長期記憶",
@@ -480,6 +530,7 @@ function buildUserProfileBlock(entry) {
     `- 暱稱：${name}`,
   ];
   if (aliases.length > 0) lines.push(`- 群友常叫他：${aliases.join("、")}`);
+  if (denied.length > 0) lines.push(`- 他親口說過不要這樣叫他（別用）：${denied.join("、")}`);
 
   if (itemLines.length > 0) {
     lines.push(...itemLines);
@@ -585,6 +636,10 @@ module.exports = {
   sanitizeAlias,
   recordAliasEvidence,
   isAliasConfirmed,
+  isAliasDenied,
+  denyAlias,
+  allowAlias,
+  deniedAliases,
   confirmedAliases,
   listPendingBacklog,
   appendPendingInteraction,
