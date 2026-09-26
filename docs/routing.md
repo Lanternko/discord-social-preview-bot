@@ -73,6 +73,8 @@ API-first via `https://api.bilibili.com/x/web-interface/view?bvid=...`. Success 
 
 **X 的多圖貼文（非 R18）走 embed 輪播**：一張圖一個 embed、`url` 都指向同一則貼文，Discord 會併成一個相簿；圖直接指 `pbs.twimg.com?name=large`，由 Discord 去抓，bot 不經手流量。fixer unfurl 只給得出一張（fxtwitter 是 mosaic、vxtwitter 是 rendercombined 拼貼），所以多圖才自己組。單圖與含影片的貼文維持 fixer unfurl（影片要留原生播放器）。grep `[twitter] carousel`。
 
+**X 的切片全景圖**：畫師常把一張寬圖切成 2～4 張等大直條上傳，Discord 相簿把 4 張排成 2×2 就斷掉了。API 回來的尺寸全部相同（且沒被截斷）時，payload 另帶 `panoramaImages`；`resolveOutgoing` → [src/panorama.js](../src/panorama.js) 下載後逐條比對接縫（右緣欄 vs 下一張左緣欄，要跟圖內相鄰欄的差異同量級；純色邊緣不算證據，免得等大手機截圖被誤拼），接得上就用 sharp 橫拼成一張 `panorama.jpg`（寬上限 4096）掛在主 embed 上；接不上/下載失敗/超過上傳上限/guild 不允許 → 原相簿照發。沿用影片附件的閘門（`VIDEO_ATTACHMENT_*`）。grep `[panorama]`。
+
 **X 的 R18 貼文（`possibly_sensitive`）走西寶自製卡**：建 payload 時查 `api.fxtwitter.com/status/<id>`，是敏感且有照片就不貼 fixer 連結（viewer 會把圖直接攤開），改成 author＋內文的 embed，底下把照片全部（最多 `TWEET_SPOILER_MAX_IMAGES`＝4，Twitter 單則上限）以 `SPOILER_` 檔名上傳成打碼附件——fixer unfurl 只看得到首圖或一張四合一拼圖，自製卡才每張都在、也才打得了碼。圖取 `?name=large`（長邊 2048，約 orig 的 1/4 大小）。超過上限／停用／併發滿／下載失敗 → 退成 `🔞 ||vxtwitter 連結||`，讓 Discord 自己把 unfurl 打碼。敏感的影片貼文不走這條（要整支下載才蓋得住縮圖），維持 fixer 鏈。grep `[spoiler]`。
 
 X 的 fxtwitter unfurl 會被判無效而改貼 vxtwitter 的三種情況：「This post is unavailable」殘頁、只剩「名字 (@帳號)」沒內文也沒圖、以及貼文明明有媒體（建 payload 時非同步查 `api.fxtwitter.com/status/<id>`，embed check 時才 await）卻 unfurl 成沒圖的卡。查詢失敗/逾時就不要求媒體。grep `[twitter]`。

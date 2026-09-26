@@ -46,6 +46,12 @@ async function lookupTweet(statusId) {
         .slice(0, TWEET_MAX_IMAGES)
         .map((item) => toLargePhotoUrl(item.url)),
       photoCount: media.filter((item) => item.type === "photo").length,
+      // Original upload sizes, parallel to `photos` — equal slices are how a
+      // split panorama is spotted without downloading anything.
+      photoSizes: media
+        .filter((item) => item.type === "photo")
+        .slice(0, TWEET_MAX_IMAGES)
+        .map((item) => ({ width: item.width, height: item.height })),
       hasNonPhotoMedia: media.some((item) => item.type !== "photo"),
       text: tweet.text || "",
       authorName: tweet.author?.name || "",

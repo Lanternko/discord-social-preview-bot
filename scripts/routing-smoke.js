@@ -1623,6 +1623,121 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     }
   });
 
+  await it("equal-size X slices → gallery flagged as a panorama candidate", async () => {
+    const slice = (id) => ({
+      type: "photo",
+      url: `https://pbs.twimg.com/media/${id}.jpg`,
+      width: 1820,
+      height: 4096,
+    });
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            author: { name: "a", screen_name: "a" },
+            media: { all: ["a", "b", "c", "d"].map(slice) },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads(["https://x.com/a/status/42"]);
+      assert.equal(p.embeds.length, 4, "gallery stays as the fallback");
+      assert.deepEqual(
+        p.panoramaImages,
+        ["a", "b", "c", "d"].map(
+          (id) => `https://pbs.twimg.com/media/${id}.jpg?name=large`,
+        ),
+      );
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("mixed-size X photos are not a panorama candidate", async () => {
+    _mockFetch = async () =>
+      new Response(
+        JSON.stringify({
+          tweet: {
+            author: { name: "a", screen_name: "a" },
+            media: {
+              all: [
+                { type: "photo", url: "https://pbs.twimg.com/media/a.jpg", width: 800, height: 600 },
+                { type: "photo", url: "https://pbs.twimg.com/media/b.jpg", width: 600, height: 800 },
+              ],
+            },
+          },
+        }),
+      );
+    try {
+      const [p] = await buildPreviewPayloads(["https://x.com/a/status/42"]);
+      assert.equal(p.panoramaImages, undefined);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("stitched panorama replaces the album with one attached image", async () => {
+    const { EmbedBuilder } = require("discord.js");
+    const lead = new EmbedBuilder().setDescription("body").setImage("https://a");
+    const outgoing = await resolveOutgoing(
+      {
+        embeds: [lead, new EmbedBuilder().setImage("https://b")],
+        panoramaImages: ["https://a", "https://b"],
+      },
+      { guild: null },
+      {
+        fetchPanoramaAttachment: async () => ({
+          buffer: Buffer.from("img"),
+          name: "panorama.jpg",
+        }),
+      },
+    );
+    assert.equal(outgoing.embeds.length, 1);
+    assert.equal(outgoing.embeds[0].data.description, "body");
+    assert.equal(outgoing.embeds[0].data.image.url, "attachment://panorama.jpg");
+    assert.equal(outgoing.files[0].name, "panorama.jpg");
+    assert.equal(outgoing.panoramaImages, undefined);
+  });
+
+  await it("panorama miss keeps the gallery untouched", async () => {
+    const outgoing = await resolveOutgoing(
+      { embeds: [{ a: 1 }, { b: 2 }], panoramaImages: ["https://a", "https://b"] },
+      { guild: null },
+      { fetchPanoramaAttachment: async () => null },
+    );
+    assert.equal(outgoing.embeds.length, 2);
+    assert.equal(outgoing.files, undefined);
+    assert.equal(outgoing.panoramaImages, undefined);
+  });
+
+  await it("stitchPanorama joins continuous slices and rejects broken seams", async () => {
+    const sharp = require("sharp");
+    const { stitchPanorama } = require("../src/panorama");
+    // One horizontal gradient cut into two halves → continuous seam; with a
+    // vertical stripe pattern so the seam columns carry texture.
+    const width = 200;
+    const height = 120;
+    const pixels = Buffer.alloc(width * height * 3);
+    for (let y = 0; y < height; y += 1)
+      for (let x = 0; x < width; x += 1) {
+        const v = (x + (y % 20 < 10 ? 0 : 40)) % 256;
+        pixels.fill(v, (y * width + x) * 3, (y * width + x) * 3 + 3);
+      }
+    const whole = sharp(pixels, { raw: { width, height, channels: 3 } });
+    const half = (left) =>
+      whole.clone().extract({ left, top: 0, width: width / 2, height }).png().toBuffer();
+    const [a, b] = await Promise.all([half(0), half(width / 2)]);
+    const stitched = await stitchPanorama([a, b]);
+    assert.ok(stitched, "continuous halves stitch");
+    const meta = await sharp(stitched).metadata();
+    assert.equal(meta.width, width);
+    assert.equal(await stitchPanorama([b, a]), null, "swapped halves break the seam");
+    const blank = await sharp({
+      create: { width: 100, height, channels: 3, background: "#fff" },
+    }).png().toBuffer();
+    assert.equal(await stitchPanorama([blank, blank]), null, "blank margins prove nothing");
+  });
+
   await it("single-image and video posts stay on the fixer unfurl", async () => {
     const tweet = (all) => async () =>
       new Response(

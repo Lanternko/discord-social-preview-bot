@@ -1,4 +1,8 @@
-const { PermissionsBitField, AttachmentBuilder } = require("discord.js");
+const {
+  PermissionsBitField,
+  AttachmentBuilder,
+  EmbedBuilder,
+} = require("discord.js");
 const {
   SUPPRESS_ORIGINAL_EMBEDS,
   REPLY_MODE,
@@ -15,6 +19,7 @@ const {
 } = require("./viewer-cards");
 const { fetchVideoAttachment } = require("./video");
 const { fetchSpoilerImageAttachments } = require("./image-attachment");
+const { fetchPanoramaAttachment } = require("./panorama");
 const { trimDescription } = require("./utils");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
@@ -285,10 +290,35 @@ async function resolveSpoilerImages(base, message, options = {}) {
   return base;
 }
 
+// A payload may carry `panoramaImages` (an X post of equal-size slices): stitch
+// them into one wide attachment shown in the lead embed, replacing the album
+// that Discord would lay out 2x2. On any miss — including slices whose seams
+// don't line up, i.e. not a panorama after all — the gallery goes out as is.
+async function resolvePanorama(base, message, options = {}) {
+  const urls = base.panoramaImages;
+  delete base.panoramaImages;
+  const fetchAttachment =
+    options.fetchPanoramaAttachment || fetchPanoramaAttachment;
+  const attachment = await fetchAttachment(urls, message.guild);
+  if (!attachment) return base;
+
+  base.embeds = [
+    EmbedBuilder.from(base.embeds[0]).setImage(
+      `attachment://${attachment.name}`,
+    ),
+  ];
+  base.files = [
+    new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  ];
+  return base;
+}
+
 async function resolveOutgoing(payload, message, options = {}) {
   const base = { ...payload };
   if (base.spoilerImages)
     return await resolveSpoilerImages(base, message, options);
+  if (base.panoramaImages)
+    return await resolvePanorama(base, message, options);
   const videoUrl = base.videoAttachment;
   const attachmentEmbeds = base.videoAttachmentEmbeds;
   const attachmentContent = base.videoAttachmentContent;

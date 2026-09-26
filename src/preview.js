@@ -17,6 +17,7 @@ const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
 const { buildInstagramPayload } = require("./platforms/instagram");
 const { fetchTweetMeta } = require("./platforms/twitter");
+const { isPanoramaCandidate } = require("./panorama");
 const {
   buildTwitterSpoilerEmbed,
   buildTwitterCarouselEmbeds,
@@ -118,13 +119,20 @@ function buildSensitiveTwitterPayload(url, meta, secondaryUrl) {
 }
 
 // Every photo of a multi-image post, as the bot's own gallery. Nothing is
-// downloaded — the embeds point Discord at the images.
+// downloaded — the embeds point Discord at the images. Equal-size slices may be
+// one wide picture split up (Discord's 2x2 album would break it apart), so they
+// also carry `panoramaImages`: discord-io stitches them if the seams line up,
+// and keeps this gallery otherwise.
 function buildTwitterCarouselPayload(url, meta) {
+  const panorama =
+    meta.photoCount === meta.photos.length &&
+    isPanoramaCandidate(meta.photoSizes);
   console.log(
-    `[twitter] carousel images=${meta.photos.length}/${meta.photoCount} ${url}`,
+    `[twitter] carousel images=${meta.photos.length}/${meta.photoCount}${panorama ? " panorama?" : ""} ${url}`,
   );
   return {
     embeds: buildTwitterCarouselEmbeds(url, meta),
+    ...(panorama ? { panoramaImages: meta.photos } : {}),
     sourceUrl: url,
   };
 }
