@@ -366,6 +366,10 @@ module.exports = {
   // is not billed, so it sits far above that. The story is scheduled, so
   // latency is free; a miss just falls through to flash.
   STORY_DEEPSEEK_MODEL: process.env.STORY_DEEPSEEK_MODEL || "deepseek-v4-pro",
+  // Story chain head: flash with thinking on. ~15-25 s, 2-4k reasoning tokens
+  // (shares STORY_DEEPSEEK_REASONING_HEADROOM). A miss falls through to v4-pro.
+  STORY_FLASH_MODEL: process.env.STORY_FLASH_MODEL || "deepseek-flash",
+  STORY_FLASH_TIMEOUT_MS: parsePositiveIntEnv("STORY_FLASH_TIMEOUT_MS", 120000),
   STORY_DEEPSEEK_TIMEOUT_MS: parsePositiveIntEnv(
     "STORY_DEEPSEEK_TIMEOUT_MS",
     240000,
