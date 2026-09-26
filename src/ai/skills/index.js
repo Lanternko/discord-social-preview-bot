@@ -13,9 +13,13 @@
 // Adding a skill: drop a module here exporting { id, label, match, build } and
 // list it below. Order matters — first match wins, so put the narrow ones first.
 
+const help = require("./help");
 const story = require("./story");
 
-const SKILLS = [story];
+// help before story: 「床邊故事怎麼設定」 is a question about the feature, not a
+// request for a story. The reverse collision (「講一個關於更新的故事」) is rarer,
+// and help's veto clause still lets her answer it as chat.
+const SKILLS = [help, story];
 
 // Returns the first skill whose trigger the text matches, or null.
 function detectSkill(text) {

@@ -76,6 +76,22 @@ module.exports = {
 
 素材走 **user turn**（`extraUserContext`，chain.js 注入在 group context 前面），不是 `personaSuffix` —— 那是使用者寫的 Discord 文字，不能進 system prompt。區塊自己標著「不寫故事就完全忽略」「不要直接複述」，因為寬偵測下它也會出現在不寫故事的那些回合。
 
+## 說明書（help）技能（2026-09-26）
+
+新群組的歡迎訊息叫大家「@我問」，所以「你會什麼／指令有哪些／每天幾次／最近更新什麼」必須答對，不能靠人格即興（會編出不存在的指令）。[src/ai/skills/help.js](../src/ai/skills/help.js) 把三塊折進 `personaSuffix`：
+
+| 區塊 | 來源 | 維護方式 |
+|---|---|---|
+| 說明書 | [help-knowledge.md](../src/ai/skills/help-knowledge.md) | 手寫、給群友看的語氣。**新增 slash 指令時要補**——`smoke-skills.js` 會比對 `commands.js` 匯出的每個指令都有出現在說明書裡 |
+| 這個伺服器的現況 | tier-store / guild-key-store / rate-limiter / schedule-store | 動態，跟 `/ai-tier`、`/schedule list` 讀同一份資料，數字不會漂 |
+| 最近更新 | [help-changelog.md](../src/ai/skills/help-changelog.md) 最上面 8 條 | **合併使用者感覺得到的 PR 時在最上面補一行**。git log 太技術，西寶會照念 |
+
+- 兩個 md 每次呼叫重讀，改了不用重啟。
+- 排在 story **前面**：「床邊故事怎麼設定」是在問功能。反向碰撞（「講一個關於更新的故事」）較少見，且 help 的否決條款會讓她照常聊天。
+- 觸發一樣是寬偵測＋否決（「這遊戲的新功能好爛」會載入、她自己退回聊天，2026-09-26 實測）。
+- 入門 tier 預算不夠列指令，`minTokens` 600 / `minReplyChars` 900 為下限。
+- 問說明本身仍吃每日額度；額度豁免與鏈全死時的保底尚未做（`/help` 是確定性的備援）。
+
 ## 加新技能
 
 1. 在 `src/ai/skills/` 建模組，export 上面那個形狀。

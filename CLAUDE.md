@@ -42,7 +42,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 - **貼圖**：西寶 在回覆裡寫 `[貼圖:名字]` 就會附上貼圖——來源是「所在伺服器的貼圖」（用 sticker id 送，同名優先）＋「她自己的圖庫」`assets/stickers/`（當附件上傳，因為 Discord 沒有 application sticker API）。表只在呼叫端傳 `stickerCatalog` 時才進 prompt（recap/story/voice 不傳），亂編的名字直接吃掉不外洩，送失敗退純文字。詳見 [persona.md](docs/persona.md)。
 - **西寶自己的 emoji 庫**：application emoji（2000 個上限，不吃伺服器 50-100 額度，每個群都能用），`node scripts/app-emoji.js list|upload|delete` 管理。gateway 不會推播，`clientReady` 抓一次 → **上傳後要重啟才看得到**；名字推導不出用途的不會進 prompt 表（上傳時會警告）。
 - **圖片辨識**：@西寶 附圖（或 @ 她去回覆一則有圖的訊息）→ 鏈頭插一個 `deepseek-flash` vision entry（舊的 `-exp` id 已下架；v4-pro 不吃圖），圖以 `image_url` content block 掛在最後一個 user turn。**底下每一層都是瞎的**，所以 user turn 帶一行「你這次看不到，別假裝看得到」的註記（vision entry 送出前才換成「圖在下面」）；vision 模型改名/掛掉只是失去眼睛，回覆照常。實作 [src/ai/vision.js](src/ai/vision.js)，細節見 [ai-providers.md](docs/ai-providers.md)。
-- **技能（自然語言叫出特製 prompt）**：聊天裡說「講個故事」→ `src/ai/skills/` 的 story pack 把晚間故事那份調校過的規格（`## ` 標題、180～420 字、融進兩則真實對話）折進**同一次**回覆呼叫，零額外 API call。素材在聊天情境下就是 chain 既有的 group context。硬編碼回應（抽籤/道歉）永遠不進註冊表。詳見 [skills.md](docs/skills.md)。
+- **技能（自然語言叫出特製 prompt）**：聊天裡說「講個故事」→ `src/ai/skills/` 的 story pack 把晚間故事那份調校過的規格（`## ` 標題、180～420 字、融進兩則真實對話）折進**同一次**回覆呼叫，零額外 API call。素材在聊天情境下就是 chain 既有的 group context。「你會什麼／指令／額度／最近更新」→ help pack 從 `src/ai/skills/help-knowledge.md`＋即時伺服器狀態＋`help-changelog.md` 回答（**使用者看得到的 PR 合併時補 changelog 一行**）。硬編碼回應（抽籤/道歉）永遠不進註冊表。詳見 [skills.md](docs/skills.md)。
 - **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](docs/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).
