@@ -48,6 +48,11 @@ async function fetchGroupContext(channel, count, beforeMessageId, botUserId) {
       // memory scooping can dedup by messageId instead of by text.
       messageId: m.id ?? null,
       at: m.createdTimestamp ?? null,
+      // Raw text + reply target feed alias learning (alias-extractor.js): an
+      // alias must literally appear in what the speaker typed, not in the
+      // "[name]:" label or a link preview.
+      content: isLinkPreview ? "" : (m.content || ""),
+      replyToUserId: m.mentions?.repliedUser?.id ?? null,
     });
     if (formatted.length >= count) break;
   }

@@ -371,6 +371,89 @@ function setProfileItems(guildId, userId, items) {
   save();
 }
 
+// Aliases = what OTHER people in the guild call this person (綽號), learned
+// from group chat by alias-extractor.js. Each alias pools evidence as
+// { messageId, at, speakerId }; code has already verified the speaker isn't
+// the person and the alias literally appears in that message. One message is
+// a guess — an alias counts once it shows up in ALIAS_CONFIRM_MIN_MESSAGES
+// distinct messages, and ages out like profile items.
+const ALIAS_MAX_LEN = 12;
+const ALIAS_MAX_PER_USER = 8;
+const ALIAS_EVIDENCE_MAX = 10;
+const ALIAS_CONFIRM_MIN_MESSAGES = 2;
+const ALIAS_PROMPT_MAX = 3;
+
+function sanitizeAlias(text) {
+  if (typeof text !== "string") return "";
+  const t = text.normalize("NFC").replace(CONTROL_CHARS_RE, "").replace(/\s+/g, " ").trim();
+  return t.length > 0 && t.length <= ALIAS_MAX_LEN ? t : "";
+}
+
+function aliasKey(alias) {
+  return alias.normalize("NFC").toLowerCase();
+}
+
+function sanitizeAliasEvidence(list) {
+  const seen = new Set();
+  const out = [];
+  for (const ev of Array.isArray(list) ? list : []) {
+    const messageId = ev?.messageId ? String(ev.messageId) : null;
+    if (!messageId || seen.has(messageId)) continue;
+    seen.add(messageId);
+    out.push({
+      messageId,
+      at: typeof ev.at === "number" && Number.isFinite(ev.at) ? ev.at : null,
+      speakerId: ev.speakerId ? String(ev.speakerId) : null,
+    });
+  }
+  out.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
+  return out.slice(0, ALIAS_EVIDENCE_MAX);
+}
+
+function recordAliasEvidence(guildId, userId, displayName, alias, evidence) {
+  if (!guildId || !userId) return false;
+  const clean = sanitizeAlias(alias);
+  const incoming = sanitizeAliasEvidence(evidence);
+  if (!clean || incoming.length === 0) return false;
+
+  const data = load();
+  if (!data[guildId]) data[guildId] = {};
+  const entry = data[guildId][userId] || makeEmptyEntry(displayName);
+  if (displayName && !data[guildId][userId]) entry.name = sanitizeName(displayName);
+  const aliases = Array.isArray(entry.aliases) ? entry.aliases : [];
+  const existing = aliases.find((a) => aliasKey(a.alias) === aliasKey(clean));
+  const now = Date.now();
+  if (existing) {
+    existing.evidence = sanitizeAliasEvidence([...existing.evidence, ...incoming]);
+  } else {
+    aliases.push({ alias: clean, evidence: incoming, firstAt: now });
+  }
+  for (const a of aliases) {
+    a.lastSeenAt = Math.max(...a.evidence.map((e) => e.at ?? 0), a.lastSeenAt ?? 0);
+  }
+  // Over the cap, the least-supported (then oldest) alias goes first.
+  aliases.sort((a, b) => b.evidence.length - a.evidence.length || b.lastSeenAt - a.lastSeenAt);
+  entry.aliases = aliases.slice(0, ALIAS_MAX_PER_USER);
+  entry.updatedAt = now;
+  data[guildId][userId] = entry;
+  save();
+  return true;
+}
+
+function isAliasConfirmed(a, now = Date.now()) {
+  if (!a || isItemStale(a, now)) return false;
+  return new Set((a.evidence || []).map((e) => e.messageId)).size >= ALIAS_CONFIRM_MIN_MESSAGES;
+}
+
+// Confirmed aliases, most-used first.
+function confirmedAliases(entry, now = Date.now(), max = ALIAS_PROMPT_MAX) {
+  return (entry?.aliases || [])
+    .filter((a) => isAliasConfirmed(a, now))
+    .sort((a, b) => b.evidence.length - a.evidence.length)
+    .slice(0, max)
+    .map((a) => a.alias);
+}
+
 const PROFILE_PROMPT_MAX_LEN = 300;
 
 function buildItemsLines(items) {
@@ -388,13 +471,15 @@ function buildItemsLines(items) {
 function buildUserProfileBlock(entry) {
   const itemLines = entry?.items ? buildItemsLines(entry.items) : [];
   const hasLegacy = !entry?.items && entry?.profile;
-  if (itemLines.length === 0 && !hasLegacy && !entry?.observations?.length) return "";
+  const aliases = confirmedAliases(entry);
+  if (itemLines.length === 0 && !hasLegacy && !entry?.observations?.length && aliases.length === 0) return "";
   const name = entry.name || "未知";
   const lines = [
     "\n\n## 當前使用者長期記憶",
     "這是你對目前說話者的長期印象，只能當成輕量參考，不要直接複述，也不要假裝百分之百確定。",
     `- 暱稱：${name}`,
   ];
+  if (aliases.length > 0) lines.push(`- 群友常叫他：${aliases.join("、")}`);
 
   if (itemLines.length > 0) {
     lines.push(...itemLines);
@@ -494,6 +579,13 @@ module.exports = {
   profileTextOf,
   setProfileItems,
   getUserProfile,
+  ALIAS_MAX_LEN,
+  ALIAS_MAX_PER_USER,
+  ALIAS_CONFIRM_MIN_MESSAGES,
+  sanitizeAlias,
+  recordAliasEvidence,
+  isAliasConfirmed,
+  confirmedAliases,
   listPendingBacklog,
   appendPendingInteraction,
   getPendingInteractions,

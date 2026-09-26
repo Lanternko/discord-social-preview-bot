@@ -2895,6 +2895,145 @@ memoryAsyncCases.push(["runConsolidation retries once on a truncated answer", as
   assert.equal(bad.items, null, "never salvages a truncated array");
 }]);
 
+console.log("alias learning");
+const aliasEx = require("../src/ai/alias-extractor");
+const aliasRow = (id, speakerId, content, extra = {}) => ({
+  messageId: id, speakerId, speakerName: null, content, at: Number(id.replace(/\D/g, "")) || 1, replyToUserId: null, ...extra,
+});
+const aliasCtx = () => ({
+  people: new Map([
+    ["u1", { pid: "P1", name: "峰【曉未散】" }],
+    ["u2", { pid: "P2", name: "萱萱" }],
+  ]),
+  rows: [
+    aliasRow("m1", "u2", "峰哥你又來了", { replyToUserId: "u1" }),
+    aliasRow("m2", "u1", "叫我峰哥幹嘛"),
+    aliasRow("m3", "u2", "今天好熱"),
+  ],
+});
+
+it("resolveAliasCandidates keeps only aliases another person literally typed", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [{ person: "P1", alias: "峰哥", evidence: ["L1", "L2", "L3"] }],
+    aliasCtx(),
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].userId, "u1");
+  assert.deepEqual(out[0].evidence.map((e) => e.messageId), ["m1"], "self-use and non-containing lines dropped");
+  assert.equal(out[0].evidence[0].speakerId, "u2");
+});
+it("resolveAliasCandidates rejects stopwords/kinship, display names, unknown people, lines aimed at someone else", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [
+      { person: "P1", alias: "你", evidence: ["L1"] },
+      { person: "P1", alias: "萱萱", evidence: ["L1"] },
+      { person: "P9", alias: "峰哥", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L1"] },
+      { person: "P1", alias: "峰哥", evidence: ["L2"] },
+      { person: "P1", alias: "姐姐", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L4", "L5"] },
+    ],
+    aliasCtx(),
+  );
+  assert.deepEqual(out, []);
+});
+it("recordAliasContext dedups by messageId and skips link previews / empty text", () => {
+  aliasEx.resetAliasBuffersForTests();
+  const rows = [
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: null, messageId: "a2", content: "預覽", isLinkPreview: true },
+    { userId: "u2", messageId: "a3", content: "", at: 2 },
+  ];
+  assert.equal(aliasEx.recordAliasContext("g", rows), 1);
+  assert.equal(aliasEx.recordAliasContext("g", rows), 0);
+  aliasEx.resetAliasBuffersForTests();
+});
+it("buildAliasPrompt numbers people and lines, marks replies and @mentions", () => {
+  withProfileStore(() => {
+    const { turns } = aliasEx.buildAliasPrompt("g", [
+      aliasRow("m1", "u2", "<@u1>".replace("u1", "111") + " 峰哥", { speakerName: "萱萱", replyToUserId: "111" }),
+      aliasRow("m2", "111", "幹嘛", { speakerName: "峰" }),
+    ]);
+    assert.match(turns[0].content, /P1＝萱萱/);
+    assert.match(turns[0].content, /P2＝峰/);
+    assert.match(turns[0].content, /L1 P1（回覆 P2）: @P2 峰哥/);
+  });
+});
+it("aliases confirm at 2 distinct messages and show up in the profile block", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [{ messageId: "m1", at: now, speakerId: "u2" }]);
+    let entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(profileStore.confirmedAliases(entry), [], "one message is only a guess");
+    assert.doesNotMatch(profileStore.buildUserProfileBlock(entry), /群友常叫他/);
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [
+      { messageId: "m1", at: now, speakerId: "u2" },
+      { messageId: "m2", at: now, speakerId: "u3" },
+    ]);
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.equal(entry.aliases.length, 1, "same alias pools, not duplicated");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    assert.match(profileStore.buildUserProfileBlock(entry), /- 群友常叫他：峰哥/);
+    assert.deepEqual(
+      profileStore.confirmedAliases(entry, now + 200 * DAY_MS), [], "aliases age out like items",
+    );
+  });
+});
+it("familiarity block renders aliases next to the roster name", () => {
+  const out = buildFamiliarityBlock([{ name: "峰", count: 600, tier: "摯友", aliases: ["峰哥"] }]);
+  assert.match(out, /峰（群友叫：峰哥）/);
+});
+it("nameMatchCandidates matches a confirmed alias absent from the display name", () => {
+  const ev = [{ messageId: "m1", at: Date.now() }, { messageId: "m2", at: Date.now() }];
+  const profiles = [{ userId: "u1", name: "峰【曉未散】", aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: Date.now() }] }];
+  assert.equal(nameMatchCandidates("模仿峰哥講話", profiles, [])[0]?.userId, "u1");
+});
+memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records aliases", async () => {
+  const storePath = profileStore.STORE_PATH;
+  const snap = snapshotFile(storePath);
+  const bakSnap = snapshotFile(`${storePath}.bak`);
+  profileStore.resetCacheForTests();
+  aliasEx.resetAliasBuffersForTests();
+  try {
+    let calls = 0;
+    const fakeChain = async () => {
+      calls++;
+      return {
+        provider: { label: "fake" },
+        text: '{"aliases":[{"person":"P2","alias":"峰哥","evidence":["L1","L3"]},{"person":"P2","alias":"幻想","evidence":["L1"]}]}',
+      };
+    };
+    const rows = [];
+    for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+      const fromU2 = i % 2 === 1;
+      rows.push({
+        userId: fromU2 ? "u2" : "u1",
+        displayName: fromU2 ? "萱萱" : "峰",
+        messageId: `x${i}`,
+        content: fromU2 ? "峰哥早" : "早",
+        at: Date.now() - 1000 + i,
+      });
+    }
+    aliasEx.recordAliasContext("g1", rows.slice(0, 5));
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 0, "waits for enough new lines");
+    aliasEx.recordAliasContext("g1", rows);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1);
+    const entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliases.map((a) => a.alias), ["峰哥"], "hallucinated alias rejected");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1, "counter resets after a batch");
+  } finally {
+    profileStore.resetCacheForTests();
+    aliasEx.resetAliasBuffersForTests();
+    restoreFile(storePath, snap);
+    restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
+
 console.log("guild-profile-store");
 it("getGuildProfile returns null for missing guild", () => {
   withGuildStore(() => {

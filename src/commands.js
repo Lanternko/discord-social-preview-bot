@@ -17,6 +17,7 @@ const {
   getUserProfile,
   deleteUserProfile,
   PROFILE_FIELDS,
+  isAliasConfirmed,
   isItemStale,
 } = require("./user-profile-store");
 const {
@@ -634,6 +635,17 @@ function formatProfileItemsForShow(items, now = Date.now()) {
   return any ? lines : [];
 }
 
+// Unconfirmed aliases are shown too (marked), so people can see what 西寶 is
+// about to start calling them before it sticks.
+function formatAliasesForShow(aliases, now = Date.now()) {
+  if (!Array.isArray(aliases) || aliases.length === 0) return [];
+  const parts = aliases.map((a) => {
+    const n = new Set((a.evidence || []).map((e) => e?.messageId)).size;
+    return `${a.alias}（${n} 則${isAliasConfirmed(a, now) ? "" : "，未確認"}）`;
+  });
+  return [`群友叫你：${parts.join("、")}`];
+}
+
 async function handleMemoryCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -658,6 +670,7 @@ async function handleMemoryCommand(interaction) {
 
     const lines = [`**西寶對你的記憶**`];
     lines.push(`暱稱：${profile.name || "未知"}`);
+    lines.push(...formatAliasesForShow(profile.aliases));
 
     if (profile.items) {
       lines.push(...formatProfileItemsForShow(profile.items));
