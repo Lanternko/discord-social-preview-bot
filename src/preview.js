@@ -4,6 +4,7 @@ const {
   isBilibiliUrl,
   isBahamutUrl,
   isPttUrl,
+  isPinterestUrl,
   isTwitterUrl,
   isRedditUrl,
   isPixivUrl,
@@ -15,6 +16,7 @@ const {
 const { FIXER_TWITTER_SECONDARY, R18_SPOILER_ENABLED } = require("./config");
 const { buildBahamutPayload } = require("./platforms/bahamut");
 const { buildPttPayload } = require("./platforms/ptt");
+const { buildPinterestPayload } = require("./platforms/pinterest");
 const { buildInstagramPayload } = require("./platforms/instagram");
 const { fetchTweetMeta } = require("./platforms/twitter");
 const { isPanoramaCandidate } = require("./panorama");
@@ -188,6 +190,7 @@ async function buildPreviewPayloads(urls) {
     try {
       if (isBahamutUrl(url)) return await buildBahamutPayload(url);
       if (isPttUrl(url)) return await buildPttPayload(url);
+      if (isPinterestUrl(url)) return await buildPinterestPayload(url);
       if (isInstagramUrl(url)) return await buildInstagramPayload(url);
       if (isBilibiliUrl(url)) return await buildBilibiliPayload(url);
       if (isThreadsUrl(url)) return await buildThreadsPayload(url);

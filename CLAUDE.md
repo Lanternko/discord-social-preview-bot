@@ -1,6 +1,6 @@
 # Discord Social Preview Bot
 
-A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit, Pixiv, Bluesky, Bilibili, Facebook, Bahamut, PTT) and replies with rich previews. Also hosts a `@西寶` AI personality.
+A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit, Pixiv, Bluesky, Bilibili, Facebook, Pinterest, Bahamut, PTT) and replies with rich previews. Also hosts a `@西寶` AI personality.
 
 ## Architecture
 
@@ -35,6 +35,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 - **Threads**: text-only (no image AND no video) → custom embed. Video → **video attachment** (download mp4 → upload it; [src/video.js](src/video.js)), falling back to the fixer chain + OG recovery when it can't attach. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷時最後一個 embed description 追加 `... 還有 N 張` 提示；含 video 的混合貼文另外把影片當附件上傳（放不下才退 fixer）。Probe error → primary + secondary fixer + OG recovery list. Full decision table in [routing.md](docs/routing.md).
 - **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom info bar **+ `videoAttachment`**（media.vxbilibili 的直鏈 mp4）：discord-io 下載後上傳可播放影片，上方以 `videoAttachmentContent` 純文字資訊欄呈現（可點標題＋作者，無 embed 框）。**放不下（超過上傳上限）/停用/失敗 → 改貼 vxbilibili fixer 連結**（`videoAttachmentMissContent`）——Discord 串流遠端 mp4 不吃上傳上限，大影片仍有原生播放器；unfurl 空了才退含封面 embed（embedFallback）→ OG recovery。Failure（API error）→ vxbilibili fixer + OG recovery.
+- **Pinterest**: pidgets JSON (`widgets.pinterest.com/v3/pidgets/pins/info`) by pin id — NOT the page's og tags, which often describe a *related* pin. `V_720P` mp4 present → video attachment (ignore `is_video`, it lies). pin.it expanded first; any miss → fixembed + OG recovery. Grep `[pinterest]`.
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.
 - **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](docs/ai-providers.md).

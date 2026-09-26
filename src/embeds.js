@@ -63,6 +63,28 @@ function buildBahamutEmbed(url, metadata) {
   return embed;
 }
 
+function buildPinterestEmbed(url, metadata) {
+  const embed = new EmbedBuilder()
+    .setColor(0xe60023)
+    .setURL(url)
+    .setFooter({ text: "Pinterest" });
+
+  // 很多 pin 沒有標題只有描述（常是一整串 hashtag）；那就拿描述第一行的開頭
+  // 當標題，全文放 description，不要讓 256 字的 hashtag 牆佔掉標題。
+  const firstLine = metadata.description?.split("\n")[0];
+  const title = metadata.title || trimDescription(firstLine || "Pinterest", 100);
+  embed.setTitle(trimDescription(title, 256));
+  if (metadata.author)
+    embed.setAuthor({
+      name: trimDescription(metadata.author, 256),
+      ...(metadata.authorUrl ? { url: metadata.authorUrl } : {}),
+    });
+  if (metadata.description && metadata.description !== title)
+    embed.setDescription(trimDescription(metadata.description, 1024));
+  if (metadata.image) embed.setImage(metadata.image);
+  return embed;
+}
+
 function buildPttEmbed(url, metadata) {
   const embed = new EmbedBuilder()
     .setColor(0x3b82f6)
@@ -206,5 +228,6 @@ module.exports = {
   buildThreadsCarouselEmbeds,
   buildBahamutEmbed,
   buildPttEmbed,
+  buildPinterestEmbed,
   buildBilibiliEmbed,
 };
