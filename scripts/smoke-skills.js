@@ -361,6 +361,16 @@ check("malformed quiz is dropped but never leaks into the story", () => {
   assert.equal(parseStoryQuiz(dup).quiz, null);
 });
 
+check("a divider rule before the quiz marker is not kept in the story", () => {
+  const { story } = parseStoryQuiz(QUIZ_REPLY.replace(QUIZ_MARKER, `---\n\n${QUIZ_MARKER}`));
+  assert.equal(story, "## 會跳出小法師的磚窯\n\n海豹把磚窯撞倒了。");
+});
+
+check("the quiz prompt asks direct questions, not 下列何者敘述正確", () => {
+  const on = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0, quiz: true }).prompt;
+  assert.ok(on.includes("不要出「下列何者敘述正確／錯誤」這種題型"));
+});
+
 check("story without a quiz block passes through untouched", () => {
   assert.deepEqual(parseStoryQuiz("## 標題\n\n內文"), { story: "## 標題\n\n內文", quiz: null });
 });
