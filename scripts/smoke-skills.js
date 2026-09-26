@@ -26,6 +26,12 @@ const {
   buildBedtimeStoryPrompt,
   sanitizeBedtimeTitle,
 } = require("../src/bedtime-story");
+const {
+  QUIZ_MARKER,
+  parseStoryQuiz,
+  shuffleQuizOptions,
+  formatStoryQuiz,
+} = require("../src/story-quiz");
 
 let passed = 0;
 const asyncChecks = [];
@@ -315,6 +321,63 @@ check("registry exposes every skill with the required shape", () => {
     assert.equal(typeof skill.match, "function");
     assert.equal(typeof skill.build, "function");
   }
+});
+
+// ── 閱讀測驗 ────────────────────────────────────────────────────────────
+const QUIZ_REPLY = [
+  "## 會跳出小法師的磚窯",
+  "",
+  "海豹把磚窯撞倒了。",
+  "",
+  QUIZ_MARKER,
+  "題目：根據〈會跳出小法師的磚窯〉，下列何者敘述正確？",
+  "正解：小Astra讓磚頭排成圓形爐台，煮出義大利麵。",
+  "誤：A. 海豹故意把磚窯推倒。",
+  "誤：貓在金色果實裡發現海豹。",
+  "- 誤：**貓和海豹為了厚片吐司決裂。**",
+].join("\n");
+
+check("quiz block only goes into the prompt on quiz nights", () => {
+  const off = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0 });
+  const on = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0, quiz: true });
+  assert.ok(!off.prompt.includes(QUIZ_MARKER));
+  assert.ok(on.prompt.includes(QUIZ_MARKER));
+  assert.ok(on.prompt.startsWith(off.prompt), "quiz must be appended, not woven in");
+});
+
+check("parseStoryQuiz splits the quiz off and strips stray numbering/markdown", () => {
+  const { story, quiz } = parseStoryQuiz(QUIZ_REPLY);
+  assert.equal(story, "## 會跳出小法師的磚窯\n\n海豹把磚窯撞倒了。");
+  assert.equal(quiz.wrong[0], "海豹故意把磚窯推倒。");
+  assert.equal(quiz.wrong[2], "貓和海豹為了厚片吐司決裂。");
+});
+
+check("malformed quiz is dropped but never leaks into the story", () => {
+  const broken = QUIZ_REPLY.split("\n").slice(0, -1).join("\n"); // only 2 誤
+  const { story, quiz } = parseStoryQuiz(broken);
+  assert.equal(quiz, null);
+  assert.ok(!story.includes(QUIZ_MARKER));
+  const dup = QUIZ_REPLY.replace("貓在金色果實裡發現海豹。", "海豹故意把磚窯推倒。");
+  assert.equal(parseStoryQuiz(dup).quiz, null);
+});
+
+check("story without a quiz block passes through untouched", () => {
+  assert.deepEqual(parseStoryQuiz("## 標題\n\n內文"), { story: "## 標題\n\n內文", quiz: null });
+});
+
+check("answer letter follows the correct option through the shuffle", () => {
+  const { quiz } = parseStoryQuiz(QUIZ_REPLY);
+  const letters = new Set();
+  for (let seed = 0; seed < 40; seed++) {
+    let k = 0;
+    const rng = () => (seed * 0.137 + k++ * 0.618) % 1;
+    const { options, answer } = shuffleQuizOptions(quiz, rng);
+    assert.equal(options["ABCD".indexOf(answer)], quiz.correct);
+    letters.add(answer);
+  }
+  assert.equal(letters.size, 4, "answer should land on every letter across seeds");
+  const text = formatStoryQuiz(quiz, () => 0);
+  assert.match(text, /正確答案：\|\|[ABCD]\|\|$/);
 });
 
 (async () => {
