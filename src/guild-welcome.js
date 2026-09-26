@@ -31,9 +31,13 @@ function pickWelcomeChannel(guild) {
   return candidates[0] || null;
 }
 
+// Application emoji (西寶's own library, scripts/app-emoji.js) — renders in any
+// guild regardless of its external-emoji permission, unlike a guild emoji.
+const HELLO_EMOJI = "<:Nishi_waku:1553318010050187325>";
+
 function buildWelcomeMessage({ dailyLimit = AI_FREE_DAILY_LIMIT } = {}) {
   return [
-    "大家好，我是西寶 👋 謝謝邀請我進來～",
+    `大家好，我是西寶 ${HELLO_EMOJI} 謝謝邀請我進來～`,
     "",
     "- 貼 Threads、X、IG、Reddit、Pixiv、Bilibili、巴哈、PTT 等連結，我會幫忙補上完整預覽（影片會直接上傳成能播的）",
     `- \`@西寶\` 可以跟我聊天，整個伺服器每天免費 ${dailyLimit} 次；管理員用 \`/ai-key\` 放 DeepSeek 金鑰就能解鎖更多`,
