@@ -6,6 +6,7 @@ const {
   TIERS,
   TIER_UI_LABELS,
   TIER_REQUIRES_KEY,
+  getEffectiveTier,
 } = require("./tier-config");
 const {
   getGuildSchedules,
@@ -33,6 +34,7 @@ const {
   hasGuildApiKey,
   setGuildApiKey,
   removeGuildApiKey,
+  getGuildKeyRejection,
 } = require("./ai/guild-key-store");
 const { getUsage } = require("./ai/rate-limiter");
 const { handleVoiceCommand } = require("./voice-reply");
@@ -414,6 +416,10 @@ async function handleTierCommand(interaction) {
       `**目前方案：${TIER_UI_LABELS[current]}**`,
       ...buildTierDetailLines(current, status),
     ];
+    const effective = getEffectiveTier(guildId);
+    if (effective !== current) {
+      lines.push(describeKeyRejection(guildId, effective));
+    }
     lines.push("");
     lines.push("**方案差異：**");
     for (const key of Object.keys(TIER_UI_LABELS)) {
@@ -797,6 +803,14 @@ async function handleMemoryCommand(interaction) {
   }
 }
 
+function describeKeyRejection(guildId, effectiveTier) {
+  const rejection = getGuildKeyRejection(guildId);
+  const reason = rejection?.status === 402 ? "餘額不足（HTTP 402）"
+    : rejection?.status ? `金鑰無效（HTTP ${rejection.status}）`
+    : "金鑰無效或餘額不足";
+  return `⚠️ DeepSeek 拒絕了這個伺服器的金鑰：${reason}。目前以**${TIER_UI_LABELS[effectiveTier]}**運作（每天 ${AI_FREE_DAILY_LIMIT} 次）；用 \`/ai-key set\` 換新金鑰立即恢復，儲值的話約 6 小時內會自動重試。`;
+}
+
 async function handleAiKeyCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -815,7 +829,10 @@ async function handleAiKeyCommand(interaction) {
     const isPremium = hasKey || isWhitelisted;
 
     const lines = ["**AI 方案狀態**"];
-    if (hasKey) {
+    if (hasKey && getGuildKeyRejection(guildId)) {
+      lines.push("方案：進階（自訂金鑰）");
+      lines.push(describeKeyRejection(guildId, getEffectiveTier(guildId)));
+    } else if (hasKey) {
       lines.push("方案：進階（自訂金鑰）");
       lines.push(`模型：\`${DEEPSEEK_MODEL}\``);
       lines.push("額度：無限制");

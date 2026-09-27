@@ -1,5 +1,6 @@
-const { AI_PERSONA } = require("./config");
+const { AI_PERSONA, DEEPSEEK_PREMIUM_GUILD_IDS } = require("./config");
 const { getGuildTier } = require("./tier-store");
+const { isGuildKeyUsable } = require("./ai/guild-key-store");
 
 // Hardcoded tier metadata. Numbers aligned in todo.md under 西寶 AI 分級.
 // Internal keys are English (brief/standard/detailed); Discord UI shows 入門/標準/精細.
@@ -108,11 +109,24 @@ function buildPersonaFromTemplate(template, tier) {
   return out;
 }
 
-function getTierConfig(guildId) {
+// The stored tier is what the guild chose; the effective tier is what it can
+// pay for right now. A paid tier whose key DeepSeek rejects runs as 入門 until
+// the key works again — the stored choice is left alone so it comes back by
+// itself, with no admin having to re-run /ai-tier.
+function getEffectiveTier(guildId) {
   const tierKey = getGuildTier(guildId);
+  if (!TIER_REQUIRES_KEY[tierKey]) return tierKey;
+  if (DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId)) return tierKey;
+  return isGuildKeyUsable(guildId) ? tierKey : "brief";
+}
+
+function getTierConfig(guildId) {
+  const chosen = getGuildTier(guildId);
+  const tierKey = getEffectiveTier(guildId);
   const base = TIERS[tierKey];
   return {
     ...base,
+    ...(tierKey !== chosen ? { demotedFrom: chosen } : {}),
     label: TIER_UI_LABELS[tierKey],
     persona: buildPersonaFromTemplate(AI_PERSONA, base),
   };
@@ -124,5 +138,6 @@ module.exports = {
   TIER_DESCRIPTIONS,
   TIER_REQUIRES_KEY,
   buildPersonaFromTemplate,
+  getEffectiveTier,
   getTierConfig,
 };

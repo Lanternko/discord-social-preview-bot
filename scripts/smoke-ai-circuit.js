@@ -82,8 +82,15 @@ const {
   setGuildApiKey,
   removeGuildApiKey,
   hasGuildApiKey,
+  KEY_RECHECK_MS,
+  isGuildKeyUsable,
+  markGuildKeyRejected,
+  clearGuildKeyRejection,
+  consumeGuildKeyNotice,
   resetCacheForTests: resetKeyCache,
 } = require("../src/ai/guild-key-store");
+const { setGuildTier } = require("../src/tier-store");
+const { getTierConfig } = require("../src/tier-config");
 const {
   checkAndIncrement,
   getUsage,
@@ -868,6 +875,87 @@ async function main() {
       `expected DEEPSEEK_MODEL_FREE, got ${dsEntry.label}`,
     );
   });
+  it("brief guild with its own key pays with that key (no owner key, no daily limit)", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    setGuildApiKey("keyed-brief", "sk-brief");
+    const { chain, rateLimited } = buildGuildChain("keyed-brief", briefTier);
+    assert.equal(rateLimited, false);
+    assert.ok(chain[0].label.endsWith(":guild"), `expected guild entry first, got ${chain[0].label}`);
+    assert.equal(chain[0].circuitKey, `${chain[0].label}:keyed-brief`);
+    assert.equal(getUsage("keyed-brief")?.count ?? 0, 0);
+  });
+
+  // ── rejected guild key → demoted to 入門 ─────────────────────────────
+  it("rejected key is unusable until the recheck window passes; notice fires once", () => {
+    resetKeyCache();
+    setGuildApiKey("dead-key", "sk-dead");
+    const t0 = 1_000_000;
+    assert.equal(isGuildKeyUsable("dead-key", t0), true);
+    assert.equal(markGuildKeyRejected("dead-key", 402, t0), true);
+    assert.equal(markGuildKeyRejected("dead-key", 402, t0 + 1), false);
+    assert.equal(isGuildKeyUsable("dead-key", t0 + 1), false);
+    assert.equal(isGuildKeyUsable("dead-key", t0 + 1 + KEY_RECHECK_MS), true);
+    assert.equal(consumeGuildKeyNotice("dead-key"), true);
+    assert.equal(consumeGuildKeyNotice("dead-key"), false);
+    assert.equal(clearGuildKeyRejection("dead-key"), true);
+    assert.equal(isGuildKeyUsable("dead-key", t0 + 1), true);
+  });
+  it("setting a new key clears the rejection", () => {
+    resetKeyCache();
+    setGuildApiKey("dead-key", "sk-dead");
+    markGuildKeyRejected("dead-key", 401);
+    setGuildApiKey("dead-key", "sk-fresh");
+    assert.equal(isGuildKeyUsable("dead-key"), true);
+  });
+  it("standard guild with a rejected key runs as 入門: owner flash, daily limit, brief budgets", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    setGuildApiKey("dead-std", "sk-dead");
+    setGuildTier("dead-std", "standard");
+    markGuildKeyRejected("dead-std", 401);
+    const tier = getTierConfig("dead-std");
+    assert.equal(tier.tier, "brief");
+    assert.equal(tier.demotedFrom, "standard");
+    const { chain } = buildGuildChain("dead-std", tier, {}, OFF_PEAK);
+    assert.ok(!chain.some((e) => e.label.endsWith(":guild")), "dead guild key must not be in the chain");
+    assert.ok(chain[0].label.startsWith("deepseek:"), `expected owner deepseek first, got ${chain[0].label}`);
+    assert.equal(getUsage("dead-std").count, 1);
+    clearGuildKeyRejection("dead-std");
+    assert.equal(getTierConfig("dead-std").tier, "standard");
+  });
+  await itAsync("a 402 from the guild key marks it rejected; a later success clears it", async () => {
+    resetKeyCache();
+    resetCircuitState();
+    setGuildApiKey("topup-guild", "sk-empty");
+    const originalFetch = global.fetch;
+    let status = 402;
+    global.fetch = async () => status === 402
+      ? { ok: false, status: 402, headers: { get: () => null }, text: async () => "Insufficient Balance" }
+      : {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "嗨" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 2 },
+        }),
+      };
+    try {
+      const { chain } = buildGuildChain("topup-guild", standardTier);
+      const first = await chain[0].call([{ role: "user", content: "hi" }], "persona", 50);
+      assert.equal(first.kind, "auth");
+      assert.equal(isGuildKeyUsable("topup-guild"), false);
+      status = 200;
+      const second = await chain[0].call([{ role: "user", content: "hi" }], "persona", 50);
+      assert.equal(second.ok, true);
+      assert.equal(isGuildKeyUsable("topup-guild"), true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   await itAsync("passes task-specific thinking options to keyed DeepSeek", async () => {
     resetKeyCache();
     setGuildApiKey("voice-guild", "sk-voice-test");
