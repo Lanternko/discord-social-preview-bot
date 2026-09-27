@@ -30,11 +30,19 @@ DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 o
 
 - **時段以 UTC 為準**：`Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday`（[DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing)）。換算台北是平日 09:00–12:00 與 14:00–18:00，但實作**刻意不寫死本地時間**：計費依據是 UTC，寫成本地時間會在主機時區改變時無聲飄掉。判斷在 [src/ai/peak-hours.js](../src/ai/peak-hours.js)。
 - **自帶 key 的 guild 不降級**。那把 key 是他們自己付錢、自己選 DeepSeek 的，尖峰加價是他們的決定，不是我們的成本。只有 owner key（入門 tier 的 flash、以及 `DEEPSEEK_PREMIUM_GUILD_IDS` 白名單的 pro）會被移到鏈尾。
-- **降級期間不扣 `AI_FREE_DAILY_LIMIT`**。額度是用來付「我們真的打算打的呼叫」；entry 在鏈尾幾乎不會被叫到，先扣會把免費 guild 一天 20 次燒在什麼都沒發生上。代價是尖峰若真的一路 fallback 全掛、打到鏈尾的 DeepSeek，那次不計入當日額度——極罕見，用額度精準度換不浪費。
+- **降級期間照樣扣 `AI_FREE_DAILY_LIMIT`**。額度計的是「一則回覆」，不是「一次 DeepSeek 呼叫」——尖峰先跑的 Luna 一樣是 owner 付錢（2026-09-27 前只扣 DeepSeek entry，額度用完的 guild 就在 Luna 上無限聊）。
 - log 只在**狀態切換時**各印一行（`[ai] deepseek peak window on/off`），不是每則回覆都印。
 - 排程任務（daily recap / bedtime story / morning greeting）走的是 module-level 的 `AI_PROVIDER_CHAIN` / `STORY_PROVIDER_CHAIN`，**不受影響**；它們的排程時間（台北 08:00 / 19:00 / 22:00 → UTC 00:00 / 11:00 / 14:00）本來就全部落在離峰。
 
-If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
+### 額度與全域保險絲
+
+owner 付錢的回覆（免費 guild＋白名單）**每則回覆計一次**，不管最後是哪一層回的：
+
+- 免費 guild 每天 `AI_FREE_DAILY_LIMIT`（20）次；白名單不受這個限制。
+- 全部 owner 付費回覆加總每天 `AI_OWNER_DAILY_LIMIT`（1500）次——這是 owner 帳單的保險絲，白名單也算在內。自帶 key 的 guild 不計、不擋。
+- 超過任一條 → 鏈是空的（連 vision 都不打），`generateAIReply` 直接回 `QUOTA_REPLIES` 裡的罐頭句（西寶口吻＋一行 `-#` 說明是哪個額度、怎麼解除），零成本。log：`[ai] guild=… hit daily limit` / `[ai] owner daily limit hit`。
+- 計數跟每日重置同一份 `data/ai-daily-usage.json`（台北 0 點），全域那列的 key 是 `__owner_total__`。
+- 背景工作（profile sweep）用 `metered: false` 建鏈，不吃額度。
 
 ## DeepSeek 現役 model（2026-09-21 實測）
 

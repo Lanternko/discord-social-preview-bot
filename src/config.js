@@ -479,6 +479,10 @@ module.exports = {
   // vision call is structurally slower than the 8 s text budget allows.
   VISION_TIMEOUT_MS: parsePositiveIntEnv("VISION_TIMEOUT_MS", 25000),
   AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 20),
+  // Fuse on the owner's total bill: owner-paid replies (free + whitelisted
+  // guilds) across every guild per Taipei day. Guilds on their own key are
+  // not counted and never blocked.
+  AI_OWNER_DAILY_LIMIT: parsePositiveIntEnv("AI_OWNER_DAILY_LIMIT", 1500),
   // Every current DeepSeek model (flash included) thinks by default: it spends
   // most of its token budget on
   // hidden reasoning_content before emitting any visible answer. The tier's

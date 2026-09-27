@@ -25,6 +25,9 @@ process.env.RECAP_DEEPSEEK_REASONING_HEADROOM = "4096";
 process.env.RECAP_DEEPSEEK_MAX_TOKENS = "1600";
 process.env.RECAP_GEMINI_TIMEOUT_MS = "45000";
 delete process.env.AI_PROVIDER;
+process.env.DEEPSEEK_PREMIUM_GUILD_IDS = "wl-guild";
+process.env.AI_FREE_DAILY_LIMIT = "20";
+process.env.AI_OWNER_DAILY_LIMIT = "1500";
 
 const {
   parseRetryAfterMs,
@@ -57,6 +60,8 @@ const {
   getPersonalMemoryContextEntries,
   runProviderChain,
   buildGuildChain,
+  isQuotaReply,
+  QUOTA_REPLIES,
   RECAP_PROVIDER_CHAIN,
   STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
@@ -94,6 +99,7 @@ const { getTierConfig } = require("../src/tier-config");
 const {
   checkAndIncrement,
   getUsage,
+  OWNER_TOTAL_KEY,
   todayString,
   resetForTests: resetRateLimiter,
 } = require("../src/ai/rate-limiter");
@@ -817,16 +823,60 @@ async function main() {
     );
   });
 
-  it("peak does not burn the free guild's daily DeepSeek quota", () => {
+  it("peak still counts the reply — the fallback that answers is owner-paid too", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    buildGuildChain("quota-guild", briefTier, {}, PEAK);
+    assert.equal(getUsage("quota-guild").count, 1);
+  });
+
+  it("a free guild past its quota gets no chain at all, not a free ride on Luna", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    for (let i = 0; i < 20; i += 1) {
+      assert.equal(buildGuildChain("over-guild", briefTier, {}, OFF_PEAK).rateLimited, false);
+    }
+    const r = buildGuildChain("over-guild", briefTier, {}, OFF_PEAK, [{ url: "x" }]);
+    assert.equal(r.rateLimited, true);
+    assert.equal(r.limitReason, "guild");
+    assert.equal(r.chain.length, 0, "no fallback, no vision");
+    assert.ok(isQuotaReply(QUOTA_REPLIES.guild));
+    assert.ok(!isQuotaReply("隨便一句"));
+  });
+
+  it("whitelisted guilds skip the per-guild quota but count toward the owner total", () => {
     resetKeyCache();
     resetRateLimiter();
     resetCircuitState();
     for (let i = 0; i < 25; i += 1) {
-      buildGuildChain("quota-guild", briefTier, {}, PEAK);
+      assert.equal(buildGuildChain("wl-guild", standardTier, {}, OFF_PEAK).rateLimited, false);
     }
-    // The counter is untouched, so the guild still has its full allowance the
-    // moment peak ends.
-    assert.equal(checkAndIncrement("quota-guild", 20).allowed, true);
+    assert.equal(getUsage("wl-guild").count, 0);
+    assert.equal(getUsage(OWNER_TOTAL_KEY).count, 25);
+  });
+
+  it("the owner fuse stops every owner-paid guild, but never a guild on its own key", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    for (let i = 0; i < 1500; i += 1) checkAndIncrement(OWNER_TOTAL_KEY, 1500);
+    const free = buildGuildChain("fresh-free", briefTier, {}, OFF_PEAK);
+    assert.equal(free.limitReason, "owner");
+    assert.equal(getUsage("fresh-free").count, 0, "a fused-out reply must not eat the guild's quota");
+    assert.equal(buildGuildChain("wl-guild", standardTier, {}, OFF_PEAK).limitReason, "owner");
+    setGuildApiKey("fuse-keyed", "sk-own");
+    assert.equal(buildGuildChain("fuse-keyed", standardTier, {}, OFF_PEAK).rateLimited, false);
+  });
+
+  it("background work (metered: false) never touches the counters", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    buildGuildChain("sweep-guild", briefTier, {}, OFF_PEAK, [], { metered: false });
+    assert.equal(getUsage("sweep-guild").count, 0);
+    assert.equal(getUsage(OWNER_TOTAL_KEY).count, 0);
   });
 
   it("a guild's OWN key is never demoted at peak", () => {

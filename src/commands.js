@@ -368,7 +368,7 @@ function getTierQuotaLine(tierKey, { hasKey, isWhitelisted, usage }) {
   if (isWhitelisted) {
     return "額度：無限制（白名單；入門仍使用 flash 模型）";
   }
-  return `每日免費額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}（超過後改用 Groq / Gemini 備援）`;
+  return `每日免費額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}（用完後西寶今天先休息，台北時間 0 點重置）`;
 }
 
 function buildTierDetailLines(tierKey, status) {
