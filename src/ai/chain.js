@@ -334,6 +334,7 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
       const guildKey = getGuildApiKey(guildId);
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}:guild`,
+        circuitKey: `deepseek:${DEEPSEEK_MODEL}:guild:${guildId}`,
         call: (turns, persona, maxTokens) =>
           callDeepSeek(turns, persona, maxTokens, {
             apiKey: guildKey,
@@ -434,6 +435,8 @@ function buildVisionEntry(guildId, images) {
   };
   return {
     label,
+    // A guild key's failure must not blind the owner key (or other guilds).
+    circuitKey: guildKey ? `${label}:guild:${guildId}` : label,
     options,
     call: (turns, persona, maxTokens) =>
       callDeepSeek(turns, persona, maxTokens, options),
@@ -458,24 +461,34 @@ function buildGuildChain(
   return { ...result, chain: [vision, ...result.chain], vision: true };
 }
 
+// The circuit is keyed per credential, not per label: every guild that brings
+// its own key shares the label `deepseek:<model>:guild`, so keying on the label
+// let one guild's dead key (401 / 402) cool down every other guild's working
+// one for 10 minutes — silently shipping their traffic to the owner-paid
+// fallback. Entries built on a guild key set `circuitKey` to split them apart.
+function circuitKeyOf(provider) {
+  return provider.circuitKey || provider.label;
+}
+
 async function runProviderChain(chain, turns, persona, maxTokens) {
   for (const provider of chain) {
-    if (!isProviderAvailable(provider.label)) {
-      console.log(`[ai] skip cooling-down provider=${provider.label}`);
+    const key = circuitKeyOf(provider);
+    if (!isProviderAvailable(key)) {
+      console.log(`[ai] skip cooling-down provider=${key}`);
       continue;
     }
 
     const result = await provider.call(turns, persona, maxTokens);
 
     if (result && result.ok) {
-      recordProviderSuccess(provider.label);
+      recordProviderSuccess(key);
       return { provider, text: result.text };
     }
 
     const failure = result ?? { kind: "unknown" };
-    const cooldownMs = recordProviderFailure(provider.label, failure);
+    const cooldownMs = recordProviderFailure(key, failure);
     console.warn(
-      `[ai] provider failed label=${provider.label} kind=${failure.kind} cooldownMs=${cooldownMs}`,
+      `[ai] provider failed label=${key} kind=${failure.kind} cooldownMs=${cooldownMs}`,
     );
   }
   return null;
