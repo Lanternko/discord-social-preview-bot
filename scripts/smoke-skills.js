@@ -248,6 +248,17 @@ asyncChecks.push(
   }],
 );
 
+check("chat pack lets the requester's own brief override the group-material rules", () => {
+  const chat = buildStoryCraftBlock({ mode: "chat" });
+  const clause = chat.indexOf("【最優先");
+  assert.ok(clause > 0, "lost the requester-first clause");
+  // Placed first it lost to the rules after it (A/B 2026-09-27): it must be
+  // the last rule in the pack.
+  assert.ok(clause > chat.indexOf("【這次要用的寫法】"), "requester-first clause must come last");
+  const scheduled = buildStoryCraftBlock({ mode: "scheduled", guildName: "X" });
+  assert.ok(!scheduled.includes("【最優先"), "a scheduled story has no requester");
+});
+
 check("chat pack keeps the tuned spec", () => {
   const chat = buildStoryCraftBlock({ guildName: "測試群", mode: "chat" });
   assert.ok(chat.includes("`## `"), "lost the markdown title rule");
