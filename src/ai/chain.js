@@ -61,6 +61,7 @@ const {
   profileTextOf,
   confirmedAliases,
 } = require("../user-profile-store");
+const { applyAliasStatements } = require("./alias-statements");
 const {
   maybeExtractObservations,
   maybeGuildExtract,
@@ -523,6 +524,15 @@ async function generateAIReply(message, userText, options = {}) {
     providerOptions = {},
   } = options;
   const tierConfig = getTierConfig(message.guildId);
+
+  // 「別叫我X」 said to 西寶 is recorded before anything is assembled, so the
+  // reply to that very message already stops using X.
+  if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory && includeContext) {
+    applyAliasStatements(message.guildId, message.author?.id, message.member?.displayName || message.author?.username, userText, {
+      messageId: message.id,
+      at: message.createdTimestamp,
+    });
+  }
 
   // Resolved once, used twice: the referenced message supplies both the reply
   // context block (further down) and — when the @ itself carries no attachment

@@ -646,6 +646,13 @@ function formatAliasesForShow(aliases, now = Date.now()) {
   return [`群友叫你：${parts.join("、")}`];
 }
 
+// Names the person told 西寶 not to use. Listed so they can see it stuck
+// (and how to lift it).
+function formatAliasDenialsForShow(denials) {
+  if (!Array.isArray(denials) || denials.length === 0) return [];
+  return [`你說過不要叫你：${denials.map((d) => d.alias).join("、")}（跟西寶說「叫我X就好」可以取消）`];
+}
+
 async function handleMemoryCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -671,6 +678,7 @@ async function handleMemoryCommand(interaction) {
     const lines = [`**西寶對你的記憶**`];
     lines.push(`暱稱：${profile.name || "未知"}`);
     lines.push(...formatAliasesForShow(profile.aliases));
+    lines.push(...formatAliasDenialsForShow(profile.aliasDenials));
 
     if (profile.items) {
       lines.push(...formatProfileItemsForShow(profile.items));

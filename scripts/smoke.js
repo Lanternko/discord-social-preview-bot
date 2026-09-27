@@ -2897,6 +2897,7 @@ memoryAsyncCases.push(["runConsolidation retries once on a truncated answer", as
 
 console.log("alias learning");
 const aliasEx = require("../src/ai/alias-extractor");
+const aliasStatements = require("../src/ai/alias-statements");
 const aliasRow = (id, speakerId, content, extra = {}) => ({
   messageId: id, speakerId, speakerName: null, content, at: Number(id.replace(/\D/g, "")) || 1, replyToUserId: null, ...extra,
 });
@@ -2988,6 +2989,41 @@ it("nameMatchCandidates matches a confirmed alias absent from the display name",
   const ev = [{ messageId: "m1", at: Date.now() }, { messageId: "m2", at: Date.now() }];
   const profiles = [{ userId: "u1", name: "峰【曉未散】", aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: Date.now() }] }];
   assert.equal(nameMatchCandidates("模仿峰哥講話", profiles, [])[0]?.userId, "u1");
+});
+it("detectAliasStatements catches self-denials and lifts, not errands or questions", () => {
+  const d = aliasStatements.detectAliasStatements;
+  assert.deepEqual(d("別叫我小峰").deny, ["小峰"]);
+  assert.deepEqual(d("不要再叫我峰哥了！").deny, ["峰哥"]);
+  assert.deepEqual(d("我不叫阿雅啦").deny, ["阿雅"]);
+  assert.deepEqual(d("我的綽號不是慕慕").deny, ["慕慕"]);
+  assert.deepEqual(d("「姐姐」不是我的綽號").deny, ["姐姐"]);
+  assert.deepEqual(d("別叫我小峰，叫我阿峰就好"), { deny: ["小峰"], allow: ["阿峰"] });
+  for (const t of ["別叫我去上班", "我不是叫你去買嗎", "不要叫我起床", "我不叫他嗎", "今天好累"]) {
+    assert.deepEqual(d(t), { deny: [], allow: [] }, t);
+  }
+});
+it("a denied alias is dropped, blocks new evidence, and reaches the profile block", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    const ev = [{ messageId: "m1", at: now, speakerId: "u2" }, { messageId: "m2", at: now, speakerId: "u3" }];
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev);
+    const res = aliasStatements.applyAliasStatements("g1", "u1", "峰", "別叫我峰哥", { messageId: "d1", at: now });
+    assert.deepEqual(res.deny, ["峰哥"]);
+    let entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliases, [], "existing evidence removed");
+    assert.equal(
+      profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev), false, "group evidence can't override",
+    );
+    assert.match(profileStore.buildUserProfileBlock(entry), /不要這樣叫他（別用）：峰哥/);
+    assert.deepEqual(
+      profileStore.confirmedAliases({ ...entry, aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: now }] }),
+      [], "confirmedAliases never returns a denied alias",
+    );
+    aliasStatements.applyAliasStatements("g1", "u1", "峰", "好啦叫我峰哥就好");
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliasDenials, [], "the person can lift it");
+    assert.equal(profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev), true);
+  });
 });
 memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records aliases", async () => {
   const storePath = profileStore.STORE_PATH;
