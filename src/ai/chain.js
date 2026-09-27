@@ -163,7 +163,8 @@ let loggedPeakState = null;
 // chain leads with the flat-rate fallback and keeps DeepSeek at the tail —
 // still reachable if everything above it fails, just no longer the default
 // spend. A guild's OWN key is never demoted: that guild chose and pays for
-// DeepSeek, so the peak surcharge is theirs to make.
+// DeepSeek, so the peak surcharge is theirs to make. Whitelisted guilds are
+// not demoted either (see buildTextGuildChain).
 function ownerDeepSeekIsDemoted(now) {
   const demoted = AI_PEAK_PREFER_FALLBACK && isDeepSeekPeak(now);
   if (demoted !== loggedPeakState) {
@@ -436,8 +437,11 @@ function buildTextGuildChain(
         call: (turns, persona, maxTokens) =>
           callDeepSeek(turns, persona, maxTokens, deepSeekOptions),
       };
+      // Whitelisted guilds are the ones the owner chose to pay for: they keep
+      // DeepSeek first through peak. Demoting them handed 19 of 33 replies in
+      // one guild to Luna (2026-09-27), which is why it felt dumber by day.
       return {
-        chain: placeOwnerDeepSeek(entry, [...kimiSecondary, ...FALLBACK_CHAIN], demoted),
+        chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN],
         rateLimited: false,
       };
     }
@@ -477,7 +481,11 @@ function buildTextGuildChain(
       }),
   };
   return {
-    chain: placeOwnerDeepSeek(entry, [...kimiSecondary, ...FALLBACK_CHAIN], demoted),
+    chain: placeOwnerDeepSeek(
+      entry,
+      [...kimiSecondary, ...FALLBACK_CHAIN],
+      demoted && !isWhitelisted,
+    ),
     rateLimited: false,
   };
 }
