@@ -18,7 +18,7 @@ Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup
 
 **Production is the main checkout's working tree, whatever branch it is on** — `scripts/bot-watchdog.sh` hardcodes `REPO=~/side_projects/apps/discord-social-preview-bot` and relaunches `node src/index.js` from there. Two consequences:
 
-- **There is no separate deploy branch.** Whatever `git branch --show-current` prints in that folder is what's live (2026-08-29: `fix/recap-deepseek-empty`, not `main` and not a `deploy/*` branch). Check it before assuming.
+- **There is no separate deploy branch.** Whatever `git branch --show-current` prints in that folder is what's live (2026-09-27: `fix/recap-deepseek-empty`, kept as a fast-forward mirror of `main` — see below). Check it before assuming.
 - **Uncommitted edits in that working tree go live on the next restart.** Run `git status` before restarting; another session's half-finished work is not your deploy.
 
 A cron watchdog runs every minute and restarts the bot if the process is gone, so `kill <pid>` alone is a valid restart — or run `scripts/bot-watchdog.sh` by hand to skip the wait. Do **not** `pkill -f 'node src/index.js'`: that pattern also matches Claude Code's own tool shells (use `pkill -xf` or the pid).
@@ -35,13 +35,14 @@ pgrep -f 'node src/index.js'
 
 ### Redeploy after merging
 
-Merge the PR into **the branch the main checkout is already on** (see above) so the deploy never needs a `git checkout` in that shared folder.
+**PRs merge into `main`** (since 2026-09-27; before that they went into the prod branch directly). The prod checkout stays on its branch and fast-forwards to `origin/main`, so the deploy never needs a `git checkout` in that shared folder. Never commit directly on the prod branch — the `--ff-only` step fails loudly if someone did.
 
 ```bash
 cd ~/side_projects/apps/discord-social-preview-bot
-git branch --show-current          # confirm this is the branch you merged into
+git branch --show-current          # prod branch (fix/recap-deepseek-empty)
 git status --short                 # anything uncommitted goes live too — check whose it is
-git merge --ff-only origin/<that-branch>
+git fetch origin
+git merge --ff-only origin/main
 npm test
 kill "$(pgrep -xf 'node src/index.js')"   # watchdog relaunches within 60s
 ./scripts/bot-watchdog.sh                 # or restart immediately
