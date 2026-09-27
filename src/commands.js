@@ -29,6 +29,7 @@ const {
 } = require("./user-profile-store");
 const {
   getGuildProfile,
+  guildProfileTextOf,
 } = require("./guild-profile-store");
 const {
   TASK_TYPES,
@@ -861,8 +862,9 @@ async function handleMemoryCommand(interaction) {
     }
 
     const lines = [`**西寶對這個群的印象**`];
-    if (guildProfile.profile) {
-      lines.push(`\n📝 **群組摘要**\n${guildProfile.profile}`);
+    const profileText = guildProfileTextOf(guildProfile);
+    if (profileText) {
+      lines.push(`\n📝 **群組摘要**\n${profileText}`);
     }
 
     const obs = guildProfile.observations || [];
@@ -879,7 +881,7 @@ async function handleMemoryCommand(interaction) {
       lines.push(`\n⏳ 待萃取上下文：${pending.length} 筆`);
     }
 
-    if (!guildProfile.profile && obs.length === 0 && pending.length === 0) {
+    if (!profileText && obs.length === 0 && pending.length === 0) {
       lines.push("還沒有任何資料，多聊聊就會有了！");
     }
 
