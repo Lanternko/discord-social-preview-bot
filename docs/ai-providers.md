@@ -16,6 +16,9 @@ DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback
 
 1. 入門 (`brief`) — `deepseek:<DEEPSEEK_MODEL_FREE>` using the owner `DEEPSEEK_API_KEY`, limited by `AI_FREE_DAILY_LIMIT` for guilds without `/ai-key` or whitelist.
 2. 標準 / 精細 (`standard` / `detailed`) — `deepseek:<DEEPSEEK_MODEL>` using the guild `/ai-key`, or the owner key for `DEEPSEEK_PREMIUM_GUILD_IDS`.
+   - A guild with its own `/ai-key` pays with it on every tier, 入門 included (no daily limit).
+   - **Rejected guild key (401/402/403) → demoted to 入門.** `trackGuildKey` marks it in `data/guild-api-keys.json` (`rejectedAt`); `getTierConfig` then returns brief budgets (`demotedFrom` = stored tier) and the chain uses owner flash + daily limit. The stored tier is untouched. After `KEY_RECHECK_MS` (6 h) the key gets one real call again — success restores the tier, so a top-up heals itself; `/ai-key set` clears it at once. The channel gets a one-time `-#` notice. Grep `[ai-key]`.
+   - The circuit breaker keys guild-key entries by `circuitKey` (`…:guild:<guildId>`), not by label — they all share one label, and keying on it let one dead key cool down every other guild's working key.
 3. `kimi:<KIMI_MODEL>` — second-choice provider; removed entirely when `KIMI_ENABLED=false`.
 4. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
 5. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.

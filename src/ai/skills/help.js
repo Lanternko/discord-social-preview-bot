@@ -23,7 +23,7 @@ const path = require("node:path");
 const { AI_FREE_DAILY_LIMIT, DEEPSEEK_PREMIUM_GUILD_IDS } = require("../../config");
 const { getGuildTier } = require("../../tier-store");
 const { TIER_UI_LABELS } = require("../../tier-config");
-const { hasGuildApiKey } = require("../guild-key-store");
+const { hasGuildApiKey, isGuildKeyUsable } = require("../guild-key-store");
 const { getUsage } = require("../rate-limiter");
 const { getGuildSchedules } = require("../../schedule-store");
 
@@ -87,7 +87,11 @@ function readChangelog(limit = CHANGELOG_ENTRIES) {
 }
 
 function describeQuota(guildId) {
-  if (hasGuildApiKey(guildId)) return "額度：無限制（這個伺服器設了自己的 DeepSeek 金鑰）";
+  if (isGuildKeyUsable(guildId)) return "額度：無限制（這個伺服器設了自己的 DeepSeek 金鑰）";
+  if (hasGuildApiKey(guildId)) {
+    const used = getUsage(guildId)?.count ?? 0;
+    return `額度：這個伺服器的 DeepSeek 金鑰被拒絕了（無效或餘額不足），暫時當免費方案算，每天 ${AI_FREE_DAILY_LIMIT} 次，今天已經用了 ${used} 次；管理員用 /ai-key set 換金鑰就恢復`;
+  }
   if (DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId)) return "額度：無限制（白名單）";
   const used = getUsage(guildId)?.count ?? 0;
   return `額度：免費，每天 ${AI_FREE_DAILY_LIMIT} 次，問這句之前今天已經用了 ${used} 次`;

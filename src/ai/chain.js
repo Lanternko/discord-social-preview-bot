@@ -91,10 +91,18 @@ const {
   recordProviderSuccess,
   recordProviderFailure,
 } = require("./circuit");
-const { hasGuildApiKey, getGuildApiKey } = require("./guild-key-store");
+const {
+  getGuildApiKey,
+  isGuildKeyUsable,
+  markGuildKeyRejected,
+  clearGuildKeyRejection,
+  consumeGuildKeyNotice,
+} = require("./guild-key-store");
 const { checkAndIncrement } = require("./rate-limiter");
 
 const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
+const GUILD_KEY_REJECTED_NOTICE =
+  "-# ⚠️ 這個伺服器設定的 DeepSeek 金鑰被拒絕了（無效或餘額不足），我先用入門方案回覆。管理員可以用 `/ai-key set` 換一把，或儲值後等我自動恢復（約 6 小時內）。";
 
 // Decorates familiarity rows with the aliases group members actually use, so
 // 西寶 can map 「峰哥」 to a roster name. Skipped when long-term memory is off.
@@ -301,6 +309,41 @@ function buildStoryProviderChain() {
 
 const STORY_PROVIDER_CHAIN = buildStoryProviderChain();
 
+// A guild key's verdict is recorded on the key itself, not just the circuit:
+// the circuit only skips it for 10 minutes, after which every reply would pay
+// a doomed round-trip and then land on the owner-paid fallback anyway.
+function trackGuildKey(guildId, call) {
+  return async (...args) => {
+    const result = await call(...args);
+    if (result?.ok) {
+      if (clearGuildKeyRejection(guildId)) {
+        console.log(`[ai-key] guild=${guildId} key accepted again → 恢復原方案`);
+      }
+    } else if (result?.kind === "auth") {
+      const isNew = markGuildKeyRejected(guildId, result.status);
+      if (isNew) {
+        console.warn(`[ai-key] guild=${guildId} key rejected status=${result.status ?? "?"} → 降回入門`);
+      }
+    }
+    return result;
+  };
+}
+
+function guildKeyEntry(guildId, model, deepSeekOptions) {
+  const guildKey = getGuildApiKey(guildId);
+  return {
+    label: `deepseek:${model}:guild`,
+    circuitKey: `deepseek:${model}:guild:${guildId}`,
+    call: trackGuildKey(guildId, (turns, persona, maxTokens) =>
+      callDeepSeek(turns, persona, maxTokens, {
+        apiKey: guildKey,
+        model,
+        reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+        ...deepSeekOptions,
+      })),
+  };
+}
+
 // Per-guild chain: DeepSeek first, then Kimi when enabled, then
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
 // whitelisted guilds use the owner's key; free guilds (brief only) use the
@@ -325,24 +368,15 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
   const demoted = ownerDeepSeekIsDemoted(now);
   const tierKey = tierConfig?.tier || "brief";
   const needsPro = TIER_REQUIRES_KEY[tierKey];
-  const hasOwnKey = hasGuildApiKey(guildId);
+  // A rejected key counts as no key: the guild falls back to the free tier's
+  // owner-key flash + daily limit (getTierConfig already demoted its budgets).
+  const hasOwnKey = isGuildKeyUsable(guildId, now.getTime());
   const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
 
   if (needsPro) {
     // standard/detailed → pro model, requires key or whitelist
     if (hasOwnKey) {
-      const guildKey = getGuildApiKey(guildId);
-      const entry = {
-        label: `deepseek:${DEEPSEEK_MODEL}:guild`,
-        circuitKey: `deepseek:${DEEPSEEK_MODEL}:guild:${guildId}`,
-        call: (turns, persona, maxTokens) =>
-          callDeepSeek(turns, persona, maxTokens, {
-            apiKey: guildKey,
-            model: DEEPSEEK_MODEL,
-            reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
-            ...deepSeekOptions,
-          }),
-      };
+      const entry = guildKeyEntry(guildId, DEEPSEEK_MODEL, deepSeekOptions);
       return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
     }
     if (isWhitelisted && DEEPSEEK_API_KEY) {
@@ -360,7 +394,13 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
     // but fall through to flash as safety net
   }
 
-  // brief → flash model
+  // brief → flash model. A guild that brought its own key pays for its own
+  // brief calls too — before this, brief + own key ran on the OWNER's key with
+  // the daily limit waived, so the key the guild set was never used at all.
+  if (hasOwnKey) {
+    const entry = guildKeyEntry(guildId, DEEPSEEK_MODEL_FREE, deepSeekOptions);
+    return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
+  }
   if (!DEEPSEEK_API_KEY) {
     return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
@@ -369,7 +409,7 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
   // The daily counter pays for calls we actually intend to make. While the
   // entry sits at the tail it is a last resort that almost never runs, so
   // charging the guild's 20/day up front would burn the quota on nothing.
-  if (!hasOwnKey && !isWhitelisted && !demoted) {
+  if (!isWhitelisted && !demoted) {
     const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
     if (!rateCheck.allowed) {
       console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
@@ -412,7 +452,7 @@ function buildVisionEntry(guildId, images) {
   if (only && only !== "deepseek") return null;
   if (!DEEPSEEK_VISION_MODEL) return null;
 
-  const guildKey = hasGuildApiKey(guildId) ? getGuildApiKey(guildId) : null;
+  const guildKey = isGuildKeyUsable(guildId) ? getGuildApiKey(guildId) : null;
   const apiKey = guildKey || DEEPSEEK_API_KEY;
   if (!apiKey) return null;
 
@@ -438,8 +478,11 @@ function buildVisionEntry(guildId, images) {
     // A guild key's failure must not blind the owner key (or other guilds).
     circuitKey: guildKey ? `${label}:guild:${guildId}` : label,
     options,
-    call: (turns, persona, maxTokens) =>
-      callDeepSeek(turns, persona, maxTokens, options),
+    call: guildKey
+      ? trackGuildKey(guildId, (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options))
+      : (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options),
   };
 }
 
@@ -454,7 +497,7 @@ function buildGuildChain(
   // A free guild that has burned its daily DeepSeek quota does not get to spend
   // the owner's key on pictures either — the quota exists to cap owner spend,
   // and vision is the more expensive half of it.
-  if (result.rateLimited && !hasGuildApiKey(guildId)) return result;
+  if (result.rateLimited) return result;
 
   const vision = buildVisionEntry(guildId, images);
   if (!vision) return result;
@@ -747,7 +790,7 @@ async function generateAIReply(message, userText, options = {}) {
         displayName: message.client?.user?.username || "西寶",
       });
     }
-    const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
+    const isPremium = isGuildKeyUsable(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
       `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
     );
@@ -786,7 +829,12 @@ async function generateAIReply(message, userText, options = {}) {
       }
     }
 
-    return resolveEmojis ? resolveCustomEmojis(capped, emojiMap) : capped;
+    // Told once, in the channel that hit it, right after the reply the demoted
+    // tier produced — not recorded into memory, it is ops, not conversation.
+    const reply = consumeGuildKeyNotice(message.guildId)
+      ? `${capped}\n\n${GUILD_KEY_REJECTED_NOTICE}`
+      : capped;
+    return resolveEmojis ? resolveCustomEmojis(reply, emojiMap) : reply;
   }
 
   console.warn(
