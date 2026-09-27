@@ -65,6 +65,7 @@ function extractSticker(text, catalog) {
     // 3 stickers per message, but a reply carrying a pile of them reads as spam
     // and the library path can only attach one image cleanly.
     if (entry && !picked) picked = entry;
+    if (!entry) console.log(`[sticker] dropped unknown [貼圖:${name.trim()}]`);
     return "";
   });
 
