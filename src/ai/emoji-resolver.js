@@ -273,6 +273,9 @@ function resolveCustomEmojis(text, emojiMap) {
       // so it never reaches the user as literal ":fake:" garbage. Keep pure-digit
       // tokens like :30: which are likely timestamps/ratios, not emoji attempts.
       if (/^\d+$/.test(name)) return match;
+      // Logged so we can see which names models invent and how often — the
+      // data for deciding whether a name deserves an EMOJI_ALIASES entry.
+      console.log(`[emoji] dropped unknown :${name}:`);
       return "";
     };
 
