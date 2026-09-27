@@ -97,6 +97,7 @@
 | `GEMINI_API_KEY` | — | Optional. Last-layer fallback. **See [ai-providers.md](ai-providers.md) for billing trap** |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
 | `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `kimi`, `groq`, `gemini`. Empty = full chain; `KIMI_ENABLED=false` still keeps Kimi disabled |
+| `OPENAI_REASONING_EFFORT` | —（API 預設） | Luna 的 `reasoning_effort`（`low`/`medium`/`high`）。不設 = API 預設，閒聊約想 50 token、正經問題約 300。`high` 實測多 100～200 token、每則約多 $0.0002；讓解釋更準，但改不了語氣 |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
 | `RECAP_KIMI_TIMEOUT_MS` | `45000` | Daily-recap-only Kimi timeout; interactive replies still use `AI_TIMEOUT_MS` |
 | `RECAP_DEEPSEEK_TIMEOUT_MS` | `90000` | Daily-recap-only DeepSeek timeout. Recaps explicitly keep thinking enabled and retain `DEEPSEEK_REASONING_HEADROOM` |

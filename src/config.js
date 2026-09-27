@@ -396,6 +396,10 @@ module.exports = {
     "OPENAI_REASONING_HEADROOM",
     768,
   ),
+  // Unset = the API default (Luna adapts per prompt: ~50 tokens on chit-chat,
+  // ~300 on a real question). "high" measured +100~200 tokens, ~$0.0002/reply
+  // (2026-09-27); it sharpens explanations, not 西寶's voice.
+  OPENAI_REASONING_EFFORT: process.env.OPENAI_REASONING_EFFORT || "",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   // gemini-2.0-flash is retired ("no longer available", 404). 3.6 over the
   // newer 3.8 on purpose: this is the last-resort layer, where availability

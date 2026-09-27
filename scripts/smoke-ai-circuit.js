@@ -28,6 +28,7 @@ delete process.env.AI_PROVIDER;
 process.env.DEEPSEEK_PREMIUM_GUILD_IDS = "wl-guild";
 process.env.AI_FREE_DAILY_LIMIT = "20";
 process.env.AI_OWNER_DAILY_LIMIT = "1500";
+delete process.env.OPENAI_REASONING_EFFORT;
 
 const {
   parseRetryAfterMs,
@@ -879,6 +880,16 @@ async function main() {
     assert.equal(getUsage(OWNER_TOTAL_KEY).count, 0);
   });
 
+  it("a whitelisted guild keeps DeepSeek first at peak (paid tier and brief)", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    for (const tier of [standardTier, briefTier]) {
+      const { chain } = buildGuildChain("wl-guild", tier, {}, PEAK);
+      assert.ok(chain[0].label.startsWith("deepseek:"), `expected DeepSeek first, got ${chain[0].label}`);
+    }
+  });
+
   it("a guild's OWN key is never demoted at peak", () => {
     resetKeyCache();
     resetRateLimiter();
@@ -1129,6 +1140,9 @@ async function main() {
         180 + OPENAI_REASONING_HEADROOM,
         "OpenAI bills reasoning against max_completion_tokens too",
       );
+      assert.equal(requestBody.reasoning_effort, undefined, "unset effort leaves the API default");
+      await callOpenAI([{ role: "user", content: "hi" }], "persona", 180, { reasoningEffort: "high" });
+      assert.equal(requestBody.reasoning_effort, "high");
     } finally {
       global.fetch = originalFetch;
     }

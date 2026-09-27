@@ -4,6 +4,7 @@ const {
   OPENAI_MODEL,
   OPENAI_BASE_URL,
   OPENAI_REASONING_HEADROOM,
+  OPENAI_REASONING_EFFORT,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GEMINI_REASONING_HEADROOM,
@@ -300,6 +301,8 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
     messages: buildOpenAIMessages(turns, persona),
     max_completion_tokens: maxTokens + headroom,
   };
+  const effort = overrides.reasoningEffort ?? OPENAI_REASONING_EFFORT;
+  if (effort) body.reasoning_effort = effort;
   const label = `openai:${model}`;
 
   const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;
