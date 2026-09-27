@@ -62,7 +62,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
-4. After merge, redeploy (see [deploy.md](docs/deploy.md)). **Prod is the main checkout's working tree on whatever branch it currently has** — there is no `deploy/*` branch; check `git branch --show-current` there and merge the PR into *that* branch, so deploying never needs a `git checkout` in the shared folder.
+4. **PRs merge into `main`** (since 2026-09-27). Then redeploy (see [deploy.md](docs/deploy.md)): prod is the main checkout's working tree, still on branch `fix/recap-deepseek-empty` — it tracks main by `git merge --ff-only origin/main` there, so deploying never needs a `git checkout` in the shared folder. Never commit directly on that branch, or the ff breaks.
 5. Status reports: include **current branch, commit hash, push status, test status**. All human-facing communication in 繁體中文.
 
 ## Quick start (local)
