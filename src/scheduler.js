@@ -7,6 +7,7 @@ const {
 } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
+const { getGuildLanguage } = require("./language-store");
 const { trimDescription } = require("./utils");
 const {
   AI_PROVIDER_CHAIN,
@@ -72,6 +73,7 @@ const TASK_TYPES = {
         schedule,
         selection,
         quiz: Math.random() < STORY_QUIZ_RATE,
+        language: getGuildLanguage(guild.id),
       });
       console.log(
         `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length} quiz=${built.quiz}`,

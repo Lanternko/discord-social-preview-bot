@@ -59,6 +59,15 @@ Same message.id is processed only once. `inFlightReplies.add("mention:${message.
 
 Each AI plan has a hardcoded plan-specific comment.
 
+## `/language` (reply language per guild)
+
+Same permission model as `/ai-tier`: anyone can view, `ManageGuild` switches. Choices: 繁體中文 (default) / 简体中文 / 日本語 / English. Catalog + prompt snippets in [src/reply-language.js](../src/reply-language.js); storage `data/language-settings.json` (default stored as absence) via [src/language-store.js](../src/language-store.js).
+
+- **Fixed, not auto-detected — on purpose.** Short messages (`lol`, `草`, `ok`), kanji-only Japanese and 繁簡同形 text make detection wrong on exactly the most common messages, and a model-side guess fails silently. Revisit only if a genuinely mixed-language guild asks.
+- Persona gets `{LANGUAGE}` substituted **and**, for non-default languages, a `## 回覆語言` block appended (so a custom `AI_PERSONA` without the placeholder still switches). The block insists the character survives the switch — without it English/Japanese drift into assistant voice.
+- Story spec's language line comes from the same catalog (`storyRule`), passed via `buildStoryCraftBlock({ language })`.
+- Out of scope: hardcoded strings (preview errors, 抽籤, 道歉), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
+
 ## `/ai-tier` (AI plan per guild)
 
 Slash command — anyone can run `/ai-tier` (no arg) to view the current plan, model, and remaining free quota; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 AI 方案」。檢視則對所有人開放，方便群友確認目前設定。Internal keys are English; Discord UI labels are Chinese.

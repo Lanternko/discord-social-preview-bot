@@ -1475,6 +1475,7 @@ it("getTierConfig defaults to brief when guildId missing", () => {
     "{B_MIN}",
     "{B_MAX}",
     "{E_MAX}",
+    "{LANGUAGE}",
   ]) {
     assert.ok(
       !cfg.persona.includes(placeholder),
@@ -1482,6 +1483,45 @@ it("getTierConfig defaults to brief when guildId missing", () => {
     );
   }
 });
+it("default persona speaks 繁體中文 with no language block", () => {
+  const cfg = getTierConfig(undefined);
+  assert.match(cfg.persona, /繁體中文，上限 \d+ 句/);
+  assert.ok(!cfg.persona.includes("## 回覆語言"));
+});
+it("buildPersonaFromTemplate switches language and keeps the character", () => {
+  const out = buildPersonaFromTemplate("{LANGUAGE}，上限 {SENTENCE_MAX} 句", TIERS.brief, "ja");
+  assert.ok(out.startsWith("日文（日本語），上限 4 句"));
+  assert.match(out, /## 回覆語言/);
+  assert.match(out, /你還是同一個人/);
+  // A custom persona without the placeholder still gets switched.
+  assert.match(buildPersonaFromTemplate("custom", TIERS.brief, "en"), /用英文（English）回覆/);
+  // Unknown codes fall back to the default instead of breaking the persona.
+  assert.equal(buildPersonaFromTemplate("{LANGUAGE}", TIERS.brief, "xx"), "繁體中文");
+});
+
+console.log("language-store");
+{
+  const {
+    getGuildLanguage,
+    setGuildLanguage,
+    resetCacheForTests: resetLanguageCache,
+  } = require("../src/language-store");
+  it("defaults to zh-TW and round-trips a setting", () => {
+    const gid = "smoke-language-guild";
+    assert.equal(getGuildLanguage(undefined), "zh-TW");
+    assert.equal(getGuildLanguage(gid), "zh-TW");
+    setGuildLanguage(gid, "en");
+    resetLanguageCache();
+    assert.equal(getGuildLanguage(gid), "en");
+    setGuildLanguage(gid, "zh-TW"); // default = removed from the file
+    resetLanguageCache();
+    assert.equal(getGuildLanguage(gid), "zh-TW");
+  });
+  it("rejects unknown languages", () => {
+    assert.throws(() => setGuildLanguage("g", "klingon"), /invalid language/);
+  });
+}
+
 it("TIERS entries carry required fields", () => {
   for (const key of ["brief", "standard", "detailed"]) {
     const t = TIERS[key];

@@ -2,6 +2,12 @@ const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js")
 const { getMissingChannelPermissions } = require("./discord-io");
 const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
+const { getGuildLanguage, setGuildLanguage } = require("./language-store");
+const {
+  LANGUAGES,
+  VALID_LANGUAGES,
+  isValidLanguage,
+} = require("./reply-language");
 const {
   TIERS,
   TIER_UI_LABELS,
@@ -78,6 +84,23 @@ const TIER_COMMAND = {
         { name: "標準 — pro，2~8 句（需 API 金鑰）", value: "standard" },
         { name: "精細 — pro，3~15 句（需 API 金鑰）", value: "detailed" },
       ],
+    },
+  ],
+};
+
+const LANGUAGE_COMMAND = {
+  name: "language",
+  description: "查看或切換西寶回覆用的語言（切換需管理伺服器權限）",
+  options: [
+    {
+      name: "language",
+      description: "要切換的語言（不填則顯示目前設定）",
+      type: 3, // STRING
+      required: false,
+      choices: VALID_LANGUAGES.map((code) => ({
+        name: LANGUAGES[code].label,
+        value: code,
+      })),
     },
   ],
 };
@@ -256,6 +279,7 @@ async function ensureApplicationCommands(client) {
     SERVER_COUNT_COMMAND,
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
+    LANGUAGE_COMMAND,
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
     AI_KEY_COMMAND,
@@ -302,6 +326,7 @@ function buildHelpMessage() {
     "- `/voice`：讓西寶用語音回答",
     "- `/memory show`、`forget-me`、`guild`：查看或管理記憶；管理員可用 `forget-user` 刪除指定使用者的記憶",
     "- `/ai-tier`：查看 AI 方案；管理員可切換方案",
+    "- `/language`：查看西寶回覆用的語言；管理員可切換（繁體／简体／日本語／English）",
     "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
     "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
     "- `/debug-perms`：檢查目前頻道的機器人權限",
@@ -485,6 +510,69 @@ async function handleTierCommand(interaction) {
     });
   } catch (err) {
     console.warn(`[tier] setGuildTier failed: ${err.message}`);
+    await interaction.reply({
+      content: "切換失敗，請稍後再試。",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+// ── /language handler ─────────────────────────────────────────────────
+async function handleLanguageCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const code = interaction.options.getString("language");
+  const guildId = interaction.guildId;
+
+  if (!code) {
+    const current = getGuildLanguage(guildId);
+    await interaction.reply({
+      content: [
+        `**目前回覆語言：${LANGUAGES[current].label}**`,
+        "",
+        "可選：" + VALID_LANGUAGES.map((c) => LANGUAGES[c].label).join("、"),
+        "只影響西寶的 AI 回覆（聊天、講故事、排程貼文）；預覽的系統訊息、抽籤等固定文字維持繁體中文。",
+        "所有成員都能查看；切換語言需要「管理伺服器」權限。",
+      ].join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!isValidLanguage(code)) {
+    await interaction.reply({
+      content: `未知的語言：${code}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const canManageGuild = interaction.member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
+  );
+  if (!canManageGuild) {
+    await interaction.reply({
+      content: "需要「管理伺服器」權限才能切換語言。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    setGuildLanguage(guildId, code);
+    console.log(`[language] guild=${guildId} set language=${code} by user=${interaction.user.id}`);
+    await interaction.reply({
+      content: `之後西寶會用 **${LANGUAGES[code].label}** 回覆。這個設定已儲存，重啟後仍會保留。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    console.warn(`[language] setGuildLanguage failed: ${err.message}`);
     await interaction.reply({
       content: "切換失敗，請稍後再試。",
       flags: MessageFlags.Ephemeral,
@@ -1001,6 +1089,11 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
+  if (interaction.commandName === LANGUAGE_COMMAND.name) {
+    await handleLanguageCommand(interaction);
+    return;
+  }
+
   if (interaction.commandName === SCHEDULE_COMMAND.name) {
     await handleScheduleCommand(interaction, client);
     return;
@@ -1026,6 +1119,7 @@ module.exports = {
   SERVER_COUNT_COMMAND,
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
+  LANGUAGE_COMMAND,
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
   AI_KEY_COMMAND,
@@ -1036,6 +1130,7 @@ module.exports = {
   buildHelpMessage,
   buildPermissionDebugMessage,
   handleTierCommand,
+  handleLanguageCommand,
   handleScheduleCommand,
   handleMemoryCommand,
   handleAiKeyCommand,

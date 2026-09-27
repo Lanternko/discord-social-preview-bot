@@ -2,6 +2,7 @@ const { updateSchedule } = require("./schedule-store");
 const { trimDescription, sanitizeName } = require("./utils");
 const { collectFromMessage } = require("./ai/vision");
 const { buildStoryQuizBlock } = require("./story-quiz");
+const { languageSpec } = require("./reply-language");
 
 const BEDTIME_LOOKBACK_MS = 18 * 60 * 60 * 1000;
 const MAX_INGREDIENTS = 8;
@@ -228,6 +229,7 @@ function buildStoryCraftBlock({
   guildName,
   mode = "scheduled",
   hasExtraMaterial = false,
+  language,
   rng = Math.random,
 } = {}) {
   const chat = mode === "chat";
@@ -304,7 +306,7 @@ function buildStoryCraftBlock({
     inspirationRule,
     "- 只有住址、電話、真實姓名這類個資才抽象。",
     "- 排版：標題下一行空白，之後 2～5 段，每段之間空一行。",
-    "- 全文用繁體中文（台灣用語），不要出現簡體字。",
+    languageSpec(language).storyRule,
     endingRule,
     "",
     movesHeader,
@@ -363,6 +365,7 @@ function buildBedtimeStoryPrompt({
   rng = Math.random,
   selection = null,
   quiz = false,
+  language,
 }) {
   const dateKey = localDateKey(now, schedule?.timezone || "Asia/Taipei");
   // The scheduler passes a selection whose images were already described
@@ -372,7 +375,7 @@ function buildBedtimeStoryPrompt({
   const ingredients = selected.filter((item) => ingredientSaid(item));
 
   const prompt = [
-    buildStoryCraftBlock({ guildName, mode: "scheduled", rng }),
+    buildStoryCraftBlock({ guildName, mode: "scheduled", language, rng }),
     "",
     buildStoryIngredientsBlock({ ingredients, activeChannels }),
     ...(quiz ? [buildStoryQuizBlock()] : []),
