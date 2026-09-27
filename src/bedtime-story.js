@@ -245,6 +245,15 @@ function buildStoryCraftBlock({
     ? "自己發明這個故事。不要套固定世界觀（營火、便利商店、太空歌劇、郵局、社團、都市傳說、夢境聊天室、假新聞播報、古董店、舊貨鋪、修理鋪都不要當預設場景），除非素材自己指向那個地方。"
     : "自己發明今晚的故事。不要套固定世界觀（營火、便利商店、太空歌劇、郵局、社團、都市傳說、夢境聊天室、假新聞播報、古董店、舊貨鋪、修理鋪都不要當預設場景），除非今晚素材自己指向那個地方。";
 
+  // The requester's own brief outranks everything below. Without this the
+  // group-material rules won: 「講一個…的故事」 in 搖E露營 (2026-09-27) came
+  // back as a story about whatever meme the channel was on, with the asked-for
+  // premise dropped — despite 2.6k tokens of thinking, because the spec told
+  // her to build the main line from the group chat and forbade magic.
+  const requestRule = chat
+    ? "【最優先，蓋過上面所有規則】點故事的人如果在訊息裡給了設定（主角、角色、場景、世界觀、情節、氣氛、用途、結局，任何一項都算），這次就是寫**他要的那個故事**：他給的每一項都要做到，一項都不能丟、不能換；他要溫馨就溫馨、要拿來睡午覺就寫得平靜好睡，這時不必好笑。群組對話最多借一個小細節（一句台詞、一個群友客串），**群裡正在聊的梗不准當主線、不准當故事的核心事件**。上面跟他的設定衝突的規則（目標是好笑、融進兩則真實訊息、登場人數、不准靠魔法）這次全部作廢。只有他什麼設定都沒給（只說「講個故事」）時，才照上面的規則從群組對話挑主軸。"
+    : null;
+
   // Where the two real messages come from. Scheduled gets a curated buffet
   // block appended below; chat reads the 【最近群組對話】 turn chain.js injects
   // — whose own header says "不要直接複述", so this lifts that for this turn
@@ -253,7 +262,7 @@ function buildStoryCraftBlock({
   // every story that glued two unrelated lines 2/5 (「後門和良善沒有關聯」).
   const pickRule = "挑一則單獨看就懂、有情境的當主軸；只有另一個人的某一則跟它真的接得上時才加第二則，接不上就只用一則。其餘完全忽略。";
   const sourceRule = chat
-    ? `- 整個故事只有一個場景、一條主線。從上面【最近群組對話】裡${pickRule}（那份紀錄平常標著「不要直接複述」，只有在你確定要寫故事、真的動筆寫的時候不算——就是要你拿它當材料；判斷成不用寫故事的話，「不要直接複述」照舊。）`
+    ? `- 整個故事只有一個場景、一條主線。對方沒給設定時，從上面【最近群組對話】裡${pickRule}（那份紀錄平常標著「不要直接複述」，只有在你確定要寫故事、真的動筆寫的時候不算——就是要你拿它當材料；判斷成不用寫故事的話，「不要直接複述」照舊。）`
     : `- 整個故事只有一個場景、一條主線。從素材裡${pickRule}`;
 
   const inspirationRule = chat
@@ -302,6 +311,9 @@ function buildStoryCraftBlock({
     ...pickStoryCraftMoves(STORY_CRAFT_MOVES, STORY_CRAFT_MOVE_COUNT, rng).map(
       (move) => `- ${move}`,
     ),
+    // Last on purpose: the dozen rules above all pull toward group material,
+    // and placed first this clause lost to them (A/B, 2026-09-27).
+    ...(requestRule ? ["", requestRule] : []),
     "）",
   ].join("\n");
 }
