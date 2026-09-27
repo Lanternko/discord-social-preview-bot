@@ -53,6 +53,7 @@ const {
   isProviderAvailable,
   recordProviderSuccess,
   recordProviderFailure,
+  TIMEOUT_STRIKE_WINDOW_MS,
   getCircuitSnapshot,
   resetCircuitState,
 } = require("../src/ai/circuit");
@@ -547,7 +548,7 @@ async function main() {
   it("recordProviderSuccess clears cooldown", () => {
     resetCircuitState();
     const now = 1_000_000;
-    recordProviderFailure("p1", { kind: "timeout" }, now);
+    recordProviderFailure("p1", { kind: "server" }, now);
     assert.equal(isProviderAvailable("p1", now), false);
     recordProviderSuccess("p1");
     assert.equal(isProviderAvailable("p1", now), true);
@@ -564,10 +565,39 @@ async function main() {
   it("snapshot reports cooldownRemainingMs", () => {
     resetCircuitState();
     const now = 1_000_000;
-    recordProviderFailure("p1", { kind: "timeout" }, now);
+    recordProviderFailure("p1", { kind: "server" }, now);
     const snap = getCircuitSnapshot(now + 10_000);
     assert.equal(snap[0].cooldownRemainingMs, 50_000);
     assert.equal(snap[0].available, false);
+  });
+
+  it("a single timeout is only a strike — provider stays available", () => {
+    resetCircuitState();
+    const now = 1_000_000;
+    assert.equal(recordProviderFailure("p1", { kind: "timeout" }, now), 0);
+    assert.equal(isProviderAvailable("p1", now), true);
+  });
+  it("second consecutive timeout cools the provider down", () => {
+    resetCircuitState();
+    const now = 1_000_000;
+    recordProviderFailure("p1", { kind: "timeout" }, now);
+    assert.equal(recordProviderFailure("p1", { kind: "timeout" }, now + 30_000), 60_000);
+    assert.equal(isProviderAvailable("p1", now + 30_000), false);
+    assert.equal(isProviderAvailable("p1", now + 90_001), true);
+  });
+  it("a success between timeouts resets the strike", () => {
+    resetCircuitState();
+    const now = 1_000_000;
+    recordProviderFailure("p1", { kind: "timeout" }, now);
+    recordProviderSuccess("p1");
+    assert.equal(recordProviderFailure("p1", { kind: "timeout" }, now + 1000), 0);
+    assert.equal(isProviderAvailable("p1", now + 1000), true);
+  });
+  it("timeouts further apart than the strike window don't add up", () => {
+    resetCircuitState();
+    const now = 1_000_000;
+    recordProviderFailure("p1", { kind: "timeout" }, now);
+    assert.equal(recordProviderFailure("p1", { kind: "timeout" }, now + TIMEOUT_STRIKE_WINDOW_MS + 1), 0);
   });
 
   console.log("runProviderChain");
@@ -597,7 +627,7 @@ async function main() {
 
   await itAsync("skips cooling-down provider, falls through to next", async () => {
     resetCircuitState();
-    recordProviderFailure("a", { kind: "timeout" });
+    recordProviderFailure("a", { kind: "server" });
     const calls = [];
     const chain = [
       { label: "a", call: async () => { calls.push("a"); return ok("from a"); } },
@@ -1360,6 +1390,28 @@ async function main() {
     } finally {
       global.fetch = originalFetch;
     }
+  });
+
+  console.log("typing indicator");
+  const { withTyping } = require("../src/typing");
+  await itAsync("withTyping re-sends typing while the reply is pending, stops after", async () => {
+    let typed = 0;
+    const channel = { sendTyping: async () => { typed += 1; } };
+    const result = await withTyping(channel, () => new Promise((r) => setTimeout(() => r("done"), 55)), { refreshMs: 20 });
+    assert.equal(result, "done");
+    assert.ok(typed >= 3, `expected >=3 typing pings, got ${typed}`);
+    const after = typed;
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(typed, after, "typing kept firing after the reply resolved");
+  });
+  await itAsync("a failing sendTyping never blocks the reply", async () => {
+    const channel = { sendTyping: () => { throw new Error("missing permission"); } };
+    assert.equal(await withTyping(channel, async () => "ok"), "ok");
+    assert.equal(await withTyping(null, async () => "no channel"), "no channel");
+  });
+  it("chat DeepSeek timeout defaults above the generic AI timeout", () => {
+    const { DEEPSEEK_CHAT_TIMEOUT_MS } = require("../src/config");
+    if (!process.env.DEEPSEEK_CHAT_TIMEOUT_MS) assert.equal(DEEPSEEK_CHAT_TIMEOUT_MS, 40000);
   });
 
   // cleanup

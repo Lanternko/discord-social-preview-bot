@@ -502,6 +502,11 @@ module.exports = {
     "AI_TIMEOUT_MS",
     parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
   ),
+  // DeepSeek entries of the @ chat chain only. Flash's ok latency has a long
+  // tail (p90 8 s, p99 23 s — the slow ones spend 1500-4750 reasoning tokens at
+  // ~190 tok/s), so AI_TIMEOUT_MS (25 s) cut off replies that were nearly done
+  // and handed the user to the fallback after already making them wait.
+  DEEPSEEK_CHAT_TIMEOUT_MS: parsePositiveIntEnv("DEEPSEEK_CHAT_TIMEOUT_MS", 40000),
   // Daily recaps run ahead of their publish time and may use a longer budget
   // without making interactive @ replies wait. DeepSeek keeps reasoning on,
   // but `high` effort has burned the entire 2948-token budget on hidden

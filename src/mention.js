@@ -2,6 +2,7 @@ const { pickRandom } = require("./utils");
 const { generateAIReply, isQuotaReply } = require("./ai/chain");
 const { detectSkill, buildSkillContext } = require("./ai/skills");
 const { extractSticker } = require("./ai/sticker-resolver");
+const { withTyping } = require("./typing");
 const {
   buildStickerCatalog,
   buildStickerSendPayload,
@@ -137,7 +138,7 @@ async function handleMention(message, client) {
     console.log(`[skill] hit id=${skill.id} user=${message.author.id}`);
   }
 
-  const aiReply = await generateAIReply(message, text, {
+  const aiReply = await withTyping(message.channel, () => generateAIReply(message, text, {
     stickerCatalog,
     ...(skillCtx
       ? {
@@ -145,9 +146,10 @@ async function handleMention(message, client) {
           minTokens: skillCtx.minTokens,
           minReplyChars: skillCtx.minReplyChars,
           extraUserContext: skillCtx.extraUserContext || "",
+          providerOptions: skillCtx.providerOptions || {},
         }
       : {}),
-  });
+  }));
   if (aiReply) {
     // A skill may normalise its own output format (the story pack forces the
     // first line into a `## ` heading). Never let that throw away the reply.

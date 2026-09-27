@@ -99,6 +99,7 @@
 | `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `kimi`, `groq`, `gemini`. Empty = full chain; `KIMI_ENABLED=false` still keeps Kimi disabled |
 | `OPENAI_REASONING_EFFORT` | —（API 預設） | Luna 的 `reasoning_effort`（`low`/`medium`/`high`）。不設 = API 預設，閒聊約想 50 token、正經問題約 300。`high` 實測多 100～200 token、每則約多 $0.0002；讓解釋更準，但改不了語氣 |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
+| `DEEPSEEK_CHAT_TIMEOUT_MS` | `40000` | @ 聊天鏈裡 DeepSeek 那幾層的逾時（owner flash/pro、guild key）。flash 慢的那幾則是在想（1500～4750 reasoning tokens、~190 tok/s），`AI_TIMEOUT_MS` 25 s 會在快寫完時砍掉。故事技能再拉到 60 s（`STORY_CHAT_DEEPSEEK_TIMEOUT_MS`，寫在 story.js）；等待期間有「正在輸入」提示 |
 | `RECAP_KIMI_TIMEOUT_MS` | `45000` | Daily-recap-only Kimi timeout; interactive replies still use `AI_TIMEOUT_MS` |
 | `RECAP_DEEPSEEK_TIMEOUT_MS` | `90000` | Daily-recap-only DeepSeek timeout. Recaps explicitly keep thinking enabled and retain `DEEPSEEK_REASONING_HEADROOM` |
 | `RECAP_GEMINI_TIMEOUT_MS` | `45000` | Daily-recap-only Gemini fallback timeout. The recap chain excludes Groq/Llama |

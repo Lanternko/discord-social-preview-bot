@@ -9,6 +9,7 @@ const {
   OPENAI_API_KEY,
   OPENAI_MODEL,
   STORY_OPENAI_TIMEOUT_MS,
+  DEEPSEEK_CHAT_TIMEOUT_MS,
   STORY_DEEPSEEK_MODEL,
   STORY_FLASH_MODEL,
   STORY_FLASH_TIMEOUT_MS,
@@ -400,7 +401,7 @@ function buildTextGuildChain(
   { metered = true } = {},
 ) {
   const only = AI_PROVIDER_FORCE;
-  const deepSeekOptions = providerOptions.deepSeek || {};
+  const deepSeekOptions = { timeoutMs: DEEPSEEK_CHAT_TIMEOUT_MS, ...providerOptions.deepSeek };
 
   // Kimi is the second-choice provider. KIMI_ENABLED=false removes it entirely
   // while the account has insufficient balance, without deleting its key.
