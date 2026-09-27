@@ -13,6 +13,20 @@ function parsePositiveIntEnv(name, defaultValue) {
   return parsed;
 }
 
+// Same as parsePositiveIntEnv but 0 is a valid value (used as "off").
+function parseNonNegativeIntEnv(name, defaultValue) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return defaultValue;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    console.warn(
+      `[config] invalid ${name}="${raw}", using default ${defaultValue}`,
+    );
+    return defaultValue;
+  }
+  return parsed;
+}
+
 function parseRateEnv(name, defaultValue) {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return defaultValue;
@@ -313,6 +327,10 @@ module.exports = {
     600000,
   ),
   EMBED_CHECK_DELAY_MS: parsePositiveIntEnv("EMBED_CHECK_DELAY_MS", 5000),
+  // X posts Discord already unfurls well (text-only / one image, not R-18) are
+  // left to the native embed: the bot waits up to this long for it to appear
+  // and only posts its own preview when it doesn't. 0 disables (always post).
+  NATIVE_EMBED_WAIT_MS: parseNonNegativeIntEnv("NATIVE_EMBED_WAIT_MS", 4000),
   MULTI_IMAGE_PREVIEW_COUNT: Math.min(
     10,
     parsePositiveIntEnv("MULTI_IMAGE_PREVIEW_COUNT", 3),

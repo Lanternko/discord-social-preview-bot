@@ -17,6 +17,7 @@ process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 // require so config.js snapshots it at import.
 process.env.BOT_OWNER_IDS = "OWNER";
 process.env.EMBED_CHECK_DELAY_MS = "1";
+process.env.NATIVE_EMBED_WAIT_MS = "30";
 
 // === MOCK SETUP ===
 // Pre-require the modules whose exports we need to override, then poke their
@@ -80,6 +81,7 @@ const { buildPttPayload } = require("../src/platforms/ptt");
 const { buildPinterestPayload } = require("../src/platforms/pinterest");
 const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
+const { nativeEmbedsCover } = require("../src/native-embed");
 const { handleReactionDelete } = require("../src/reaction-delete");
 const { sendAIReply, STICKER_MISS_REPLIES } = require("../src/mention");
 const { mergeStickerSources } = require("../src/stickers");
@@ -1645,6 +1647,58 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     } finally {
       _mockFetch = null;
     }
+  });
+
+  await it("twitter text-only / single-image post defers to Discord's native embed", async () => {
+    const tweet = (media) =>
+      new Response(JSON.stringify({ tweet: { media: { all: media } } }));
+    try {
+      _mockFetch = async () => tweet([]);
+      const [text] = await buildPreviewPayloads(["https://x.com/u/status/7"]);
+      assert.deepEqual(text.nativeEmbedCheck, { statusId: "7", requireImage: false });
+      _mockFetch = async () => tweet([{ type: "photo", url: "https://pbs.twimg.com/media/a.jpg" }]);
+      const [single] = await buildPreviewPayloads(["https://x.com/u/status/8"]);
+      assert.deepEqual(single.nativeEmbedCheck, { statusId: "8", requireImage: true });
+      // The native card is a still cover — video keeps the fixer's player.
+      _mockFetch = async () => tweet([{ type: "video", url: "https://video.twimg.com/v.mp4" }]);
+      const [video] = await buildPreviewPayloads(["https://x.com/u/status/9"]);
+      assert.equal(video.nativeEmbedCheck, null);
+      // Unknown post (lookup miss) keeps the always-post behaviour.
+      _mockFetch = async () => new Response("", { status: 500 });
+      const [miss] = await buildPreviewPayloads(["https://x.com/u/status/10"]);
+      assert.equal(miss.nativeEmbedCheck, null);
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
+  await it("native embed check: all-or-nothing, matched by status id, image when required", async () => {
+    const card = (id, extra = {}) => ({
+      url: `https://twitter.com/u/status/${id}`,
+      description: "本文",
+      ...extra,
+    });
+    const img = { image: { url: "https://pbs.twimg.com/media/a.jpg" } };
+    const msg = (embeds) => ({ id: "m", embeds, async fetch() { return this; } });
+    const textCheck = { nativeEmbedCheck: { statusId: "7", requireImage: false } };
+    const imgCheck = { nativeEmbedCheck: { statusId: "8", requireImage: true } };
+
+    assert.equal(await nativeEmbedsCover(msg([card("7")]), [textCheck]), true);
+    // Arrives on a later refetch.
+    const late = msg([]);
+    late.fetch = async function () { this.embeds = [card("7")]; return this; };
+    assert.equal(await nativeEmbedsCover(late, [textCheck]), true);
+    // Native card lost its image → the bot must still post.
+    assert.equal(await nativeEmbedsCover(msg([card("8")]), [imgCheck]), false);
+    assert.equal(await nativeEmbedsCover(msg([card("8", img)]), [imgCheck]), true);
+    // Another post's card doesn't count.
+    assert.equal(await nativeEmbedsCover(msg([card("99", img)]), [imgCheck]), false);
+    // One payload that can't defer → post everything (suppression is per message).
+    assert.equal(
+      await nativeEmbedsCover(msg([card("7")]), [textCheck, { content: "https://rxddit.com/r/x" }]),
+      false,
+    );
+    assert.equal(await nativeEmbedsCover(msg([card("7"), card("8", img)]), [textCheck, imgCheck]), true);
   });
 
   await it("twitter embed without the post's media advances to vxtwitter", async () => {
