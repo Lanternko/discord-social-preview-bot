@@ -96,6 +96,20 @@ function getUsage(guildId, now = Date.now()) {
   return { count: entry.count, date: entry.date, lastAt: entry.lastAt };
 }
 
+// One row in the same store counts every owner-paid reply across all guilds
+// (free + whitelisted). Per-guild limits bound each guild; this bounds the sum,
+// so a sudden wave of new guilds cannot grow the owner's bill unnoticed.
+const OWNER_TOTAL_KEY = "__owner_total__";
+
+function checkAndIncrementOwnerTotal(dailyLimit, now = Date.now()) {
+  return checkAndIncrement(OWNER_TOTAL_KEY, dailyLimit, now);
+}
+
+function isOwnerTotalExhausted(dailyLimit, now = Date.now()) {
+  if (!dailyLimit || dailyLimit <= 0) return false;
+  return getUsage(OWNER_TOTAL_KEY, now).count >= dailyLimit;
+}
+
 function resetForTests() {
   counters = new Map();
 }
@@ -104,7 +118,10 @@ module.exports = {
   STORE_PATH,
   DAY_TIMEZONE,
   todayString,
+  OWNER_TOTAL_KEY,
   checkAndIncrement,
+  checkAndIncrementOwnerTotal,
+  isOwnerTotalExhausted,
   getUsage,
   resetForTests,
 };

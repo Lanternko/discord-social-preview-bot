@@ -86,7 +86,8 @@
 | `STORY_QUIZ_RATE` | `0.34` | 睡前故事附「閱讀測驗」的機率（0～1）。題目跟故事同一次呼叫產出、另發一則，答案包在 spoiler；格式不合就只發故事。grep `[story-quiz]` |
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_PEAK_PREFER_FALLBACK` | `true` | 尖峰時段（UTC 平日 01–04、06–10）把 owner key 的 DeepSeek 移到鏈尾，改由 luna 先跑；設 `false` 則永遠 DeepSeek 優先 |
-| `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily DeepSeek calls for 入門 when the guild has no `/ai-key`; counters are in-memory and reset on restart |
+| `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily replies for guilds without `/ai-key` or whitelist — counts every reply whichever provider answers; over it → canned reply. Persisted in `data/ai-daily-usage.json`, resets at Taipei midnight |
+| `AI_OWNER_DAILY_LIMIT` | `1500` | Fuse on all owner-paid replies (free + whitelisted) per Taipei day; over it every owner-paid guild gets the canned reply. Own-key guilds are never counted |
 | `DEEPSEEK_REASONING_HEADROOM` | `2048` | Extra `max_tokens` added on top of the tier budget **for DeepSeek only**. Reasoning models (現在兩個 model 都預設 thinking) burn most of the budget on hidden `reasoning_content`; without headroom the tier's small display budget (brief=180) gets fully consumed → `finish_reason=length` with empty content. Visible length is still capped by `maxReplyChars`. 只有在明確關掉 thinking 時才適合設 0 |
 | `KIMI_API_KEY` | — | Optional. Second provider after DeepSeek |
 | `KIMI_ENABLED` | `true` | Set `false` to remove Kimi from all provider chains without deleting its key, for example while the account balance is empty |

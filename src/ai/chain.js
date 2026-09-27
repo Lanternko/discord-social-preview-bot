@@ -2,6 +2,7 @@ const {
   AI_PROVIDER_FORCE,
   AI_LONG_TERM_MEMORY_ENABLED,
   AI_FREE_DAILY_LIMIT,
+  AI_OWNER_DAILY_LIMIT,
   AI_PEAK_PREFER_FALLBACK,
   EMOJI_TRUSTED_GUILD_IDS,
   APP_EMOJI_ENABLED,
@@ -98,7 +99,11 @@ const {
   clearGuildKeyRejection,
   consumeGuildKeyNotice,
 } = require("./guild-key-store");
-const { checkAndIncrement } = require("./rate-limiter");
+const {
+  checkAndIncrement,
+  checkAndIncrementOwnerTotal,
+  isOwnerTotalExhausted,
+} = require("./rate-limiter");
 
 const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
 const GUILD_KEY_REJECTED_NOTICE =
@@ -329,6 +334,42 @@ function trackGuildKey(guildId, call) {
   };
 }
 
+// Owner-paid replies are metered per REPLY, whichever layer answers it. The
+// counter used to charge only the DeepSeek entry, so a guild past its quota
+// simply kept talking on Luna — also the owner's bill, with no limit at all.
+// Returns null when the reply may go ahead, else which limit stopped it.
+function meterOwnerPaidReply(guildId, isWhitelisted) {
+  if (isOwnerTotalExhausted(AI_OWNER_DAILY_LIMIT)) return "owner";
+  if (!isWhitelisted && !checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT).allowed) {
+    return "guild";
+  }
+  checkAndIncrementOwnerTotal(AI_OWNER_DAILY_LIMIT);
+  return null;
+}
+
+// Zero-cost, in-character replies for a metered-out request. The ops line says
+// which limit it was and how it lifts, so nobody reads silence as a crash.
+const QUOTA_REPLIES = {
+  guild: `今天被叫太多次了…我先休息一下，明天再陪你們聊 ///\n-# 本伺服器今天的免費額度（${AI_FREE_DAILY_LIMIT} 次）用完了，台北時間 0 點重置；管理員可用 \`/ai-key set\` 自帶金鑰解除限制。`,
+  owner: `嗚…今天真的講不動了，明天再來找我好不好 ///\n-# 西寶今天整體的免費額度用完了，台北時間 0 點重置；自帶金鑰（\`/ai-key set\`）的伺服器不受影響。`,
+};
+const QUOTA_REPLY_SET = new Set(Object.values(QUOTA_REPLIES));
+
+// Lets the caller skip reply post-processing (a skill's heading rewrite) on a
+// canned quota line.
+function isQuotaReply(text) {
+  return QUOTA_REPLY_SET.has(text);
+}
+
+function meteredOut(guildId, reason) {
+  console.log(
+    reason === "owner"
+      ? `[ai] owner daily limit hit (${AI_OWNER_DAILY_LIMIT}) guild=${guildId}, canned reply`
+      : `[ai] guild=${guildId} hit daily limit (${AI_FREE_DAILY_LIMIT}), canned reply`,
+  );
+  return { chain: [], rateLimited: true, limitReason: reason };
+}
+
 function guildKeyEntry(guildId, model, deepSeekOptions) {
   const guildKey = getGuildApiKey(guildId);
   return {
@@ -348,7 +389,15 @@ function guildKeyEntry(guildId, model, deepSeekOptions) {
 // shared fallback. Guilds with their own API key use that key for DeepSeek;
 // whitelisted guilds use the owner's key; free guilds (brief only) use the
 // owner's key with a daily rate limit.
-function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = new Date()) {
+// `metered: false` is for background work (the profile sweep): the daily
+// limits count replies people asked for, not housekeeping.
+function buildTextGuildChain(
+  guildId,
+  tierConfig,
+  providerOptions = {},
+  now = new Date(),
+  { metered = true } = {},
+) {
   const only = AI_PROVIDER_FORCE;
   const deepSeekOptions = providerOptions.deepSeek || {};
 
@@ -380,6 +429,8 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
       return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
     }
     if (isWhitelisted && DEEPSEEK_API_KEY) {
+      const limited = metered && meterOwnerPaidReply(guildId, true);
+      if (limited) return meteredOut(guildId, limited);
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}`,
         call: (turns, persona, maxTokens) =>
@@ -401,20 +452,13 @@ function buildTextGuildChain(guildId, tierConfig, providerOptions = {}, now = ne
     const entry = guildKeyEntry(guildId, DEEPSEEK_MODEL_FREE, deepSeekOptions);
     return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
+  // Everything below is paid by the owner — DeepSeek and the fallback alike —
+  // so the reply is metered before any layer is chosen, peak window or not.
+  const limited = metered && meterOwnerPaidReply(guildId, isWhitelisted);
+  if (limited) return meteredOut(guildId, limited);
+
   if (!DEEPSEEK_API_KEY) {
     return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
-  }
-
-  // Free guild (brief) — check daily rate limit
-  // The daily counter pays for calls we actually intend to make. While the
-  // entry sits at the tail it is a last resort that almost never runs, so
-  // charging the guild's 20/day up front would burn the quota on nothing.
-  if (!isWhitelisted && !demoted) {
-    const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
-    if (!rateCheck.allowed) {
-      console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
-      return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: true };
-    }
   }
 
   const entry = {
@@ -492,11 +536,10 @@ function buildGuildChain(
   providerOptions = {},
   now = new Date(),
   images = [],
+  meterOptions = {},
 ) {
-  const result = buildTextGuildChain(guildId, tierConfig, providerOptions, now);
-  // A free guild that has burned its daily DeepSeek quota does not get to spend
-  // the owner's key on pictures either — the quota exists to cap owner spend,
-  // and vision is the more expensive half of it.
+  const result = buildTextGuildChain(guildId, tierConfig, providerOptions, now, meterOptions);
+  // A metered-out reply makes no call at all, pictures included.
   if (result.rateLimited) return result;
 
   const vision = buildVisionEntry(guildId, images);
@@ -596,13 +639,14 @@ async function generateAIReply(message, userText, options = {}) {
   const referenced = includeContext ? await fetchReferencedMessage(message) : null;
   const images = await loadVisionImages(message, referenced);
 
-  const { chain: guildChain, rateLimited } = buildGuildChain(
+  const { chain: guildChain, rateLimited, limitReason } = buildGuildChain(
     message.guildId,
     tierConfig,
     providerOptions,
     new Date(),
     images,
   );
+  if (rateLimited) return QUOTA_REPLIES[limitReason];
   if (guildChain.length === 0) return null;
   const userTurn = buildUserTurn(message, userText, buildImageNote(images.length));
   const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
@@ -838,7 +882,7 @@ async function generateAIReply(message, userText, options = {}) {
   }
 
   console.warn(
-    `[ai] chain exhausted (${guildChain.length} providers tried${rateLimited ? ", DeepSeek rate-limited" : ""}), falling back to hardcoded reply`,
+    `[ai] chain exhausted (${guildChain.length} providers tried), falling back to hardcoded reply`,
   );
   return null;
 }
@@ -858,4 +902,6 @@ module.exports = {
   getPersonalMemoryContextEntries,
   runProviderChain,
   generateAIReply,
+  isQuotaReply,
+  QUOTA_REPLIES,
 };

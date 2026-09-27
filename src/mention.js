@@ -1,5 +1,5 @@
 const { pickRandom } = require("./utils");
-const { generateAIReply } = require("./ai/chain");
+const { generateAIReply, isQuotaReply } = require("./ai/chain");
 const { detectSkill, buildSkillContext } = require("./ai/skills");
 const { extractSticker } = require("./ai/sticker-resolver");
 const {
@@ -152,7 +152,7 @@ async function handleMention(message, client) {
     // A skill may normalise its own output format (the story pack forces the
     // first line into a `## ` heading). Never let that throw away the reply.
     let finalReply = aiReply;
-    if (skillCtx?.postProcess) {
+    if (skillCtx?.postProcess && !isQuotaReply(aiReply)) {
       try {
         finalReply = skillCtx.postProcess(aiReply) || aiReply;
       } catch (err) {
