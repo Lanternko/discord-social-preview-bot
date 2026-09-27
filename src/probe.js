@@ -12,6 +12,7 @@ const {
   THREADS_PROBE_QUEUE_TIMEOUT_MS,
   THREADS_METADATA_CACHE_TTL_MS,
 } = require("./config");
+const { t } = require("./system-text");
 
 const execFileAsync = promisify(execFile);
 
@@ -185,7 +186,9 @@ function salvageLoginWallMedia(metadata, url) {
   const handle = url.match(/\/@([A-Za-z0-9._]+)\/post\//)?.[1];
   return {
     ...metadata,
-    title: handle ? `@${handle} 的 Threads 貼文` : "Threads 貼文",
+    title: handle
+      ? t("threads.postBy", { author: handle, kind: t("threads.post") })
+      : t("threads.post"),
     description: null,
     image: images[0] || null,
     twitterCard: images.length ? "summary_large_image" : null,

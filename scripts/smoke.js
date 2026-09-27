@@ -1661,6 +1661,65 @@ it("buildGenericFallbackEmbed honours overrides", () => {
 });
 
 console.log("");
+console.log("system-text: fixed bot text follows /language");
+{
+  const {
+    t: sysText,
+    runWithLanguage,
+    currentLanguage,
+    fortuneLabel,
+    fortuneComments,
+    FORTUNE_TIERS,
+  } = require("../src/system-text");
+  const { VALID_LANGUAGES } = require("../src/reply-language");
+  const { FORTUNE_RESULTS } = require("../src/mention");
+
+  it("every key and fortune tier renders in every language", () => {
+    const fs = require("fs");
+    const src = fs.readFileSync(require.resolve("../src/system-text"), "utf8");
+    const keys = [...src.matchAll(/^  "([a-z]+\.[A-Za-z]+)": \{/gm)].map((m) => m[1]);
+    assert.ok(keys.length > 20, `parsed ${keys.length} keys`);
+    const vars = { n: 2, owner: "o", author: "a", kind: "k", answer: "B", result: "r", comment: "c", limit: 20 };
+    for (const lang of VALID_LANGUAGES) {
+      for (const key of keys) {
+        const v = sysText(key, vars, lang);
+        assert.ok(
+          (typeof v === "string" && v.length) || (Array.isArray(v) && v.length),
+          `${key} empty for ${lang}`,
+        );
+      }
+      for (const tier of FORTUNE_TIERS) {
+        assert.ok(fortuneLabel(tier, lang), `${tier} label ${lang}`);
+        assert.ok(fortuneComments(tier, lang).length, `${tier} comments ${lang}`);
+      }
+    }
+    assert.deepEqual(FORTUNE_RESULTS.map((r) => r.label).sort(), [...FORTUNE_TIERS].sort());
+  });
+
+  it("no context → 繁中 (pre-/language behaviour)", () => {
+    assert.equal(currentLanguage(), "zh-TW");
+    assert.match(sysText("preview.failed"), /預覽載入失敗/);
+  });
+
+  it("context reaches deep builders (OG-recovery footer)", () => {
+    const out = runWithLanguage("ja", () =>
+      buildGenericFallbackEmbed(
+        { title: "T" },
+        "https://x.com/u/status/1",
+        { platformLabel: "X (Twitter)" },
+      ).data.footer.text,
+    );
+    assert.equal(out, "X (Twitter) · 簡易プレビュー");
+    assert.equal(
+      runWithLanguage("en", () => sysText("preview.moreImages", { n: 1 })),
+      "1 more image",
+    );
+    // A bad stored code degrades to the default instead of throwing.
+    assert.equal(runWithLanguage("xx", () => currentLanguage()), "zh-TW");
+  });
+}
+
+console.log("");
 console.log("debug-perms null-guild guard");
 it("buildPermissionDebugMessage returns DM message when not in guild", () => {
   const msg = buildPermissionDebugMessage({ inGuild: () => false });

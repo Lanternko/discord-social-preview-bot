@@ -63,7 +63,7 @@ const {
   runProviderChain,
   buildGuildChain,
   isQuotaReply,
-  QUOTA_REPLIES,
+  quotaReply,
   RECAP_PROVIDER_CHAIN,
   STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
@@ -873,7 +873,12 @@ async function main() {
     assert.equal(r.rateLimited, true);
     assert.equal(r.limitReason, "guild");
     assert.equal(r.chain.length, 0, "no fallback, no vision");
-    assert.ok(isQuotaReply(QUOTA_REPLIES.guild));
+    assert.ok(isQuotaReply(quotaReply("guild")));
+    // A canned line that went out in another /language is still recognised.
+    const { runWithLanguage } = require("../src/system-text");
+    const jaLine = runWithLanguage("ja", () => quotaReply("owner"));
+    assert.match(jaLine, /無料枠/);
+    assert.ok(isQuotaReply(jaLine));
     assert.ok(!isQuotaReply("隨便一句"));
   });
 

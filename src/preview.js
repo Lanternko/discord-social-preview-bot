@@ -29,16 +29,17 @@ const {
 const { fetchPixivMeta, fetchPixivPageSizes } = require("./platforms/pixiv");
 const { buildBilibiliPayload } = require("./platforms/bilibili");
 const { buildThreadsPayload } = require("./platforms/threads");
+const { t } = require("./system-text");
 
 // Per-host visual cues for the OG-recovery embed. Helps users recognise the
 // platform when the bot has to fall back to a meta-only embed.
 const RECOVER_PROFILES = {
-  twitter: { color: 0x1da1f2, footerText: "X (Twitter) · 預覽降級" },
-  reddit: { color: 0xff4500, footerText: "Reddit · 預覽降級" },
-  pixiv: { color: 0x0096fa, footerText: "Pixiv · 預覽降級" },
-  bluesky: { color: 0x0085ff, footerText: "Bluesky · 預覽降級" },
-  facebook: { color: 0x1877f2, footerText: "Facebook · 預覽降級" },
-  generic: { color: 0x2b2d31, footerText: "預覽降級" },
+  twitter: { color: 0x1da1f2, platformLabel: "X (Twitter)" },
+  reddit: { color: 0xff4500, platformLabel: "Reddit" },
+  pixiv: { color: 0x0096fa, platformLabel: "Pixiv" },
+  bluesky: { color: 0x0085ff, platformLabel: "Bluesky" },
+  facebook: { color: 0x1877f2, platformLabel: "Facebook" },
+  generic: { color: 0x2b2d31 },
 };
 
 function buildSimpleFixerPayload(url, recoverProfile) {
@@ -117,7 +118,7 @@ function buildTwitterNativeCheck(meta) {
 function buildSensitiveTwitterPayload(url, meta, secondaryUrl) {
   const hint =
     meta.photoCount > meta.photos.length
-      ? `\n-# 還有 ${meta.photoCount - meta.photos.length} 張`
+      ? `\n-# ${t("preview.moreImages", { n: meta.photoCount - meta.photos.length })}`
       : "";
   console.log(
     `[twitter] sensitive → spoiler card images=${meta.photos.length}/${meta.photoCount} ${url}`,
@@ -167,7 +168,7 @@ async function buildPixivPayload(url) {
       spoilerImages: meta.images,
       spoilerContent:
         meta.pageCount > meta.images.length
-          ? `還有 ${meta.pageCount - meta.images.length} 張`
+          ? t("preview.moreImages", { n: meta.pageCount - meta.images.length })
           : null,
       spoilerMissContent: `🔞 ||${payload.content}||`,
       sourceUrl: url,

@@ -74,6 +74,7 @@ src/
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
 ├── language-store.js     # Per-guild /language persistence (data/language-settings.json)
 ├── reply-language.js     # /language catalog + persona/story language snippets
+├── system-text.js        # Fixed bot text per /language (t(key)) + per-event language context
 ├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
 └── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
 ```

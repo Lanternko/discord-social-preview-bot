@@ -10,6 +10,7 @@
 const { EmbedBuilder } = require("discord.js");
 const { trimDescription } = require("./utils");
 const { matchHardError } = require("./viewer-cards");
+const { t } = require("./system-text");
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const MAX_HTML_BYTES = 1024 * 1024; // 1 MiB cap to avoid OOM on rogue hosts.
@@ -211,11 +212,12 @@ function isErrorPageMetadata(meta) {
 }
 
 function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
-  const {
-    color = 0x2b2d31,
-    footerText = "預覽降級",
-    descriptionLimit = 1024,
-  } = options;
+  const { color = 0x2b2d31, platformLabel, descriptionLimit = 1024 } = options;
+  // The "degraded" label is rendered now, in the guild's language — callers
+  // only name the platform. An explicit footerText still wins.
+  const footerText =
+    options.footerText ??
+    [platformLabel, t("preview.degraded")].filter(Boolean).join(" · ");
 
   const embed = new EmbedBuilder()
     .setColor(color)

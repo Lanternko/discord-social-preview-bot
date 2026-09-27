@@ -1,10 +1,10 @@
 // Which language 西寶 writes her AI replies in, per guild (/language).
 //
-// Only AI-generated text follows this — chat, skills, recap, story. Hardcoded
-// strings (preview errors, fortune draws) and internal notes (memory
-// summaries) stay 繁體中文 on purpose: translating the former is a separate
-// job, and switching the latter would leave one guild's memory in two
-// languages.
+// AI-generated text (chat, skills, recap, story) follows this through the
+// prompt; fixed text the bot posts on its own (preview errors, embed labels,
+// fortune draws, quota notices) follows it through system-text.js. Internal
+// notes (memory summaries) stay 繁體中文 on purpose: switching them would leave
+// one guild's memory in two languages.
 
 const DEFAULT_LANGUAGE = "zh-TW";
 

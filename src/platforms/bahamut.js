@@ -125,7 +125,7 @@ async function buildBahamutPayload(url) {
     content: buildFallbackUrl(url),
     sourceUrl: url,
     recoverUrls: [buildFallbackUrl(url), url],
-    recoverEmbedOptions: { color: 0xf08c2e, footerText: "巴哈姆特 · 預覽降級" },
+    recoverEmbedOptions: { color: 0xf08c2e, platformLabel: "巴哈姆特" },
   };
 }
 
