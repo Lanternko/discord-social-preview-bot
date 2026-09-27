@@ -149,7 +149,7 @@ async function buildBilibiliPayload(url) {
               recoverUrls: [cleanFixerUrl],
               recoverEmbedOptions: {
                 color: 0x00a1d6,
-                footerText: "Bilibili · 預覽降級",
+                platformLabel: "Bilibili",
               },
               sourceUrl: url,
             }
@@ -164,7 +164,7 @@ async function buildBilibiliPayload(url) {
   return {
     content: fixerUrl,
     recoverUrls: [fixerUrl],
-    recoverEmbedOptions: { color: 0x00a1d6, footerText: "Bilibili · 預覽降級" },
+    recoverEmbedOptions: { color: 0x00a1d6, platformLabel: "Bilibili" },
     sourceUrl: url,
   };
 }

@@ -16,7 +16,7 @@ const { decodeHtmlEntities } = require("../og-fallback");
 
 const PIDGETS_ENDPOINT = "https://widgets.pinterest.com/v3/pidgets/pins/info/";
 const TIMEOUT_MS = 6000;
-const RECOVER_PROFILE = { color: 0xe60023, footerText: "Pinterest · 預覽降級" };
+const RECOVER_PROFILE = { color: 0xe60023, platformLabel: "Pinterest" };
 
 // /pin/123/ 或 /pin/some-slug--123/（slug 版 id 在最後的 `--` 之後）。
 function extractPinId(url) {

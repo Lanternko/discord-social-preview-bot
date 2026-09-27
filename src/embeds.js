@@ -2,6 +2,7 @@ const { EmbedBuilder } = require("discord.js");
 
 const { THREADS_EMBED_COLOR } = require("./config");
 const { trimDescription } = require("./utils");
+const { t } = require("./system-text");
 
 function buildThreadsCompactEmbed(url, metadata) {
   const embed = new EmbedBuilder()
@@ -147,7 +148,7 @@ function buildTwitterPostEmbed(url, metadata, footerText = "X (Twitter)") {
 // images ride below as spoilered attachments, so nothing explicit renders
 // until someone chooses to look.
 function buildTwitterSpoilerEmbed(url, metadata) {
-  return buildTwitterPostEmbed(url, metadata, "X (Twitter) · 🔞 已打碼");
+  return buildTwitterPostEmbed(url, metadata, `X (Twitter) · ${t("preview.spoilered")}`);
 }
 
 // A multi-image X post as the bot's own gallery: one embed per photo, all
@@ -184,7 +185,7 @@ function buildPixivWorkEmbed(url, metadata, footerText = "pixiv") {
 }
 
 function buildPixivSpoilerEmbed(url, metadata) {
-  return buildPixivWorkEmbed(url, metadata, "pixiv · 🔞 已打碼");
+  return buildPixivWorkEmbed(url, metadata, `pixiv · ${t("preview.spoilered")}`);
 }
 
 // Every page of a multi-page work as one album.
@@ -212,7 +213,7 @@ function buildGalleryEmbeds({ url, leadEmbed, images, hidden, color }) {
   if (hidden > 0) {
     const last = embeds[embeds.length - 1];
     const existing = last.data?.description;
-    const hint = `... 還有 ${hidden} 張`;
+    const hint = `... ${t("preview.moreImages", { n: hidden })}`;
     last.setDescription(existing ? `${existing}\n\n${hint}` : hint);
   }
   return embeds;

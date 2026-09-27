@@ -538,7 +538,7 @@ async function handleLanguageCommand(interaction) {
         `**目前回覆語言：${LANGUAGES[current].label}**`,
         "",
         "可選：" + VALID_LANGUAGES.map((c) => LANGUAGES[c].label).join("、"),
-        "只影響西寶的 AI 回覆（聊天、講故事、排程貼文）；預覽的系統訊息、抽籤等固定文字維持繁體中文。",
+        "西寶的 AI 回覆（聊天、講故事、排程貼文）和自動訊息（預覽失敗、限動、抽籤、額度提示等）都會跟著切換。",
         "所有成員都能查看；切換語言需要「管理伺服器」權限。",
       ].join("\n"),
       flags: MessageFlags.Ephemeral,
@@ -569,7 +569,7 @@ async function handleLanguageCommand(interaction) {
     setGuildLanguage(guildId, code);
     console.log(`[language] guild=${guildId} set language=${code} by user=${interaction.user.id}`);
     await interaction.reply({
-      content: `之後西寶會用 **${LANGUAGES[code].label}** 回覆。這個設定已儲存，重啟後仍會保留。`,
+      content: `之後西寶的回覆和自動訊息都會用 **${LANGUAGES[code].label}**。這個設定已儲存，重啟後仍會保留。`,
       flags: MessageFlags.Ephemeral,
     });
   } catch (err) {

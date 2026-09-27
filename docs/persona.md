@@ -66,7 +66,8 @@ Same permission model as `/ai-tier`: anyone can view, `ManageGuild` switches. Ch
 - **Fixed, not auto-detected — on purpose.** Short messages (`lol`, `草`, `ok`), kanji-only Japanese and 繁簡同形 text make detection wrong on exactly the most common messages, and a model-side guess fails silently. Revisit only if a genuinely mixed-language guild asks.
 - Persona gets `{LANGUAGE}` substituted **and**, for non-default languages, a `## 回覆語言` block appended (so a custom `AI_PERSONA` without the placeholder still switches). The block insists the character survives the switch — without it English/Japanese drift into assistant voice.
 - Story spec's language line comes from the same catalog (`storyRule`), passed via `buildStoryCraftBlock({ language })`.
-- Out of scope: hardcoded strings (preview errors, 抽籤, 道歉), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
+- **Fixed bot text follows it too** — preview failure / IG story replies, embed labels (預覽降級, 還有 N 張, Threads titles), 抽籤/道歉/greetings, quota notices, the story quiz header. Table in [src/system-text.js](../src/system-text.js); `index.js` opens a per-event AsyncLocalStorage context (`runInGuildLanguage`) and the scheduler does the same per task, so builders deep in `platforms/` call `t(key)` without a language arg. Outside a context → 繁中. New fixed user-visible string → add it to that table, not inline.
+- Out of scope: slash-command UI text (registered globally, not per guild), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
 
 ## `/ai-tier` (AI plan per guild)
 

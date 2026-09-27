@@ -11,6 +11,7 @@ const {
 const { resolveInstagramUrl } = require("../instagram-url");
 const { fetchPageProbeMetadata } = require("../probe");
 const { isViewerArtworkUrl } = require("../viewer-cards");
+const { t } = require("../system-text");
 
 // og:title is typically "DisplayName (@username) • Instagram…"
 async function fetchInstagramDisplayName(username) {
@@ -71,11 +72,11 @@ async function buildInstagramPayload(url) {
       console.log(
         `[preview] instagram-story owner=${storyOwner} displayName=${displayName ?? "n/a"} ${url}`,
       );
-      return { content: `這是 **${ownerLabel}** 的限動！` };
+      return { content: t("instagram.story", { owner: ownerLabel }) };
     }
     console.log(`[preview] instagram-story unknown-owner ${url}`);
     return {
-      content: "這是 Instagram 限動（但我抓不到是誰發的…抱歉）",
+      content: t("instagram.storyUnknown"),
     };
   }
 
@@ -85,9 +86,9 @@ async function buildInstagramPayload(url) {
   );
   const localFallback = new EmbedBuilder()
     .setColor(0xe1306c)
-    .setTitle("Instagram 貼文")
+    .setTitle(t("instagram.post"))
     .setURL(canonicalUrl)
-    .setDescription("預覽目前無法載入，請點標題前往原始貼文。");
+    .setDescription(t("preview.unavailable"));
   console.log(`[preview] instagram-viewer ${canonicalUrl}`);
   return {
     content: viewerUrls[0],

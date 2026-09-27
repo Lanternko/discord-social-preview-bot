@@ -21,6 +21,7 @@ const { fetchVideoAttachment } = require("./video");
 const { fetchSpoilerImageAttachments } = require("./image-attachment");
 const { fetchPanoramaAttachment } = require("./panorama");
 const { trimDescription } = require("./utils");
+const { t } = require("./system-text");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -443,7 +444,7 @@ async function sendPreviews(message, payloads) {
 async function apologyReply(originalMessage) {
   try {
     await originalMessage.reply({
-      content: "對不起對不起…預覽載入失敗了…我知道我不好… ///",
+      content: t("preview.failed"),
       allowedMentions: { repliedUser: false },
     });
   } catch (error) {
