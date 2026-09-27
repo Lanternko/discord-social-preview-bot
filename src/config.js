@@ -400,6 +400,18 @@ module.exports = {
   // ~300 on a real question). "high" measured +100~200 tokens, ~$0.0002/reply
   // (2026-09-27); it sharpens explanations, not 西寶's voice.
   OPENAI_REASONING_EFFORT: process.env.OPENAI_REASONING_EFFORT || "",
+  // GLM via Vercel AI Gateway (OpenAI-compatible) leads the owner-paid @ chat
+  // chain when enabled: it won a 20-case blind replay of real prod chats 11:3
+  // over deepseek-flash (2026-09-27; flash leaked 簡體 and broke emoji syntax).
+  // Its own short timeout, so a stall hands over to DeepSeek instead of making
+  // the user sit through 25 s. Effort/headroom default to what was tested.
+  GLM_ENABLED: (process.env.GLM_ENABLED || "false").toLowerCase() === "true",
+  AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+  GLM_MODEL: process.env.GLM_MODEL || "zai/glm-5.3-flash",
+  GLM_BASE_URL:
+    process.env.GLM_BASE_URL || "https://ai-gateway.vercel.sh/v1/chat/completions",
+  GLM_TIMEOUT_MS: parsePositiveIntEnv("GLM_TIMEOUT_MS", 12000),
+  GLM_REASONING_EFFORT: process.env.GLM_REASONING_EFFORT || "high",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   // gemini-2.0-flash is retired ("no longer available", 404). 3.6 over the
   // newer 3.8 on purpose: this is the last-resort layer, where availability
