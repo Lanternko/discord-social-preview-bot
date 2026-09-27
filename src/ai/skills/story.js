@@ -15,6 +15,7 @@ const {
   sanitizeBedtimeTitle,
 } = require("../../bedtime-story");
 const { buildStoryMaterial } = require("../story-ingredients");
+const { getGuildLanguage } = require("../../language-store");
 
 // A story is 180-420 字 plus a title, which does not fit 入門's 180-token /
 // 300-char budget — she would be cut off mid-sentence. These are FLOORS, not
@@ -79,6 +80,7 @@ module.exports = {
         guildName: message?.guild?.name,
         mode: "chat",
         hasExtraMaterial: Boolean(extraUserContext),
+        language: getGuildLanguage(message?.guildId),
       }),
       minTokens: STORY_MIN_TOKENS,
       minReplyChars: STORY_MIN_REPLY_CHARS,

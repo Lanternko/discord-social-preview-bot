@@ -1,6 +1,12 @@
 const { AI_PERSONA, DEEPSEEK_PREMIUM_GUILD_IDS } = require("./config");
 const { getGuildTier } = require("./tier-store");
 const { isGuildKeyUsable } = require("./ai/guild-key-store");
+const { getGuildLanguage } = require("./language-store");
+const {
+  DEFAULT_LANGUAGE,
+  languageSpec,
+  buildLanguagePersonaBlock,
+} = require("./reply-language");
 
 // Hardcoded tier metadata. Numbers aligned in todo.md under 西寶 AI 分級.
 // Internal keys are English (brief/standard/detailed); Discord UI shows 入門/標準/精細.
@@ -89,9 +95,11 @@ const TIER_REQUIRES_KEY = {
 
 // Substitutes every placeholder the persona template understands. Unknown
 // placeholders pass through unchanged — caller-provided `AI_PERSONA` overrides
-// may or may not use them.
-function buildPersonaFromTemplate(template, tier) {
+// may or may not use them. The language block is appended rather than
+// templated so a custom persona without {LANGUAGE} still switches language.
+function buildPersonaFromTemplate(template, tier, language = DEFAULT_LANGUAGE) {
   const replacements = {
+    "{LANGUAGE}": languageSpec(language).promptName,
     "{SENTENCE_MIN}": tier.sentenceMin,
     "{SENTENCE_MAX}": tier.sentenceMax,
     "{A_MIN}": tier.aMin,
@@ -106,7 +114,7 @@ function buildPersonaFromTemplate(template, tier) {
   for (const [key, value] of Object.entries(replacements)) {
     out = out.split(key).join(String(value));
   }
-  return out;
+  return out + buildLanguagePersonaBlock(language);
 }
 
 // The stored tier is what the guild chose; the effective tier is what it can
@@ -128,7 +136,7 @@ function getTierConfig(guildId) {
     ...base,
     ...(tierKey !== chosen ? { demotedFrom: chosen } : {}),
     label: TIER_UI_LABELS[tierKey],
-    persona: buildPersonaFromTemplate(AI_PERSONA, base),
+    persona: buildPersonaFromTemplate(AI_PERSONA, base, getGuildLanguage(guildId)),
   };
 }
 

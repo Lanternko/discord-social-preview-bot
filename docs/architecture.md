@@ -20,7 +20,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - **Guild welcome** — [guild-welcome.js](../src/guild-welcome.js): on `guildCreate` 西寶 posts a fixed self-intro (system channel, else top-most text channel she can post in). Fixed text, not an AI call — must work with the chain dead and must not spend the new guild's quota. Grep `[welcome]`.
 - **Mention** — [mention.js](../src/mention.js) is the `@西寶` dispatcher (抽籤 / 道歉 / AI / hardcoded fallback). See [persona.md](persona.md).
 - **Stickers** — [stickers.js](../src/stickers.js) is the sticker half that touches Discord + disk: it merges the current guild's stickers (sent by id) with 西寶's own image library under `assets/stickers/` (sent as an attachment, because Discord has no application-owned sticker API) into one catalog, and turns a picked entry into the send payload. The pure prompt/parse half is [ai/sticker-resolver.js](../src/ai/sticker-resolver.js). See [persona.md](persona.md).
-- **Slash commands** — [commands.js](../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/ai-key`, `/memory`, `/schedule`, and the opt-in `/voice`. [tier-store.js](../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
+- **Slash commands** — [commands.js](../src/commands.js) registers and handles `/servers`, `/debug-perms`, `/ai-tier`, `/language`, `/ai-key`, `/memory`, `/schedule`, and the opt-in `/voice`. [language-store.js](../src/language-store.js) persists `/language` to `data/language-settings.json`; the language catalog + persona block live in [reply-language.js](../src/reply-language.js). [tier-store.js](../src/tier-store.js) persists `/ai-tier` to `data/tier-settings.json`; [tier-config.js](../src/tier-config.js) does lookup + persona overlay (`getTierConfig(guildId)`).
 - **Voice reply** — [voice-reply.js](../src/voice-reply.js) adapts a slash interaction to the existing AI chain but supplies a complete bilingual spoken persona, excludes text-chat history, deliberately disables memory writes, and explicitly keeps DeepSeek V4's regular `high` thinking policy. It still injects familiarity, personal/guild memory, and recent group context, with explicit answer-the-question rules. The public transcript is Traditional Chinese while the semantically equivalent TTS script is natural Japanese; malformed plain Chinese output gets one context-free Japanese translation pass. The transcript is posted first, then [tts-client.js](../src/tts-client.js) calls local Irodori and [voice-message.js](../src/voice-message.js) sends Discord's raw `IS_VOICE_MESSAGE` payload. The existing mention path remains text-only.
 - **AI subsystem** — [ai/](../src/ai/) is its own world. See [ai-providers.md](ai-providers.md) for the chain shape and circuit breaker.
 
@@ -72,6 +72,8 @@ src/
 ├── guild-welcome.js      # guildCreate → fixed self-intro in system/first postable channel
 ├── commands.js           # Slash commands (/servers, /debug-perms, /ai-tier, /ai-key, /memory, /schedule)
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
+├── language-store.js     # Per-guild /language persistence (data/language-settings.json)
+├── reply-language.js     # /language catalog + persona/story language snippets
 ├── tier-config.js        # Tier lookup + persona overlay — getTierConfig(guildId)
 └── threads-probe.cjs     # Playwright subprocess (CJS — runs in own process)
 ```

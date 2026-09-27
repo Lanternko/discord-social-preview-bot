@@ -23,6 +23,8 @@ const path = require("node:path");
 const { AI_FREE_DAILY_LIMIT, DEEPSEEK_PREMIUM_GUILD_IDS } = require("../../config");
 const { getGuildTier } = require("../../tier-store");
 const { TIER_UI_LABELS } = require("../../tier-config");
+const { getGuildLanguage } = require("../../language-store");
+const { languageSpec } = require("../../reply-language");
 const { hasGuildApiKey, isGuildKeyUsable } = require("../guild-key-store");
 const { getUsage } = require("../rate-limiter");
 const { getGuildSchedules } = require("../../schedule-store");
@@ -120,6 +122,7 @@ function buildGuildStatusBlock(guild) {
   return [
     `伺服器：${guild.name}`,
     `AI 方案：${TIER_UI_LABELS[getGuildTier(guild.id)] || "入門"}`,
+    `回覆語言：${languageSpec(getGuildLanguage(guild.id)).label}`,
     describeQuota(guild.id),
     describeSchedules(guild.id, TASK_TYPES),
   ].join("\n");

@@ -261,6 +261,14 @@ check("chat pack lets the requester's own brief override the group-material rule
   assert.ok(!scheduled.includes("【最優先"), "a scheduled story has no requester");
 });
 
+check("story pack writes in the guild's language", () => {
+  const def = buildStoryCraftBlock({ mode: "chat" });
+  assert.match(def, /全文用繁體中文/);
+  const en = buildStoryCraftBlock({ mode: "scheduled", guildName: "X", language: "en" });
+  assert.match(en, /全文用自然的英文/);
+  assert.ok(!en.includes("全文用繁體中文"), "default language rule leaked into an English story");
+});
+
 check("chat pack keeps the tuned spec", () => {
   const chat = buildStoryCraftBlock({ guildName: "測試群", mode: "chat" });
   assert.ok(chat.includes("`## `"), "lost the markdown title rule");
