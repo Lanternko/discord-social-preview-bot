@@ -896,8 +896,7 @@ async function generateAIReply(message, userText, options = {}) {
       }
       if (guildId && groupContextLines && groupContextLines.length > 0) {
         const guildName = message.guild?.name;
-        const ctxStrings = groupContextLines.map((e) => e.line);
-        appendPendingContext(guildId, guildName, ctxStrings);
+        appendPendingContext(guildId, guildName, groupContextLines);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
 
         recordAliasContext(guildId, groupContextLines);

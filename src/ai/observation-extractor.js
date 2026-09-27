@@ -5,6 +5,8 @@ const {
   appendObservations,
   setProfileItems,
   listPendingBacklog,
+  listUserProfiles,
+  confirmedAliases,
   isStableEvidence,
   isItemStale,
   mergeEvidenceNewest,
@@ -20,7 +22,13 @@ const {
   getPendingContexts,
   clearPendingContexts,
   appendObservations: appendGuildObservations,
-  setConsolidatedProfile: setGuildConsolidatedProfile,
+  setGuildProfileItems,
+  GUILD_FIELDS,
+  GUILD_ITEM_TEXT_MAX_LEN,
+  isGuildStableEvidence,
+  guildFieldOf,
+  isGuildItemStale,
+  sanitizeGuildItems,
 } = require("../guild-profile-store");
 
 const EXTRACT_MIN_COUNT = 5;
@@ -427,14 +435,22 @@ function earliestEvidenceAt(evidence) {
 // moves forward when a NEW observation backs it (carrying an old item forward
 // verbatim does not re-confirm it — that's what lets impressions decay); and
 // it is hedged as 或許 unless the pooled evidence clears the stability bar or
-// it inherits from a source that already had.
-function resolveConsolidatedItems(parsed, sources, now = Date.now()) {
+// it inherits from a source that already had. `schema` swaps in the guild
+// profile's fields / stability bar; the provenance rules are the same.
+const USER_ITEM_SCHEMA = {
+  fields: PROFILE_FIELDS,
+  fieldOf: fieldByKeyOrLabel,
+  isStable: isStableEvidence,
+  sanitize: sanitizeItems,
+};
+
+function resolveConsolidatedItems(parsed, sources, now = Date.now(), schema = USER_ITEM_SCHEMA) {
   if (!Array.isArray(parsed)) return null;
   const out = {};
-  for (const f of PROFILE_FIELDS) out[f.key] = [];
+  for (const f of schema.fields) out[f.key] = [];
 
   for (const it of parsed) {
-    const field = fieldByKeyOrLabel(it.field);
+    const field = schema.fieldOf(it.field);
     if (!field) continue;
     const cited = [...new Set(it.from)].map((id) => sources.get(id)).filter(Boolean);
     if (cited.length === 0) continue;
@@ -458,13 +474,13 @@ function resolveConsolidatedItems(parsed, sources, now = Date.now()) {
     const firstAt = firstCandidates.length > 0 ? Math.min(...firstCandidates) : now;
 
     const sourceTentative = (c) => (c.kind === "obs" ? !c.stable : Boolean(c.tentative));
-    const tentative = !isStableEvidence(evidence) && cited.every(sourceTentative);
+    const tentative = !schema.isStable(evidence) && cited.every(sourceTentative);
 
     out[field.key].push({ text: it.text, evidence, firstAt, lastSeenAt, tentative });
   }
 
-  const clean = sanitizeItems(out);
-  const total = PROFILE_FIELDS.reduce((n, f) => n + clean[f.key].length, 0);
+  const clean = schema.sanitize(out);
+  const total = schema.fields.reduce((n, f) => n + clean[f.key].length, 0);
   return total > 0 ? clean : null;
 }
 
@@ -532,38 +548,77 @@ const GUILD_CONSOLIDATE_TIME_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const guildExtractInFlight = new Set();
 const guildConsolidateInFlight = new Set();
 
-const GUILD_EXTRACTION_PERSONA = `你是一個觀察力很強的助手。你的工作是從 Discord 群組的聊天紀錄中提取**群組整體的穩定特徵**。
+const GUILD_EXTRACT_MAX_OBSERVATIONS = 3;
+
+const GUILD_EXTRACTION_PERSONA = `你是一個觀察力很強的助手。你的工作是從 Discord 群組的聊天紀錄中提取**群組整體的穩定特徵**，並為每一條標註依據。
+
+## 資料格式
+聊天紀錄逐行編號（L1、L2…），格式是「[暱稱]: 內容」；[連結預覽] 是群友貼的外部連結內容。
 
 ## 規則
-- 只記錄群組整體的廣泛、非私人特徵：常聊話題、互動風格、常見梗/用語、群內氣氛
+- 只記錄群組整體的廣泛、非私人特徵：常聊話題、互動風格、常見梗/用語
 - **不記錄**：個人私事、敏感推測（政治傾向、健康、性取向、宗教）、單次情緒、吵架
-- **不記錄「某人怎樣」**——這是群組記憶，不是個人記憶；如果片段提到個人，只能抽象成群組話題或用語
+- **不記錄「某人怎樣」**——這是群組記憶，不是個人記憶；不要出現任何人的暱稱或綽號，梗也不能是「拿某人開玩笑」
+- **不記錄群友怎麼用西寶／機器人**（叫她講故事、要貼圖、出題、問功能、用連結預覽）——那是 bot 的使用紀錄，不是群的氣氛
+- 同一件事要在**不同行**出現才算特徵；只出現一次的不要寫
 - 不確定就回空 observations
-- 每條 observation 不超過 30 字
+- 每條 observation 不超過 30 字，只講一件事
+- evidence 必填：支持該條觀察的行號數字（例如 [3,17]）；找不到依據的條目不要輸出
 - confidence 0~1，只有多次出現的特徵才給高 confidence
 
 ## 輸出格式
 嚴格回傳 JSON，不要加任何其他文字：
-{"observations":[{"text":"觀察內容","confidence":0.7}]}
+{"observations":[{"text":"觀察內容","confidence":0.7,"evidence":[3,17]}]}
 
-最多 3 條。沒有值得記的就回：
+最多 ${GUILD_EXTRACT_MAX_OBSERVATIONS} 條。沒有值得記的就回：
 {"observations":[]}`;
 
-const GUILD_CONSOLIDATION_PERSONA = `你是一個擅長整理資料的助手。你的工作是把零散的群組觀察合併成一段簡潔的群組氛圍摘要。
+const GUILD_FIELD_LIST_TEXT = GUILD_FIELDS.map((f) => `${f.key}（${f.label}，最多 ${f.max} 條）`).join("、");
+
+const GUILD_CONSOLIDATION_PERSONA = `你是一個擅長整理資料的助手。你的工作是維護一份「條列式」的群組印象：固定欄位、每欄幾條短條目，每條都要標出處。
+
+## 欄位
+${GUILD_FIELD_LIST_TEXT}
+- topics：群裡反覆在聊的話題、遊戲、作品（一條一個話題，直接寫名稱，不要加「常聊」）
+- style：大家怎麼互動（吐槽、接龍、貼圖大戰…）、整體氣氛
+- memes：群內反覆出現的梗、口頭禪、用語
+
+## 條目來源與權重
+- 【既有條目 I*】是舊印象：沒被新觀察推翻就原樣保留（text 照抄、from 填它自己的編號）
+- 新觀察和既有條目矛盾時，**以新觀察為準**
+- 【新觀察 O*】可以新增條目，也可以補強既有條目（from 同時填 I 和 O）
+- 「證據不足」的觀察也可以寫，程式會自動標成「或許」——**不要自己在 text 裡寫「或許」「有時」**
 
 ## 規則
-- 合併重複或相似的觀察
-- 只保留穩定、能描述群組氣氛的資訊（常聊話題、互動風格、群內梗）
-- **不寫**：個人私事、敏感推測、單次事件
-- 如果觀察不足，保留舊 profile 原文
-- 摘要用繁體中文，自然口語，不要條列式
+- 每條 text 是一個短句，不超過 ${GUILD_ITEM_TEXT_MAX_LEN} 字、只講一件事；**不要把一串話題塞進同一條**
+- 每條都必須在 from 列出至少一個來源編號；沒有出處的條目會被程式丟掉
+- 欄位裝不下時，留下佐證最多、最近還在出現的
+- **不寫**：任何人的暱稱或綽號、「某人怎樣」、群友怎麼使用西寶／機器人（要貼圖、叫她出題、用連結預覽）、敏感推測、單次事件
 
 ## 輸出格式
-嚴格回傳 JSON，不要加任何其他文字：
-{"profile":"整合後的群組氛圍摘要，最多 300 字"}
+嚴格回傳 JSON，不要加任何其他文字。回傳**完整的新檔案**（要保留的舊條目也要列出）：
+{"items":[{"field":"topics","text":"英雄聯盟賽事","from":["I2","O1"]},{"field":"memes","text":"愛用「貴爛」感嘆","from":["O3"]}]}
 
-沒什麼可更新的就回：
-{"profile":""}`;
+如果沒什麼可更新的，回（會保留原檔案）：
+{"items":[]}`;
+
+const GUILD_ITEM_SCHEMA = {
+  fields: GUILD_FIELDS,
+  fieldOf: guildFieldOf,
+  isStable: isGuildStableEvidence,
+  sanitize: sanitizeGuildItems,
+};
+
+// Code-side backstop for the two things the prose summary kept smuggling in:
+// notes about how people use the bot, and a named person. The prompts ask
+// for neither; this drops whatever gets through anyway.
+const GUILD_BOT_META_RE = /西寶|機器人|\bbots?\b|vx\w+|fx\w+|連結預覽/i;
+const SPEAKER_NAME_MIN_LEN = 2;
+
+function isGuildTextAllowed(text, speakerNames = []) {
+  if (!text || GUILD_BOT_META_RE.test(text)) return false;
+  return !speakerNames.some((n) => n.length >= SPEAKER_NAME_MIN_LEN && text.includes(n));
+}
 
 function shouldGuildExtract(guildId) {
   const entry = getGuildProfile(guildId);
@@ -580,14 +635,56 @@ function shouldGuildExtract(guildId) {
   return false;
 }
 
-function buildGuildExtractionTurns(pendingContexts) {
-  const blocks = pendingContexts.map((p, i) => `--- 片段 ${i + 1} ---\n${p.text}`);
+// Flattens pending snapshots into one numbered line list. Snapshots stored
+// before lines carried messageIds only have `text`; those lines are shown but
+// can't back an observation (no messageId → no evidence).
+function flattenGuildPending(pendingContexts) {
+  const out = [];
+  const seen = new Set();
+  for (const snap of pendingContexts || []) {
+    const lines = Array.isArray(snap.lines)
+      ? snap.lines
+      : String(snap.text || "").split("\n").filter(Boolean).map((text) => ({ text }));
+    for (const l of lines) {
+      if (l.messageId) {
+        if (seen.has(l.messageId)) continue;
+        seen.add(l.messageId);
+      }
+      out.push({ ...l, at: typeof l.at === "number" ? l.at : (snap.at ?? null) });
+    }
+  }
+  return out;
+}
+
+function buildGuildExtractionTurns(lines) {
+  const numbered = lines.map((l, i) => `L${i + 1} ${l.text}`);
   return [
     {
       role: "user",
-      content: `以下是 Discord 群組最近幾次的聊天紀錄片段，請從中提取群組整體的穩定特徵：\n\n${blocks.join("\n\n")}`,
+      content: `以下是 Discord 群組最近的聊天紀錄（逐行編號），請從中提取群組整體的穩定特徵，並在 evidence 附上依據的行號：\n\n${numbered.join("\n")}`,
     },
   ];
+}
+
+function attachGuildEvidence(observations, lines) {
+  const speakers = [...new Set(lines.map((l) => l.speaker).filter(Boolean))];
+  const out = [];
+  for (const o of observations) {
+    if (!isGuildTextAllowed(o.text, speakers)) continue;
+    const evidence = [];
+    const seen = new Set();
+    for (const idx of o.evidence || []) {
+      const l = lines[idx - 1];
+      if (!l?.messageId || seen.has(l.messageId)) continue;
+      seen.add(l.messageId);
+      evidence.push({ messageId: l.messageId, at: l.at ?? null, source: "passive" });
+    }
+    let confidence = typeof o.confidence === "number" && Number.isFinite(o.confidence) ? o.confidence : 0.5;
+    if (evidence.length === 0) confidence = Math.min(confidence, EVIDENCE_CAP_NO_MESSAGE);
+    else if (evidence.length === 1) confidence = Math.min(confidence, EVIDENCE_CAP_SINGLE_MESSAGE);
+    out.push({ ...o, confidence, evidence });
+  }
+  return out;
 }
 
 function shouldGuildConsolidate(guildId) {
@@ -608,35 +705,119 @@ function shouldGuildConsolidate(guildId) {
   return false;
 }
 
-function buildGuildConsolidationTurns(entry) {
-  const parts = [];
-  if (entry.profile) {
-    parts.push(`## 既有群組摘要\n${entry.profile}`);
+// The prose summary predates items: each sentence becomes one tentative
+// source (no evidence), aged from when the prose was written — so the old
+// summary survives only as far as new observations re-confirm it.
+function legacyGuildSourceItems(entry) {
+  const at = typeof entry?.profileAt === "number" ? entry.profileAt : Date.now();
+  return String(entry?.profile || "")
+    .split(/[。；;\n]+/)
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((text) => ({
+      field: "style",
+      text,
+      evidence: [],
+      firstAt: at,
+      lastSeenAt: at,
+      tentative: true,
+      legacy: true,
+    }));
+}
+
+function collectGuildConsolidationSources(entry, now = Date.now()) {
+  const items = [];
+  if (entry?.items) {
+    for (const f of GUILD_FIELDS) {
+      for (const it of entry.items[f.key] || []) {
+        if (!it?.text || isGuildItemStale(it, now)) continue;
+        items.push({ ...it, field: f.key });
+      }
+    }
+  } else if (entry?.profile) {
+    items.push(...legacyGuildSourceItems(entry));
   }
-  const obsLines = (entry.observations || [])
-    .map((o) => `- ${o.text}（信心 ${o.confidence}）`)
-    .join("\n");
-  parts.push(`## 新觀察\n${obsLines}`);
+  const byId = new Map();
+  items.forEach((it, i) => byId.set(`I${i + 1}`, { kind: "item", ...it }));
+  (entry?.observations || []).forEach((o, i) => {
+    byId.set(`O${i + 1}`, { kind: "obs", ...o, stable: isGuildStableEvidence(o.evidence) });
+  });
+  return byId;
+}
+
+function buildGuildConsolidationTurns(entry, now = Date.now()) {
+  const sources = collectGuildConsolidationSources(entry, now);
+  const itemLines = [];
+  const stableLines = [];
+  const weakLines = [];
+  for (const [id, src] of sources) {
+    if (src.kind === "item") {
+      const support = src.legacy
+        ? "舊版摘要轉入，無個別佐證"
+        : `${new Set((src.evidence || []).map((e) => e?.messageId).filter(Boolean)).size} 則佐證，最後確認 ${formatDay(src.lastSeenAt)}`;
+      itemLines.push(`[${id}] ${src.legacy ? "舊摘要" : guildFieldOf(src.field)?.label}｜${src.text}（${support}）`);
+    } else {
+      const line = `[${id}] ${src.text}（信心 ${src.confidence}，${describeObservationEvidence(src)}）`;
+      (src.stable ? stableLines : weakLines).push(line);
+    }
+  }
+  const parts = [];
+  if (itemLines.length > 0) {
+    parts.push(`## 既有條目（舊印象——與新觀察矛盾時以新觀察為準）\n${itemLines.join("\n")}`);
+  }
+  if (stableLines.length > 0) parts.push(`## 新觀察：已在不同時段出現\n${stableLines.join("\n")}`);
+  if (weakLines.length > 0) parts.push(`## 新觀察：證據不足（寫進檔案會被標成「或許」）\n${weakLines.join("\n")}`);
   return [
     {
       role: "user",
-      content: `請根據以下資料，整合成一段簡潔的群組氛圍摘要：\n\n${parts.join("\n\n")}`,
+      content: `請根據以下資料，輸出更新後的條列式群組印象：\n\n${parts.join("\n\n")}`,
     },
   ];
 }
 
-function parseGuildConsolidationResult(text) {
-  if (!text) return null;
-  const cleaned = text.replace(/^[^{]*/, "").replace(/[^}]*$/, "");
-  try {
-    const parsed = JSON.parse(cleaned);
-    if (typeof parsed?.profile !== "string") return null;
-    const trimmed = parsed.profile.trim();
-    return trimmed || null;
-  } catch {
-    console.warn("[guild-consolidate] failed to parse LLM output");
-    return null;
+// Members 西寶 already knows here — display names plus confirmed aliases —
+// so an item naming a person is caught even when it came from old prose,
+// where there are no speaker labels to check against.
+function knownMemberNames(guildId) {
+  if (!guildId) return [];
+  const names = new Set();
+  for (const p of listUserProfiles(guildId)) {
+    if (p.name) names.add(p.name);
+    for (const a of confirmedAliases(p, Date.now(), Infinity)) names.add(a);
   }
+  return [...names];
+}
+
+function dropDisallowedGuildItems(items, memberNames = []) {
+  if (!items) return null;
+  let total = 0;
+  for (const f of GUILD_FIELDS) {
+    items[f.key] = (items[f.key] || []).filter((it) => isGuildTextAllowed(it.text, memberNames));
+    total += items[f.key].length;
+  }
+  return total > 0 ? items : null;
+}
+
+// Shared with scripts/redistill-guild-profiles.js.
+async function runGuildConsolidation(entry, runChain, extraTurns = [], guildId = null) {
+  const now = Date.now();
+  const sources = collectGuildConsolidationSources(entry, now);
+  const turns = [...buildGuildConsolidationTurns(entry, now), ...extraTurns];
+  let result = null;
+  for (let attempt = 1; attempt <= CONSOLIDATE_ATTEMPTS; attempt++) {
+    result = await runChain(turns, GUILD_CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
+    if (!result) return { result: null, items: null };
+    const parsed = parseConsolidationResult(result.text);
+    if (parsed) {
+      const items = resolveConsolidatedItems(parsed, sources, now, GUILD_ITEM_SCHEMA);
+      return { result, items: dropDisallowedGuildItems(items, knownMemberNames(guildId)) };
+    }
+  }
+  return { result, items: null };
+}
+
+function countGuildItems(items) {
+  return items ? GUILD_FIELDS.reduce((n, f) => n + (items[f.key]?.length ?? 0), 0) : 0;
 }
 
 async function maybeGuildExtract(guildId, guildName, runChain) {
@@ -650,7 +831,8 @@ async function maybeGuildExtract(guildId, guildName, runChain) {
     const pending = getPendingContexts(guildId);
     if (pending.length === 0) return;
 
-    const turns = buildGuildExtractionTurns(pending);
+    const lines = flattenGuildPending(pending);
+    const turns = buildGuildExtractionTurns(lines);
     const result = await runChain(turns, GUILD_EXTRACTION_PERSONA, EXTRACT_MAX_TOKENS);
 
     if (!result) {
@@ -658,9 +840,10 @@ async function maybeGuildExtract(guildId, guildName, runChain) {
       return;
     }
 
-    const observations = parseExtractionResult(result.text);
+    const parsed = parseExtractionResult(result.text).slice(0, GUILD_EXTRACT_MAX_OBSERVATIONS);
+    const observations = attachGuildEvidence(parsed, lines);
     console.log(
-      `[guild-extract] guild=${guildId} provider=${result.provider.label} extracted=${observations.length} from=${pending.length} snapshots`,
+      `[guild-extract] guild=${guildId} provider=${result.provider.label} extracted=${observations.length} dropped=${parsed.length - observations.length} from=${lines.length} lines evidence=${observations.map((o) => o.evidence.length).join(",") || "-"}`,
     );
 
     if (observations.length > 0) {
@@ -687,21 +870,18 @@ async function maybeGuildConsolidate(guildId, runChain) {
     const entry = getGuildProfile(guildId);
     if (!entry || (entry.observations?.length ?? 0) === 0) return;
 
-    const turns = buildGuildConsolidationTurns(entry);
-    const result = await runChain(turns, GUILD_CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
-
+    const { result, items } = await runGuildConsolidation(entry, runChain, [], guildId);
     if (!result) {
       console.warn("[guild-consolidate] chain exhausted, skipping");
       return;
     }
 
-    const profile = parseGuildConsolidationResult(result.text);
     console.log(
-      `[guild-consolidate] guild=${guildId} provider=${result.provider.label} profile=${profile ? profile.length : 0}chars from=${entry.observations.length} obs`,
+      `[guild-consolidate] guild=${guildId} provider=${result.provider.label} items=${countGuildItems(items)} from=${entry.observations.length} obs`,
     );
 
-    if (profile) {
-      setGuildConsolidatedProfile(guildId, profile);
+    if (items) {
+      setGuildProfileItems(guildId, items);
     }
   } catch (err) {
     console.warn(`[guild-consolidate] error: ${err.message}`);
@@ -797,16 +977,23 @@ module.exports = {
   shouldConsolidate,
   buildConsolidationTurns,
   parseConsolidationResult,
-  parseGuildConsolidationResult,
   maybeConsolidateProfile,
   GUILD_EXTRACT_MIN_COUNT,
   GUILD_EXTRACT_MIN_COUNT_TIME,
   GUILD_CONSOLIDATE_MIN_COUNT,
   GUILD_CONSOLIDATE_MIN_COUNT_TIME,
+  GUILD_EXTRACTION_PERSONA,
+  GUILD_CONSOLIDATION_PERSONA,
   shouldGuildExtract,
+  flattenGuildPending,
   buildGuildExtractionTurns,
+  attachGuildEvidence,
+  isGuildTextAllowed,
   shouldGuildConsolidate,
+  collectGuildConsolidationSources,
   buildGuildConsolidationTurns,
+  runGuildConsolidation,
+  countGuildItems,
   maybeGuildExtract,
   maybeGuildConsolidate,
   resetForTests,

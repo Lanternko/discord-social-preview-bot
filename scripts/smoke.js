@@ -2210,9 +2210,14 @@ const {
   GUILD_EXTRACT_MIN_COUNT,
   GUILD_CONSOLIDATE_MIN_COUNT,
   shouldGuildExtract,
+  flattenGuildPending,
   buildGuildExtractionTurns,
+  attachGuildEvidence,
+  isGuildTextAllowed,
   shouldGuildConsolidate,
+  collectGuildConsolidationSources,
   buildGuildConsolidationTurns,
+  runGuildConsolidation,
   parseEvidenceIndices,
   attachEvidence,
   isStableObservation,
@@ -2225,7 +2230,6 @@ const {
   collectConsolidationSources,
   resolveConsolidatedItems,
   runConsolidation,
-  parseGuildConsolidationResult,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
 
@@ -2371,10 +2375,6 @@ it("parseConsolidationResult returns null for empty items or garbage", () => {
   assert.equal(parseConsolidationResult('{"profile":"舊格式"}'), null);
   assert.equal(parseConsolidationResult("not json"), null);
   assert.equal(parseConsolidationResult(null), null);
-});
-it("parseGuildConsolidationResult keeps the prose guild format", () => {
-  assert.equal(parseGuildConsolidationResult('前言{"profile":"愛聊遊戲"}'), "愛聊遊戲");
-  assert.equal(parseGuildConsolidationResult('{"profile":""}'), null);
 });
 // --- memory evidence pipeline ---
 console.log("memory evidence");
@@ -3128,23 +3128,64 @@ it("appendPendingContext stores context snapshot", () => {
     assert.match(p.pendingContexts[0].text, /Alice.*Bob/s);
   });
 });
-it("appendObservations + setConsolidatedProfile works", () => {
+it("appendPendingContext keeps messageIds and skips rows already pending", () => {
   withGuildStore(() => {
-    guildStore.appendObservations("g1", "TestGuild", [
-      { text: "常聊動漫", confidence: 0.8 },
-    ]);
+    const row = (id, line) => ({ line, messageId: id, at: 1000, displayName: "Alice" });
+    guildStore.appendPendingContext("g1", "G", [row("m1", "[Alice]: a"), row("m2", "[Alice]: b")]);
+    guildStore.appendPendingContext("g1", "G", [row("m2", "[Alice]: b"), row("m3", "[Alice]: c")]);
+    guildStore.appendPendingContext("g1", "G", [row("m3", "[Alice]: c")]);
+    const p = guildStore.getGuildProfile("g1");
+    assert.equal(p.pendingContexts.length, 2, "an all-duplicate window adds no snapshot");
+    assert.deepEqual(p.pendingContexts[1].lines.map((l) => l.messageId), ["m3"]);
+    assert.equal(p.pendingContexts[0].lines[0].speaker, "Alice");
+  });
+});
+it("guild observations pool evidence; setGuildProfileItems renders and consumes them", () => {
+  withGuildStore(() => {
+    guildStore.appendObservations("g1", "G", [{ text: "常聊動漫", confidence: 0.8, evidence: [{ messageId: "m1", at: 1 }] }]);
+    guildStore.appendObservations("g1", "G", [{ text: "常聊動漫", confidence: 0.6, evidence: [{ messageId: "m2", at: 2 }] }]);
     const before = guildStore.getGuildProfile("g1");
     assert.equal(before.observations.length, 1);
-    guildStore.setConsolidatedProfile("g1", "愛聊動漫的群");
+    assert.equal(before.observations[0].evidence.length, 2);
+    const now = Date.now();
+    guildStore.setGuildProfileItems("g1", {
+      topics: [{ text: "動漫", lastSeenAt: now }],
+      memes: [{ text: "愛說「貴爛」", lastSeenAt: now, tentative: true }],
+    });
     const after = guildStore.getGuildProfile("g1");
-    assert.equal(after.profile, "愛聊動漫的群");
+    assert.equal(after.profile, "常聊話題：動漫\n群內梗：（或許）愛說「貴爛」");
     assert.equal(after.observations.length, 0);
   });
 });
-it("buildGuildProfileBlock renders block with summary", () => {
-  const block = guildStore.buildGuildProfileBlock({ profile: "常聊動漫" });
-  assert.match(block, /這個群的長期印象/);
-  assert.match(block, /常聊動漫/);
+it("guild items past 60 days drop out of the prompt block and /memory text", () => {
+  const now = Date.now();
+  const entry = {
+    items: {
+      topics: [
+        { text: "英雄聯盟", lastSeenAt: now },
+        { text: "FF14", lastSeenAt: now - guildStore.GUILD_ITEM_STALE_MS - 1 },
+      ],
+    },
+    profile: "舊散文不該再出現",
+  };
+  const block = guildStore.buildGuildProfileBlock(entry);
+  assert.match(block, /常聊話題：英雄聯盟/);
+  assert.doesNotMatch(block, /FF14/);
+  assert.doesNotMatch(block, /舊散文/);
+  assert.equal(guildStore.guildProfileTextOf(entry), "常聊話題：英雄聯盟");
+});
+it("over-long guild items are cut at a clause break, not mid-word", () => {
+  const items = guildStore.sanitizeGuildItems({
+    topics: [{ text: "這個群組主要聊《CS》等射擊遊戲、組隊對戰、電競賽事與遊戲實況" }],
+  });
+  assert.equal(items.topics[0].text, "這個群組主要聊《CS》等射擊遊戲、組隊對戰");
+});
+it("guild stability needs two moments ≥6h apart, not just many messages", () => {
+  const H = 60 * 60 * 1000;
+  const burst = [1, 2, 3, 4, 5].map((i) => ({ messageId: `m${i}`, at: i * 1000 }));
+  assert.equal(guildStore.isGuildStableEvidence(burst), false);
+  assert.equal(guildStore.isGuildStableEvidence([{ messageId: "a", at: 0 }, { messageId: "b", at: 7 * H }]), true);
+  assert.equal(guildStore.isGuildStableEvidence([{ messageId: "a", at: 0 }, { messageId: "a", at: 7 * H }]), false);
 });
 it("buildGuildProfileBlock renders latest loose observations without a profile", () => {
   const block = guildStore.buildGuildProfileBlock({
@@ -3181,15 +3222,36 @@ it("shouldGuildExtract true when pending >= threshold", () => {
     assert.equal(shouldGuildExtract("g1"), true);
   });
 });
-it("buildGuildExtractionTurns formats snapshots", () => {
-  const turns = buildGuildExtractionTurns([
-    { text: "[Alice]: hi\n[Bob]: yo" },
-    { text: "[Carol]: 草" },
+it("flattenGuildPending numbers lines across snapshots, dedups by messageId, reads old text-only snapshots", () => {
+  const lines = flattenGuildPending([
+    { text: "[Alice]: 舊格式\n[Bob]: yo", at: 5 },
+    { lines: [{ text: "[Carol]: 草", messageId: "m1", at: 10 }, { text: "[Carol]: 草", messageId: "m1", at: 10 }] },
   ]);
-  assert.equal(turns.length, 1);
-  assert.match(turns[0].content, /片段 1/);
-  assert.match(turns[0].content, /Alice/);
-  assert.match(turns[0].content, /片段 2/);
+  assert.equal(lines.length, 3);
+  assert.equal(lines[0].at, 5, "old snapshot lines inherit the snapshot time");
+  assert.equal(lines[0].messageId, undefined);
+  const turns = buildGuildExtractionTurns(lines);
+  assert.match(turns[0].content, /L1 \[Alice\]: 舊格式/);
+  assert.match(turns[0].content, /L3 \[Carol\]: 草/);
+});
+it("attachGuildEvidence maps line numbers to messages and drops bot-meta / named-person observations", () => {
+  const lines = [
+    { text: "[Alice]: 今天打 LoL", messageId: "m1", at: 1, speaker: "Alice" },
+    { text: "[Bob]: LoL 又輸", messageId: "m2", at: 2, speaker: "Bob" },
+    { text: "[舊行]: x", at: 3 },
+  ];
+  const out = attachGuildEvidence([
+    { text: "常聊英雄聯盟", confidence: 0.9, evidence: [1, 2, 3, 99] },
+    { text: "常叫西寶要貼圖", confidence: 0.9, evidence: [1] },
+    { text: "常用 vxthreads 預覽", confidence: 0.9, evidence: [1] },
+    { text: "愛拿Alice開玩笑", confidence: 0.9, evidence: [1] },
+    { text: "只出現一次", confidence: 0.9, evidence: [3] },
+  ], lines);
+  assert.deepEqual(out.map((o) => o.text), ["常聊英雄聯盟", "只出現一次"]);
+  assert.deepEqual(out[0].evidence.map((e) => e.messageId), ["m1", "m2"]);
+  assert.equal(out[1].evidence.length, 0);
+  assert.ok(out[1].confidence <= 0.3, "no message → capped confidence");
+  assert.equal(isGuildTextAllowed("常聊AI"), true, "AI as a topic is fine");
 });
 it("shouldGuildConsolidate true when obs >= threshold", () => {
   withGuildStore(() => {
@@ -3201,14 +3263,47 @@ it("shouldGuildConsolidate true when obs >= threshold", () => {
     assert.equal(shouldGuildConsolidate("g1"), true);
   });
 });
-it("buildGuildConsolidationTurns includes profile and obs", () => {
-  const turns = buildGuildConsolidationTurns({
-    profile: "舊摘要",
-    observations: [{ text: "新觀察", confidence: 0.8 }],
+it("legacy guild prose becomes tentative per-sentence sources", () => {
+  const sources = collectGuildConsolidationSources({
+    profile: "群組氣氛活躍。常聊動漫；也聊遊戲",
+    profileAt: 1000,
+    observations: [{ text: "常聊英雄聯盟", confidence: 0.8, evidence: [] }],
   });
-  assert.match(turns[0].content, /舊摘要/);
-  assert.match(turns[0].content, /新觀察/);
+  assert.equal(sources.get("I1").text, "群組氣氛活躍");
+  assert.equal(sources.get("I3").text, "也聊遊戲");
+  assert.equal(sources.get("I2").tentative, true);
+  assert.equal(sources.get("I2").lastSeenAt, 1000);
+  assert.equal(sources.get("O1").kind, "obs");
+  const turns = buildGuildConsolidationTurns({ profile: "舊摘要", observations: [{ text: "新觀察", confidence: 0.8 }] });
+  assert.match(turns[0].content, /\[I1\] 舊摘要｜舊摘要/);
+  assert.match(turns[0].content, /\[O1\] 新觀察/);
 });
+memoryAsyncCases.push(["runGuildConsolidation cites sources, hedges weak items, drops uncited / bot-meta items", async () => {
+  const H = 60 * 60 * 1000;
+  const now = Date.now();
+  const fakeChain = async () => ({
+    provider: { label: "fake" },
+    text: JSON.stringify({ items: [
+      { field: "topics", text: "英雄聯盟", from: ["O1"] },
+      { field: "style", text: "吐槽互嗆", from: ["I1"] },
+      { field: "memes", text: "沒出處的梗", from: [] },
+      { field: "style", text: "常叫西寶出題", from: ["I1"] },
+      { field: "notes", text: "不存在的欄位", from: ["O1"] },
+    ] }),
+  });
+  const { items } = await runGuildConsolidation({
+    profile: "互動以吐槽互嗆為主",
+    profileAt: now,
+    observations: [{
+      text: "常聊英雄聯盟",
+      confidence: 0.8,
+      evidence: [{ messageId: "a", at: now - 8 * H }, { messageId: "b", at: now }],
+    }],
+  }, fakeChain);
+  assert.deepEqual(items.topics.map((i) => [i.text, i.tentative]), [["英雄聯盟", false]]);
+  assert.deepEqual(items.style.map((i) => [i.text, i.tentative]), [["吐槽互嗆", true]]);
+  assert.deepEqual(items.memes, []);
+}]);
 resetExtractorForTests();
 
 console.log("bedtime-story");
