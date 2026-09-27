@@ -1414,6 +1414,46 @@ async function main() {
     if (!process.env.DEEPSEEK_CHAT_TIMEOUT_MS) assert.equal(DEEPSEEK_CHAT_TIMEOUT_MS, 40000);
   });
 
+  it("GLM stays out of every chain unless GLM_ENABLED", () => {
+    const { chain } = buildGuildChain("glm-off", { tier: "brief" }, {}, new Date("2026-09-10T13:00:00Z"), [], { metered: false });
+    assert.ok(!chain.some((e) => e.label.startsWith("glm:")), chain.map((e) => e.label).join(","));
+  });
+  // Config is read once at load, so the enabled path runs in a fresh process
+  // (own tmp cwd: the stores write data/ relative to cwd).
+  it("GLM_ENABLED puts GLM ahead of owner-paid DeepSeek (free, peak, whitelist)", () => {
+    const { spawnSync } = require("node:child_process");
+    const os = require("node:os");
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "glm-smoke-"));
+    const chainPath = path.resolve(__dirname, "../src/ai/chain.js");
+    const code = `
+      const { buildGuildChain } = require(${JSON.stringify(chainPath)});
+      const at = (h) => new Date("2026-09-10T" + h + ":00:00Z");
+      const labels = (g, tier, now) => buildGuildChain(g, { tier }, {}, now, [], { metered: false }).chain.map((e) => e.label);
+      console.log(JSON.stringify({
+        free: labels("free-g", "brief", at("13")),
+        peak: labels("free-g", "brief", at("07")),
+        wl: labels("wl-guild", "standard", at("13")),
+      }));`;
+    const env = {
+      ...process.env,
+      GLM_ENABLED: "true",
+      AI_GATEWAY_API_KEY: "vck-smoke-dummy",
+      DEEPSEEK_PREMIUM_GUILD_IDS: "wl-guild",
+    };
+    delete env.AI_PROVIDER;
+    const r = spawnSync(process.execPath, ["-e", code], { cwd, env, encoding: "utf8" });
+    fs.rmSync(cwd, { recursive: true, force: true });
+    assert.equal(r.status, 0, r.stderr);
+    const out = JSON.parse(r.stdout.trim().split("\n").pop());
+    for (const [name, chain] of Object.entries(out)) {
+      assert.ok(chain[0].startsWith("glm:zai/"), `${name}: ${chain.join(",")}`);
+      assert.ok(chain.some((l) => l.startsWith("deepseek:")), `${name}: DeepSeek must stay as backup`);
+    }
+    assert.ok(out.free[1].startsWith("deepseek:"), `off-peak DeepSeek is the first backup: ${out.free.join(",")}`);
+  });
+
   // cleanup
   resetKeyCache();
   resetRateLimiter();

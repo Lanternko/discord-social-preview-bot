@@ -24,6 +24,14 @@ DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback
 5. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
 6. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
 
+### GLM 鏈頭（`GLM_ENABLED`，預設關）
+
+開啟後 `glm:<GLM_MODEL>`（Vercel AI Gateway，走 `callOpenAI` 帶 baseUrl/key 覆寫）排在 **owner 付費**的鏈頭：白名單（標準/精細）與入門免費 guild 變成 `glm → deepseek → kimi → fallback`。自帶 `/ai-key` 的 guild 不受影響（他們選的是 DeepSeek）。GLM 是 flat-rate，尖峰降級只移 DeepSeek，GLM 照樣在最前面。module-level 的 `AI_PROVIDER_CHAIN`（早安問候等排程）也以 GLM 開頭；recap / story 鏈不動。
+
+- **為什麼**：2026-09-27 從 `data/ai-turn-log.json` 抽 20 題 prod 真實對話重播（同 persona、同前文），使用者盲投 GLM 11、deepseek-flash 3、平手 4。flash 冒簡體字、把 emoji 語法寫壞；GLM 的缺點是偶爾替西寶捏造親身經歷。
+- **`GLM_TIMEOUT_MS` 12 s**（比 DeepSeek 的 40 s 短很多）：盲測裡 GLM 也會 25 s 逾時，卡住時要快點交給 DeepSeek。逾時第一次只記 strike，連兩次才冷卻 60 s。
+- 付費走 Vercel 儲值額度，額度用完 gateway 回 402 → 歸類為 `auth`（冷卻 10 分鐘），鏈自動落到 DeepSeek。grep `glm:`。
+
 ### 尖峰時段降級（`AI_PEAK_PREFER_FALLBACK`，預設開）
 
 DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 owner key 的 DeepSeek entry 會被移到鏈尾**，改由 flat-rate 的 fallback（luna）先跑。DeepSeek 沒有被移除——上面全掛了還是會打到它，只是不再是預設花錢的那一層。

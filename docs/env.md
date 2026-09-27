@@ -96,8 +96,14 @@
 | `GROQ_MODELS` | `llama-3.3-70b-versatile,llama-3.1-8b-instant` | Comma-separated within-Groq fallback. Legacy `GROQ_MODEL` read as single-item list |
 | `GEMINI_API_KEY` | — | Optional. Last-layer fallback. **See [ai-providers.md](ai-providers.md) for billing trap** |
 | `GEMINI_MODEL` | `gemini-2.0-flash` | |
-| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `kimi`, `groq`, `gemini`. Empty = full chain; `KIMI_ENABLED=false` still keeps Kimi disabled |
+| `AI_PROVIDER` | auto (full chain) | Force single provider: `deepseek`, `kimi`, `glm`, `groq`, `gemini`. Empty = full chain; `KIMI_ENABLED=false` still keeps Kimi disabled |
 | `OPENAI_REASONING_EFFORT` | —（API 預設） | Luna 的 `reasoning_effort`（`low`/`medium`/`high`）。不設 = API 預設，閒聊約想 50 token、正經問題約 300。`high` 實測多 100～200 token、每則約多 $0.0002；讓解釋更準，但改不了語氣 |
+| `GLM_ENABLED` | `false` | `true` = GLM 放在「owner 付費」的 @ 聊天鏈頭（白名單＋入門免費），DeepSeek 退成第一備援；自帶 key 的伺服器不受影響。2026-09-27 盲測 20 題真實對話 GLM 11:3 勝 deepseek-flash |
+| `AI_GATEWAY_API_KEY` | — | Vercel AI Gateway key（`vck_…`）；GLM 需要 |
+| `GLM_MODEL` | `zai/glm-5.3-flash` | Gateway 上的 model id |
+| `GLM_BASE_URL` | `https://ai-gateway.vercel.sh/v1/chat/completions` | OpenAI 相容端點 |
+| `GLM_TIMEOUT_MS` | `12000` | 故意比 DeepSeek 短：卡住就交給 DeepSeek，不讓人等 25 秒 |
+| `GLM_REASONING_EFFORT` | `high` | 盲測時的設定；空字串 = API 預設 |
 | `AI_TIMEOUT_MS` | `8000` | Per-call API timeout. Reads legacy `GEMINI_TIMEOUT_MS` if unset |
 | `DEEPSEEK_CHAT_TIMEOUT_MS` | `40000` | @ 聊天鏈裡 DeepSeek 那幾層的逾時（owner flash/pro、guild key）。flash 慢的那幾則是在想（1500～4750 reasoning tokens、~190 tok/s），`AI_TIMEOUT_MS` 25 s 會在快寫完時砍掉。故事技能再拉到 60 s（`STORY_CHAT_DEEPSEEK_TIMEOUT_MS`，寫在 story.js）；等待期間有「正在輸入」提示 |
 | `RECAP_KIMI_TIMEOUT_MS` | `45000` | Daily-recap-only Kimi timeout; interactive replies still use `AI_TIMEOUT_MS` |

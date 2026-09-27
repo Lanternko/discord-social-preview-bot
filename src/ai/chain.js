@@ -22,6 +22,12 @@ const {
   KIMI_API_KEY,
   KIMI_ENABLED,
   KIMI_MODEL,
+  GLM_ENABLED,
+  AI_GATEWAY_API_KEY,
+  GLM_MODEL,
+  GLM_BASE_URL,
+  GLM_TIMEOUT_MS,
+  GLM_REASONING_EFFORT,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_MODEL_FREE,
@@ -179,12 +185,34 @@ function ownerDeepSeekIsDemoted(now) {
   return demoted;
 }
 
+// GLM leads only the chains the owner pays for (whitelist + free brief). A
+// guild that brought its own DeepSeek key chose DeepSeek, so it keeps it.
+// Flat-rate, so it also stays first through DeepSeek's peak window.
+function buildGlmPrimary() {
+  const only = AI_PROVIDER_FORCE;
+  if (!GLM_ENABLED || !AI_GATEWAY_API_KEY || (only && only !== "glm")) return [];
+  const options = {
+    model: GLM_MODEL,
+    baseUrl: GLM_BASE_URL,
+    apiKey: AI_GATEWAY_API_KEY,
+    timeoutMs: GLM_TIMEOUT_MS,
+    reasoningEffort: GLM_REASONING_EFFORT,
+  };
+  return [{
+    label: `glm:${GLM_MODEL}`,
+    options,
+    call: (turns, persona, maxTokens) => callOpenAI(turns, persona, maxTokens, options),
+  }];
+}
+
+const GLM_PRIMARY = buildGlmPrimary();
+
 function placeOwnerDeepSeek(entry, tail, demoted) {
   return demoted ? [...tail, entry] : [entry, ...tail];
 }
 
 function buildAIProviderChain() {
-  const chain = [];
+  const chain = [...GLM_PRIMARY];
   const only = AI_PROVIDER_FORCE;
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
@@ -412,6 +440,9 @@ function buildTextGuildChain(
   if (only === "kimi") {
     return { chain: kimiSecondary, rateLimited: false };
   }
+  if (only === "glm") {
+    return { chain: GLM_PRIMARY, rateLimited: false };
+  }
   if (only && only !== "deepseek") {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
@@ -442,7 +473,7 @@ function buildTextGuildChain(
       // DeepSeek first through peak. Demoting them handed 19 of 33 replies in
       // one guild to Luna (2026-09-27), which is why it felt dumber by day.
       return {
-        chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN],
+        chain: [...GLM_PRIMARY, entry, ...kimiSecondary, ...FALLBACK_CHAIN],
         rateLimited: false,
       };
     }
@@ -463,7 +494,7 @@ function buildTextGuildChain(
   if (limited) return meteredOut(guildId, limited);
 
   if (!DEEPSEEK_API_KEY) {
-    return { chain: [...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
+    return { chain: [...GLM_PRIMARY, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
 
   const entry = {
@@ -482,11 +513,14 @@ function buildTextGuildChain(
       }),
   };
   return {
-    chain: placeOwnerDeepSeek(
-      entry,
-      [...kimiSecondary, ...FALLBACK_CHAIN],
-      demoted && !isWhitelisted,
-    ),
+    chain: [
+      ...GLM_PRIMARY,
+      ...placeOwnerDeepSeek(
+        entry,
+        [...kimiSecondary, ...FALLBACK_CHAIN],
+        demoted && !isWhitelisted,
+      ),
+    ],
     rateLimited: false,
   };
 }
