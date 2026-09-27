@@ -1,16 +1,18 @@
 # Smoke tests
 
-Three self-contained Node scripts under [scripts/](../scripts/). No Jest, no Mocha — each script is `node scripts/<name>.js`, exits non-zero on any failure. They share one stub: `process.env.DISCORD_TOKEN = "smoke-dummy"` so `src/config.js` doesn't crash on import.
+Five self-contained Node scripts under [scripts/](../scripts/). No Jest, no Mocha — each script is `node scripts/<name>.js`, exits non-zero on any failure. They share one stub: `process.env.DISCORD_TOKEN = "smoke-dummy"` so `src/config.js` doesn't crash on import.
 
-Why three layers and not one: pure-function tests can't reach payload-builder branch order, and payload-builder tests can't reach AI chain behaviour. Each layer plugs a different blind spot.
+Why separate layers and not one: pure-function tests can't reach payload-builder branch order, and payload-builder tests can't reach AI chain behaviour. Each layer plugs a different blind spot.
 
-## `npm test` runs all three
+## `npm test` runs all of them
 
 ```bash
-npm test            # all three, sequentially, fail-fast
+npm test            # all layers, sequentially, fail-fast
 npm run test:pure   # scripts/smoke.js
 npm run test:routing # scripts/routing-smoke.js
 npm run test:circuit # scripts/smoke-ai-circuit.js
+npm run test:voice   # scripts/smoke-voice.js
+npm run test:skills  # scripts/smoke-skills.js
 ```
 
 ## scripts/smoke.js — pure functions
@@ -51,8 +53,9 @@ Branches covered:
 - **Bahamut** — normal / restricted with public title/desc → embed with login notice / restricted with no usable metadata → fixer fallback / probe error.
 - **PTT** — normal / probe error.
 - **Instagram** — post (primary fixer + `fallbackContent` + `embedFallback` + `recoverUrls`) / story with display-name probe failure / story with display-name probe success.
-- **Bilibili** — API success → custom embed (no URL) / API failure → vxbilibili URL with `recoverUrls`.
+- **Bilibili** — API success → custom embed (no URL) **+ `videoAttachment`** (media.vxbilibili mp4 constructed from the BVID, MIXED-style playable video) / API failure → vxbilibili URL with `recoverUrls`.
 - **Preview dispatcher** ([preview.js](../src/preview.js)) — twitter / **redd.it short** / pixiv / bluesky / facebook all carry `recoverUrls` + `sourceUrl`; multi-URL parallel preserves order.
+- **Sticker send** ([mention.js](../src/mention.js) `sendAIReply`) — the `[貼圖:名字]` → outgoing-payload matrix with a mocked `message.reply`: guild sticker → `stickers:[id]` + surviving text / library sticker → `files:[…]` with **no** content / plain reply untouched / a failed sticker send retries text-only (the reply must survive) / an invented name never reaches the channel / a reply that was *only* a bad token falls back to a spoken line. Lives here because the decision is about which send shape goes out, not about a pure return value.
 - **Reaction delete** ([reaction-delete.js](../src/reaction-delete.js)) — `handleReactionDelete` authorization matrix with mocked Discord objects (fetchReference / member fetch / permissionsFor): link poster deletes / random user can't / `ManageMessages` mod can / never deletes a non-西寶 message / ignores non-🗑️ / ignores bot reactors. Lives here (not pure smoke) because the auth path needs async Discord I/O.
 
 **When to run**: any reorder of the `if` ladder in `buildThreadsPayload`, any change to `buildPreviewPayloads` dispatch order, any new branch in a platform builder, or any change to `reaction-delete.js` authorization.
@@ -77,4 +80,31 @@ Covered:
 - Discord permission edge cases — exercised manually via the `/debug-perms` command.
 - Playwright probe behaviour against real Threads / Bahamut / PTT pages — exercised manually before merging probe changes.
 
+## scripts/app-emoji.js — 素材庫管理（not a test）
+
+Manages 西寶's application-owned emoji library (the 2000-slot one that doesn't touch any server's 50-100 emoji budget). Talks REST only — no gateway login, so it's safe to run while the bot is up.
+
+```bash
+node scripts/app-emoji.js list                          # 現有 emoji + 用途推導結果
+node scripts/app-emoji.js upload assets/emoji/          # 整個資料夾
+node scripts/app-emoji.js upload a.png b.gif --dry-run  # 先看會發生什麼
+node scripts/app-emoji.js delete Pepe_Cry
+```
+
+Filenames become emoji names (`[A-Za-z0-9_]`, 2-32 chars), ≤256 KB each, existing names are skipped. It warns on any name `emotionForName` can't read a meaning from — those emoji fall out of 西寶's prompt table after the 30-day 【新】 window. **Restart the bot** after an upload; the app-emoji cache is fetched once at `clientReady`. See [persona.md](persona.md).
+
 If a regression slipped past all three smokes, the right move is usually adding a case to one of them — not adding a fourth script. Keep the count to three.
+
+## scripts/smoke-skills.js — AI skill registry
+
+Guards the natural-language prompt packs in [src/ai/skills/](../src/ai/skills/) — see [skills.md](skills.md).
+
+| What it covers | Why |
+|---|---|
+| Story triggers fire on real requests (`講個故事`, `tell me a story`) | a dead trigger means the tuned spec silently never loads |
+| Story triggers stay silent on commentary (`剛剛那個故事很好笑`) | a false positive makes her write 400 字 instead of chatting — the expensive direction |
+| Chat pack keeps the spec (`## ` title, 150～300 字, 不准消音, cast size) | the whole point is reusing the tuned rules, not paraphrasing them |
+| Chat pack points at `【最近群組對話】` and lifts its 「不要直接複述」 rule | without the lift, the group-context header forbids exactly what the story needs |
+| Scheduled pack keeps bedtime framing and reads the buffet, not group context | the two modes must not bleed into each other |
+| `buildBedtimeStoryPrompt` still composes spec + ingredients | splitting the builder must not change the nightly output |
+| `buildSkillContext` returns null for a throwing skill | a broken skill must cost the skill, never the reply |

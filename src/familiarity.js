@@ -88,11 +88,11 @@ function getFamiliarityRoster(guildId) {
   if (!guildId) return [];
   const data = load();
   const entries = data[guildId] || {};
-  return Object.values(entries)
-    .filter((e) => e.count > 0)
-    .sort((a, b) => b.count - a.count)
+  return Object.entries(entries)
+    .filter(([, e]) => e.count > 0)
+    .sort(([, a], [, b]) => b.count - a.count)
     .slice(0, ROSTER_LIMIT)
-    .map((e) => ({ name: e.name, count: e.count, tier: tierLabel(e.count) }));
+    .map(([userId, e]) => ({ userId, name: e.name, count: e.count, tier: tierLabel(e.count) }));
 }
 
 const { sanitizeName } = require("./utils");
@@ -106,10 +106,14 @@ function buildFamiliarityBlock(roster) {
   for (const r of roster) {
     if (!r.tier) continue;
     if (!byTier.has(r.tier)) byTier.set(r.tier, []);
-    byTier.get(r.tier).push(sanitizeName(r.name));
+    // aliases (optional, added by chain.js) = what group members call them.
+    const aliases = Array.isArray(r.aliases) && r.aliases.length > 0
+      ? `（群友叫：${r.aliases.map(sanitizeName).join("、")}）`
+      : "";
+    byTier.get(r.tier).push(sanitizeName(r.name) + aliases);
   }
 
-  const lines = ["## 群友熟悉度 (這個伺服器累積發言計數)"];
+  const lines = ["## 群友熟悉度 (這個伺服器累積發言計數；括號是群友平常叫他的綽號)"];
   for (const t of TIERS) {
     const names = byTier.get(t.label);
     if (!names || names.length === 0) continue;

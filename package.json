@@ -7,10 +7,12 @@
   "type": "commonjs",
   "scripts": {
     "start": "if [ -x /opt/homebrew/opt/node@22/bin/node ]; then /opt/homebrew/opt/node@22/bin/node src/index.js; else node src/index.js; fi",
-    "test": "npm run test:pure && npm run test:routing && npm run test:circuit",
+    "test": "npm run test:pure && npm run test:routing && npm run test:circuit && npm run test:voice && npm run test:skills",
     "test:pure": "node scripts/smoke.js",
     "test:routing": "node scripts/routing-smoke.js",
-    "test:circuit": "node scripts/smoke-ai-circuit.js"
+    "test:circuit": "node scripts/smoke-ai-circuit.js",
+    "test:voice": "node scripts/smoke-voice.js",
+    "test:skills": "node scripts/smoke-skills.js"
   },
   "engines": {
     "node": ">=20"
@@ -19,6 +21,7 @@
     "discord.js": "^14.19.3",
     "dotenv": "^16.4.5",
     "node-cron": "^4.2.1",
-    "playwright": "^1.59.1"
+    "playwright": "^1.59.1",
+    "sharp": "^0.35.4"
   }
 }

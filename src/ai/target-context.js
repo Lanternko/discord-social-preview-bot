@@ -14,6 +14,7 @@
 // rule so the model can lean into their actual phrasing.
 
 const { sanitizeName } = require("../utils");
+const { confirmedAliases } = require("../user-profile-store");
 
 const MAX_TARGETS = 2; // cap injected people so the prompt can't balloon
 const MAX_SAMPLES = 6; // verbatim lines per target
@@ -83,8 +84,12 @@ function nameMatchCandidates(text, profiles, groupEntries) {
   if (!text) return [];
   const haystack = text.normalize("NFC").toLowerCase();
   const pool = new Map(); // userId -> displayName
+  const aliasesOf = new Map(); // userId -> confirmed 綽號 (already lowercased)
   for (const p of profiles || []) {
-    if (p?.userId) pool.set(p.userId, p.name || null);
+    if (!p?.userId) continue;
+    pool.set(p.userId, p.name || null);
+    const aliases = confirmedAliases(p).map((a) => a.normalize("NFC").toLowerCase());
+    if (aliases.length > 0) aliasesOf.set(p.userId, aliases);
   }
   for (const e of groupEntries || []) {
     if (e?.userId && !pool.has(e.userId)) pool.set(e.userId, e.displayName || null);
@@ -93,7 +98,9 @@ function nameMatchCandidates(text, profiles, groupEntries) {
   const matches = [];
   for (const [userId, displayName] of pool) {
     let best = 0;
-    for (const core of pickNameCores(displayName)) {
+    // A 綽號 friends actually use is as good a handle as the display name —
+    // often better, since 「峰哥」 isn't in 「峰【…】」 at all.
+    for (const core of [...pickNameCores(displayName), ...(aliasesOf.get(userId) || [])]) {
       if (core.length > best && haystack.includes(core)) best = core.length;
     }
     if (best > 0) matches.push({ userId, displayName, matchedLen: best });

@@ -2,19 +2,48 @@ const {
   AI_PROVIDER_FORCE,
   AI_LONG_TERM_MEMORY_ENABLED,
   AI_FREE_DAILY_LIMIT,
+  AI_OWNER_DAILY_LIMIT,
+  AI_PEAK_PREFER_FALLBACK,
   EMOJI_TRUSTED_GUILD_IDS,
+  APP_EMOJI_ENABLED,
+  OPENAI_API_KEY,
+  OPENAI_MODEL,
+  STORY_OPENAI_TIMEOUT_MS,
+  DEEPSEEK_CHAT_TIMEOUT_MS,
+  STORY_DEEPSEEK_MODEL,
+  STORY_FLASH_MODEL,
+  STORY_FLASH_TIMEOUT_MS,
+  STORY_DEEPSEEK_TIMEOUT_MS,
+  STORY_DEEPSEEK_REASONING_HEADROOM,
   GEMINI_API_KEY,
   GEMINI_MODEL,
   GROQ_API_KEY,
   GROQ_MODELS,
+  KIMI_API_KEY,
+  KIMI_ENABLED,
+  KIMI_MODEL,
+  GLM_ENABLED,
+  AI_GATEWAY_API_KEY,
+  GLM_MODEL,
+  GLM_BASE_URL,
+  GLM_TIMEOUT_MS,
+  GLM_REASONING_EFFORT,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_MODEL_FREE,
   DEEPSEEK_PREMIUM_GUILD_IDS,
   DEEPSEEK_REASONING_HEADROOM,
+  DEEPSEEK_VISION_MODEL,
+  VISION_ENABLED,
+  VISION_TIMEOUT_MS,
+  RECAP_KIMI_TIMEOUT_MS,
+  RECAP_DEEPSEEK_TIMEOUT_MS,
+  RECAP_DEEPSEEK_REASONING_HEADROOM,
+  RECAP_GEMINI_TIMEOUT_MS,
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
+const { isDeepSeekPeak } = require("./peak-hours");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
 const {
@@ -37,11 +66,15 @@ const {
   buildUserProfileBlock,
   appendPendingInteraction,
   listUserProfiles,
+  profileTextOf,
+  confirmedAliases,
 } = require("../user-profile-store");
+const { applyAliasStatements } = require("./alias-statements");
 const {
   maybeExtractObservations,
   maybeGuildExtract,
 } = require("./observation-extractor");
+const { recordAliasContext, maybeExtractAliases } = require("./alias-extractor");
 const {
   getGuildProfile,
   buildGuildProfileBlock,
@@ -52,9 +85,13 @@ const {
   resolveCustomEmojis,
   buildEmojiPromptBlock,
 } = require("./emoji-resolver");
+const { buildStickerPromptBlock } = require("./sticker-resolver");
+const { loadVisionImages, buildImageNote } = require("./vision");
 const {
   callGemini,
   callGroq,
+  callKimi,
+  callOpenAI,
   callDeepSeek,
 } = require("./providers");
 const {
@@ -62,21 +99,52 @@ const {
   recordProviderSuccess,
   recordProviderFailure,
 } = require("./circuit");
-const { hasGuildApiKey, getGuildApiKey } = require("./guild-key-store");
-const { checkAndIncrement } = require("./rate-limiter");
+const {
+  getGuildApiKey,
+  isGuildKeyUsable,
+  markGuildKeyRejected,
+  clearGuildKeyRejection,
+  consumeGuildKeyNotice,
+} = require("./guild-key-store");
+const {
+  checkAndIncrement,
+  checkAndIncrementOwnerTotal,
+  isOwnerTotalExhausted,
+} = require("./rate-limiter");
 
 const PERSONAL_CONTEXT_MEMORY_COUNT = 3;
+const GUILD_KEY_REJECTED_NOTICE =
+  "-# ⚠️ 這個伺服器設定的 DeepSeek 金鑰被拒絕了（無效或餘額不足），我先用入門方案回覆。管理員可以用 `/ai-key set` 換一把，或儲值後等我自動恢復（約 6 小時內）。";
+
+// Decorates familiarity rows with the aliases group members actually use, so
+// 西寶 can map 「峰哥」 to a roster name. Skipped when long-term memory is off.
+function withConfirmedAliases(guildId, roster) {
+  if (!AI_LONG_TERM_MEMORY_ENABLED) return roster;
+  return roster.map((r) => {
+    const aliases = r.userId ? confirmedAliases(getUserProfile(guildId, r.userId)) : [];
+    return aliases.length > 0 ? { ...r, aliases } : r;
+  });
+}
 
 function getPersonalMemoryContextEntries(groupContextLines, count = PERSONAL_CONTEXT_MEMORY_COUNT) {
   if (!Array.isArray(groupContextLines) || count <= 0) return [];
   return groupContextLines.slice(-count);
 }
 
-// Fallback chain (Groq + Gemini) built once at startup — shared by all guilds.
-// DeepSeek entry varies per guild (model/key/rate-limit), so it's built per-call.
+// Fallback chain shared by all guilds. Luna first because DeepSeek v4-pro
+// chat hits the 25s abort when hidden reasoning runs long (same prompt size,
+// more thinking). The Groq and Gemini layers below it were dead 404s from
+// roughly 2026-08 until 2026-09-06 — model IDs rot silently, and the only
+// symptom is `chain exhausted` in the log.
 function buildFallbackChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
+  if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
+    chain.push({
+      label: `openai:${OPENAI_MODEL}`,
+      call: (turns, persona, maxTokens) => callOpenAI(turns, persona, maxTokens),
+    });
+  }
   if (GROQ_API_KEY && (!only || only === "groq")) {
     for (const model of GROQ_MODELS) {
       chain.push({
@@ -94,11 +162,63 @@ function buildFallbackChain() {
 
 const FALLBACK_CHAIN = buildFallbackChain();
 
+// Logged on transition only: peak lasts hours, so a per-request line would
+// double the [ai] log for a third of every weekday.
+let loggedPeakState = null;
+
+// During DeepSeek's peak window the owner's key costs double per token, so the
+// chain leads with the flat-rate fallback and keeps DeepSeek at the tail —
+// still reachable if everything above it fails, just no longer the default
+// spend. A guild's OWN key is never demoted: that guild chose and pays for
+// DeepSeek, so the peak surcharge is theirs to make. Whitelisted guilds are
+// not demoted either (see buildTextGuildChain).
+function ownerDeepSeekIsDemoted(now) {
+  const demoted = AI_PEAK_PREFER_FALLBACK && isDeepSeekPeak(now);
+  if (demoted !== loggedPeakState) {
+    console.log(
+      demoted
+        ? "[ai] deepseek peak window on — 尖峰改由 fallback 先跑，DeepSeek 移到鏈尾"
+        : "[ai] deepseek peak window off — 恢復 DeepSeek 優先",
+    );
+    loggedPeakState = demoted;
+  }
+  return demoted;
+}
+
+// GLM leads only the chains the owner pays for (whitelist + free brief). A
+// guild that brought its own DeepSeek key chose DeepSeek, so it keeps it.
+// Flat-rate, so it also stays first through DeepSeek's peak window.
+function buildGlmPrimary() {
+  const only = AI_PROVIDER_FORCE;
+  if (!GLM_ENABLED || !AI_GATEWAY_API_KEY || (only && only !== "glm")) return [];
+  const options = {
+    model: GLM_MODEL,
+    baseUrl: GLM_BASE_URL,
+    apiKey: AI_GATEWAY_API_KEY,
+    timeoutMs: GLM_TIMEOUT_MS,
+    reasoningEffort: GLM_REASONING_EFFORT,
+  };
+  return [{
+    label: `glm:${GLM_MODEL}`,
+    options,
+    call: (turns, persona, maxTokens) => callOpenAI(turns, persona, maxTokens, options),
+  }];
+}
+
+const GLM_PRIMARY = buildGlmPrimary();
+
+function placeOwnerDeepSeek(entry, tail, demoted) {
+  return demoted ? [...tail, entry] : [entry, ...tail];
+}
+
 function buildAIProviderChain() {
-  const chain = [];
+  const chain = [...GLM_PRIMARY];
   const only = AI_PROVIDER_FORCE;
   if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
     chain.push({ label: `deepseek:${DEEPSEEK_MODEL}`, call: callDeepSeek });
+  }
+  if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {
+    chain.push({ label: `kimi:${KIMI_MODEL}`, call: callKimi });
   }
   return [...chain, ...FALLBACK_CHAIN];
 }
@@ -106,58 +226,275 @@ function buildAIProviderChain() {
 // Full default chain — used for startup log and backwards-compat export.
 const AI_PROVIDER_CHAIN = buildAIProviderChain();
 
-// Per-guild chain: model is determined by tier (brief=flash, standard/detailed=pro).
-// Guilds with their own API key use that key; whitelisted guilds use the owner's key;
-// free guilds (brief only) use the owner's key with a daily rate limit.
-function buildGuildChain(guildId, tierConfig) {
+// Daily recaps have a task-specific latency budget because generation starts
+// one minute before publication. Keep Groq/Llama completely out of this chain:
+// a recap should wait for the higher-quality providers instead of silently
+// changing voice. DeepSeek remains first; a same-model no-think entry is
+// second so a thinking-empty day still publishes from DeepSeek.
+function buildRecapProviderChain() {
+  const chain = [];
   const only = AI_PROVIDER_FORCE;
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const thinkingOptions = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: RECAP_DEEPSEEK_REASONING_HEADROOM,
+      thinking: { type: "enabled" },
+      reasoningEffort: "medium",
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}`,
+      options: thinkingOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, thinkingOptions),
+    });
+    const directOptions = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: 0,
+      thinking: { type: "disabled" },
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
+      options: directOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, directOptions),
+    });
+  }
+  if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {
+    const options = { timeoutMs: RECAP_KIMI_TIMEOUT_MS };
+    chain.push({
+      label: `kimi:${KIMI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callKimi(turns, persona, maxTokens, options),
+    });
+  }
+  if (GEMINI_API_KEY && (!only || only === "gemini")) {
+    const options = { timeoutMs: RECAP_GEMINI_TIMEOUT_MS };
+    chain.push({
+      label: `gemini:${GEMINI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callGemini(turns, persona, maxTokens, options),
+    });
+  }
+  return chain;
+}
+
+const RECAP_PROVIDER_CHAIN = buildRecapProviderChain();
+
+// Bedtime stories: flash thinking first, then v4-pro thinking, then flash
+// no-think, then Luna. v4-pro led after the 2026-09-25 blind tests, but its
+// cost is almost all reasoning (3-9k tokens for a ~200-token story); on the
+// same ingredients flash thinking wrote stories as good at ~1/4 the price
+// (2026-09-26 cost test). Luna scored last in both blind tests.
+function buildStoryProviderChain() {
+  const chain = [];
+  const only = AI_PROVIDER_FORCE;
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const flashThinkOptions = {
+      model: STORY_FLASH_MODEL,
+      timeoutMs: STORY_FLASH_TIMEOUT_MS,
+      reasoningHeadroom: STORY_DEEPSEEK_REASONING_HEADROOM,
+      thinking: { type: "enabled" },
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${STORY_FLASH_MODEL}:story`,
+      options: flashThinkOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, flashThinkOptions),
+    });
+    const thinkOptions = {
+      model: STORY_DEEPSEEK_MODEL,
+      timeoutMs: STORY_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: STORY_DEEPSEEK_REASONING_HEADROOM,
+      // A story cut mid-sentence is worse than the next layer's story.
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${STORY_DEEPSEEK_MODEL}:story`,
+      options: thinkOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, thinkOptions),
+    });
+    const directOptions = {
+      timeoutMs: RECAP_DEEPSEEK_TIMEOUT_MS,
+      reasoningHeadroom: 0,
+      thinking: { type: "disabled" },
+      rejectTruncated: true,
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL}:direct`,
+      options: directOptions,
+      call: (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, directOptions),
+    });
+  }
+  if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
+    const options = { timeoutMs: STORY_OPENAI_TIMEOUT_MS };
+    chain.push({
+      label: `openai:${OPENAI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callOpenAI(turns, persona, maxTokens, options),
+    });
+  }
+  return chain;
+}
+
+const STORY_PROVIDER_CHAIN = buildStoryProviderChain();
+
+// A guild key's verdict is recorded on the key itself, not just the circuit:
+// the circuit only skips it for 10 minutes, after which every reply would pay
+// a doomed round-trip and then land on the owner-paid fallback anyway.
+function trackGuildKey(guildId, call) {
+  return async (...args) => {
+    const result = await call(...args);
+    if (result?.ok) {
+      if (clearGuildKeyRejection(guildId)) {
+        console.log(`[ai-key] guild=${guildId} key accepted again → 恢復原方案`);
+      }
+    } else if (result?.kind === "auth") {
+      const isNew = markGuildKeyRejected(guildId, result.status);
+      if (isNew) {
+        console.warn(`[ai-key] guild=${guildId} key rejected status=${result.status ?? "?"} → 降回入門`);
+      }
+    }
+    return result;
+  };
+}
+
+// Owner-paid replies are metered per REPLY, whichever layer answers it. The
+// counter used to charge only the DeepSeek entry, so a guild past its quota
+// simply kept talking on Luna — also the owner's bill, with no limit at all.
+// Returns null when the reply may go ahead, else which limit stopped it.
+function meterOwnerPaidReply(guildId, isWhitelisted) {
+  if (isOwnerTotalExhausted(AI_OWNER_DAILY_LIMIT)) return "owner";
+  if (!isWhitelisted && !checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT).allowed) {
+    return "guild";
+  }
+  checkAndIncrementOwnerTotal(AI_OWNER_DAILY_LIMIT);
+  return null;
+}
+
+// Zero-cost, in-character replies for a metered-out request. The ops line says
+// which limit it was and how it lifts, so nobody reads silence as a crash.
+const QUOTA_REPLIES = {
+  guild: `今天被叫太多次了…我先休息一下，明天再陪你們聊 ///\n-# 本伺服器今天的免費額度（${AI_FREE_DAILY_LIMIT} 次）用完了，台北時間 0 點重置；管理員可用 \`/ai-key set\` 自帶金鑰解除限制。`,
+  owner: `嗚…今天真的講不動了，明天再來找我好不好 ///\n-# 西寶今天整體的免費額度用完了，台北時間 0 點重置；自帶金鑰（\`/ai-key set\`）的伺服器不受影響。`,
+};
+const QUOTA_REPLY_SET = new Set(Object.values(QUOTA_REPLIES));
+
+// Lets the caller skip reply post-processing (a skill's heading rewrite) on a
+// canned quota line.
+function isQuotaReply(text) {
+  return QUOTA_REPLY_SET.has(text);
+}
+
+function meteredOut(guildId, reason) {
+  console.log(
+    reason === "owner"
+      ? `[ai] owner daily limit hit (${AI_OWNER_DAILY_LIMIT}) guild=${guildId}, canned reply`
+      : `[ai] guild=${guildId} hit daily limit (${AI_FREE_DAILY_LIMIT}), canned reply`,
+  );
+  return { chain: [], rateLimited: true, limitReason: reason };
+}
+
+function guildKeyEntry(guildId, model, deepSeekOptions) {
+  const guildKey = getGuildApiKey(guildId);
+  return {
+    label: `deepseek:${model}:guild`,
+    circuitKey: `deepseek:${model}:guild:${guildId}`,
+    call: trackGuildKey(guildId, (turns, persona, maxTokens) =>
+      callDeepSeek(turns, persona, maxTokens, {
+        apiKey: guildKey,
+        model,
+        reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+        ...deepSeekOptions,
+      })),
+  };
+}
+
+// Per-guild chain: DeepSeek first, then Kimi when enabled, then
+// shared fallback. Guilds with their own API key use that key for DeepSeek;
+// whitelisted guilds use the owner's key; free guilds (brief only) use the
+// owner's key with a daily rate limit.
+// `metered: false` is for background work (the profile sweep): the daily
+// limits count replies people asked for, not housekeeping.
+function buildTextGuildChain(
+  guildId,
+  tierConfig,
+  providerOptions = {},
+  now = new Date(),
+  { metered = true } = {},
+) {
+  const only = AI_PROVIDER_FORCE;
+  const deepSeekOptions = { timeoutMs: DEEPSEEK_CHAT_TIMEOUT_MS, ...providerOptions.deepSeek };
+
+  // Kimi is the second-choice provider. KIMI_ENABLED=false removes it entirely
+  // while the account has insufficient balance, without deleting its key.
+  const kimiSecondary = (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi"))
+    ? [{ label: `kimi:${KIMI_MODEL}`, call: callKimi }]
+    : [];
+
+  if (only === "kimi") {
+    return { chain: kimiSecondary, rateLimited: false };
+  }
+  if (only === "glm") {
+    return { chain: GLM_PRIMARY, rateLimited: false };
+  }
   if (only && only !== "deepseek") {
     return { chain: FALLBACK_CHAIN, rateLimited: false };
   }
 
+  const demoted = ownerDeepSeekIsDemoted(now);
   const tierKey = tierConfig?.tier || "brief";
   const needsPro = TIER_REQUIRES_KEY[tierKey];
-  const hasOwnKey = hasGuildApiKey(guildId);
+  // A rejected key counts as no key: the guild falls back to the free tier's
+  // owner-key flash + daily limit (getTierConfig already demoted its budgets).
+  const hasOwnKey = isGuildKeyUsable(guildId, now.getTime());
   const isWhitelisted = DEEPSEEK_PREMIUM_GUILD_IDS.includes(guildId);
 
   if (needsPro) {
     // standard/detailed → pro model, requires key or whitelist
     if (hasOwnKey) {
-      const guildKey = getGuildApiKey(guildId);
-      const entry = {
-        label: `deepseek:${DEEPSEEK_MODEL}:guild`,
-        call: (turns, persona, maxTokens) =>
-          callDeepSeek(turns, persona, maxTokens, {
-            apiKey: guildKey,
-            model: DEEPSEEK_MODEL,
-            reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
-          }),
-      };
-      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+      const entry = guildKeyEntry(guildId, DEEPSEEK_MODEL, deepSeekOptions);
+      return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
     }
     if (isWhitelisted && DEEPSEEK_API_KEY) {
+      const limited = metered && meterOwnerPaidReply(guildId, true);
+      if (limited) return meteredOut(guildId, limited);
       const entry = {
         label: `deepseek:${DEEPSEEK_MODEL}`,
-        call: callDeepSeek,
+        call: (turns, persona, maxTokens) =>
+          callDeepSeek(turns, persona, maxTokens, deepSeekOptions),
       };
-      return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+      // Whitelisted guilds are the ones the owner chose to pay for: they keep
+      // DeepSeek first through peak. Demoting them handed 19 of 33 replies in
+      // one guild to Luna (2026-09-27), which is why it felt dumber by day.
+      return {
+        chain: [...GLM_PRIMARY, entry, ...kimiSecondary, ...FALLBACK_CHAIN],
+        rateLimited: false,
+      };
     }
     // No key and not whitelisted — shouldn't happen (command blocks it),
     // but fall through to flash as safety net
   }
 
-  // brief → flash model
-  if (!DEEPSEEK_API_KEY) {
-    return { chain: FALLBACK_CHAIN, rateLimited: false };
+  // brief → flash model. A guild that brought its own key pays for its own
+  // brief calls too — before this, brief + own key ran on the OWNER's key with
+  // the daily limit waived, so the key the guild set was never used at all.
+  if (hasOwnKey) {
+    const entry = guildKeyEntry(guildId, DEEPSEEK_MODEL_FREE, deepSeekOptions);
+    return { chain: [entry, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
+  // Everything below is paid by the owner — DeepSeek and the fallback alike —
+  // so the reply is metered before any layer is chosen, peak window or not.
+  const limited = metered && meterOwnerPaidReply(guildId, isWhitelisted);
+  if (limited) return meteredOut(guildId, limited);
 
-  // Free guild (brief) — check daily rate limit
-  if (!hasOwnKey && !isWhitelisted) {
-    const rateCheck = checkAndIncrement(guildId, AI_FREE_DAILY_LIMIT);
-    if (!rateCheck.allowed) {
-      console.log(`[ai] guild=${guildId} hit daily DeepSeek limit (${AI_FREE_DAILY_LIMIT}), using fallback only`);
-      return { chain: FALLBACK_CHAIN, rateLimited: true };
-    }
+  if (!DEEPSEEK_API_KEY) {
+    return { chain: [...GLM_PRIMARY, ...kimiSecondary, ...FALLBACK_CHAIN], rateLimited: false };
   }
 
   const entry = {
@@ -165,41 +502,197 @@ function buildGuildChain(guildId, tierConfig) {
     call: (turns, persona, maxTokens) =>
       callDeepSeek(turns, persona, maxTokens, {
         model: DEEPSEEK_MODEL_FREE,
-        reasoningHeadroom: 0,
+        // flash thinks too — the tier system shipped assuming only v4-pro
+        // did, so this entry alone ran with no headroom. It burned the whole
+        // display budget on reasoning and returned empty on 42% of calls
+        // (413/414 were finish_reason=length with completion == reasoning).
+        // Headroom 0 is only correct alongside thinking:{type:"disabled"},
+        // which is how the recap/story chains use it.
+        reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+        ...deepSeekOptions,
       }),
   };
-  return { chain: [entry, ...FALLBACK_CHAIN], rateLimited: false };
+  return {
+    chain: [
+      ...GLM_PRIMARY,
+      ...placeOwnerDeepSeek(
+        entry,
+        [...kimiSecondary, ...FALLBACK_CHAIN],
+        demoted && !isWhitelisted,
+      ),
+    ],
+    rateLimited: false,
+  };
+}
+
+// Vision rides in FRONT of the text chain, not instead of it. Only DeepSeek's
+// experimental multimodal endpoint can see the picture; everything below stays
+// blind and answers from the「附了 N 張圖片」note, so a dead/renamed vision model
+// costs 西寶 her eyes for that reply, never her voice.
+//
+// It stays at the head even inside DeepSeek's peak window (where owner-key text
+// calls get demoted for cost): an image is ~384 tokens at flash rates, and no
+// amount of demotion makes a blind provider able to answer「這張是什麼」.
+function buildVisionEntry(guildId, images) {
+  if (!VISION_ENABLED || !Array.isArray(images) || images.length === 0) return null;
+  const only = AI_PROVIDER_FORCE;
+  if (only && only !== "deepseek") return null;
+  if (!DEEPSEEK_VISION_MODEL) return null;
+
+  const guildKey = isGuildKeyUsable(guildId) ? getGuildApiKey(guildId) : null;
+  const apiKey = guildKey || DEEPSEEK_API_KEY;
+  if (!apiKey) return null;
+
+  const label = `deepseek:${DEEPSEEK_VISION_MODEL}:vision`;
+  // Longer timeout than a text call: DeepSeek fetches each Discord CDN URL
+  // itself before the model sees anything.
+  const options = {
+    apiKey,
+    model: DEEPSEEK_VISION_MODEL,
+    images,
+    label,
+    timeoutMs: VISION_TIMEOUT_MS,
+    // Thinking OFF, headroom 0 — the pairing this codebase already trusts
+    // (recap :direct, story). Measured on the live endpoint 2026-09-10: with
+    // thinking on, one sticker-sized image burned 300+ tokens of
+    // reasoning_content and returned EMPTY content; with it off the same call
+    // answered correctly in 1.8 s. A picture needs looking at, not deliberating.
+    thinking: { type: "disabled" },
+    reasoningHeadroom: 0,
+  };
+  return {
+    label,
+    // A guild key's failure must not blind the owner key (or other guilds).
+    circuitKey: guildKey ? `${label}:guild:${guildId}` : label,
+    options,
+    call: guildKey
+      ? trackGuildKey(guildId, (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options))
+      : (turns, persona, maxTokens) =>
+        callDeepSeek(turns, persona, maxTokens, options),
+  };
+}
+
+function buildGuildChain(
+  guildId,
+  tierConfig,
+  providerOptions = {},
+  now = new Date(),
+  images = [],
+  meterOptions = {},
+) {
+  const result = buildTextGuildChain(guildId, tierConfig, providerOptions, now, meterOptions);
+  // A metered-out reply makes no call at all, pictures included.
+  if (result.rateLimited) return result;
+
+  const vision = buildVisionEntry(guildId, images);
+  if (!vision) return result;
+  return { ...result, chain: [vision, ...result.chain], vision: true };
+}
+
+// The circuit is keyed per credential, not per label: every guild that brings
+// its own key shares the label `deepseek:<model>:guild`, so keying on the label
+// let one guild's dead key (401 / 402) cool down every other guild's working
+// one for 10 minutes — silently shipping their traffic to the owner-paid
+// fallback. Entries built on a guild key set `circuitKey` to split them apart.
+function circuitKeyOf(provider) {
+  return provider.circuitKey || provider.label;
 }
 
 async function runProviderChain(chain, turns, persona, maxTokens) {
   for (const provider of chain) {
-    if (!isProviderAvailable(provider.label)) {
-      console.log(`[ai] skip cooling-down provider=${provider.label}`);
+    const key = circuitKeyOf(provider);
+    if (!isProviderAvailable(key)) {
+      console.log(`[ai] skip cooling-down provider=${key}`);
       continue;
     }
 
     const result = await provider.call(turns, persona, maxTokens);
 
     if (result && result.ok) {
-      recordProviderSuccess(provider.label);
+      recordProviderSuccess(key);
       return { provider, text: result.text };
     }
 
     const failure = result ?? { kind: "unknown" };
-    const cooldownMs = recordProviderFailure(provider.label, failure);
+    const cooldownMs = recordProviderFailure(key, failure);
     console.warn(
-      `[ai] provider failed label=${provider.label} kind=${failure.kind} cooldownMs=${cooldownMs}`,
+      `[ai] provider failed label=${key} kind=${failure.kind} cooldownMs=${cooldownMs}`,
     );
   }
   return null;
 }
 
-async function generateAIReply(message, userText) {
+// Discord reply reference: when the @ is itself a reply to a specific message,
+// that message is the explicit referent of "你剛剛說的" / "這張圖". Resolving it is
+// crucial for replies to her OWN scheduled posts (daily recap / bedtime story),
+// which never enter conv memory and are filtered out of group context.
+async function fetchReferencedMessage(message) {
+  if (!message?.reference?.messageId) return null;
+  if (typeof message.fetchReference !== "function") return null;
+  try {
+    return await message.fetchReference();
+  } catch (err) {
+    // Referenced message deleted / unfetchable — skip silently.
+    console.log(`[ai] reply reference unresolved: ${err.message}`);
+    return null;
+  }
+}
+
+async function generateAIReply(message, userText, options = {}) {
+  const {
+    personaOverride = null,
+    personaSuffix = "",
+    maxReplyChars = null,
+    // Floors, not overrides: a skill declares the budget its output format
+    // needs (a story cannot fit 入門's 180 tokens), but a tier already granting
+    // more keeps its own, larger limit.
+    minTokens = 0,
+    minReplyChars = 0,
+    // Extra material a skill gathered for THIS call (story ingredients). It is
+    // user-authored Discord text, so it goes in as a user turn beside the group
+    // context — never into the system prompt.
+    extraUserContext = "",
+    recordMemory = true,
+    includeHistory = true,
+    includeContext = true,
+    includeEmojiPrompt = true,
+    resolveEmojis = true,
+    // Name→entry map of the stickers 西寶 may post, built by the CALLER
+    // (src/stickers.js) because it needs a guild fetch + a disk read. Only the
+    // paths that can actually attach a sticker pass one; everything else omits
+    // it and she never sees the table, so she never emits [貼圖:…] into a recap.
+    stickerCatalog = null,
+    providerOptions = {},
+  } = options;
   const tierConfig = getTierConfig(message.guildId);
-  const { chain: guildChain, rateLimited } = buildGuildChain(message.guildId, tierConfig);
+
+  // 「別叫我X」 said to 西寶 is recorded before anything is assembled, so the
+  // reply to that very message already stops using X.
+  if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory && includeContext) {
+    applyAliasStatements(message.guildId, message.author?.id, message.member?.displayName || message.author?.username, userText, {
+      messageId: message.id,
+      at: message.createdTimestamp,
+    });
+  }
+
+  // Resolved once, used twice: the referenced message supplies both the reply
+  // context block (further down) and — when the @ itself carries no attachment
+  // —— the image 西寶 is being asked about.
+  const referenced = includeContext ? await fetchReferencedMessage(message) : null;
+  const images = await loadVisionImages(message, referenced);
+
+  const { chain: guildChain, rateLimited, limitReason } = buildGuildChain(
+    message.guildId,
+    tierConfig,
+    providerOptions,
+    new Date(),
+    images,
+  );
+  if (rateLimited) return QUOTA_REPLIES[limitReason];
   if (guildChain.length === 0) return null;
-  const userTurn = buildUserTurn(message, userText);
-  const history = getChannelAIHistory(message.channelId);
+  const userTurn = buildUserTurn(message, userText, buildImageNote(images.length));
+  const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
   let turns = [...history, { role: "user", content: userTurn }];
 
   // System-prompt assembly is ordered most-stable → most-volatile so the
@@ -209,26 +702,30 @@ async function generateAIReply(message, userText) {
   //   2. emoji table     (per bot session — memoized, same string every call)
   //   3. familiarity      (per-guild, drifts slowly as talk counts grow)
   //   4. group context    (per-call, fully volatile — MUST be last)
-  let persona = tierConfig.persona;
+  let persona = personaOverride || tierConfig.persona;
 
   const emojiMap = buildEmojiMap(
     message.client,
     message.guildId,
     EMOJI_TRUSTED_GUILD_IDS,
+    { includeAppEmojis: APP_EMOJI_ENABLED },
   );
-  persona += buildEmojiPromptBlock(emojiMap);
+  if (includeEmojiPrompt) persona += buildEmojiPromptBlock(emojiMap);
+  if (stickerCatalog) persona += buildStickerPromptBlock(stickerCatalog);
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
   // identity (not topic), so it goes in for ALL tiers including brief — the
   // ~300 token cost buys 西寶 the ability to greet 摯友 vs 剛認識 differently
   // without us hand-curating any list.
-  const roster = getFamiliarityRoster(message.guildId);
+  const roster = includeContext
+    ? withConfirmedAliases(message.guildId, getFamiliarityRoster(message.guildId))
+    : [];
   if (roster.length > 0) {
     persona += buildFamiliarityBlock(roster);
   }
 
   let profileBlock = "";
-  if (AI_LONG_TERM_MEMORY_ENABLED) {
+  if (AI_LONG_TERM_MEMORY_ENABLED && includeContext) {
     const userProfile = getUserProfile(message.guildId, message.author?.id);
     profileBlock = buildUserProfileBlock(userProfile);
     if (profileBlock) persona += profileBlock;
@@ -238,6 +735,10 @@ async function generateAIReply(message, userText) {
     if (guildBlock) persona += guildBlock;
   }
 
+  // Mode-specific rules are appended last so they can narrow output format
+  // without replacing the stable character persona used by normal text chat.
+  if (personaSuffix) persona += `\n\n${personaSuffix}`;
+
   // Group + target context are both injected as user-role turns (NOT in the
   // system prompt) so user-controlled Discord text stays out of the highest-
   // privilege area and the system-prompt suffix stays cache-stable. We FETCH
@@ -246,7 +747,7 @@ async function generateAIReply(message, userText) {
   let groupContextSize = 0;
   let groupContextLines = null;
   let groupBlock = "";
-  if (tierConfig.groupContextCount > 0 && message.channel) {
+  if (includeContext && tierConfig.groupContextCount > 0 && message.channel) {
     const ctx = await fetchGroupContext(
       message.channel,
       tierConfig.groupContextCount,
@@ -268,7 +769,7 @@ async function generateAIReply(message, userText) {
   let targetCtxSize = 0;
   let targetBlock = "";
   let imitationActive = false;
-  if (message.channel) {
+  if (includeContext && message.channel) {
     imitationActive = detectImitationIntent(userText);
     const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
       ? listUserProfiles(message.guildId)
@@ -295,7 +796,7 @@ async function generateAIReply(message, userText) {
       const enriched = targets.map((t) => ({
         ...t,
         profile: AI_LONG_TERM_MEMORY_ENABLED
-          ? getUserProfile(message.guildId, t.userId)?.profile || null
+          ? profileTextOf(getUserProfile(message.guildId, t.userId)) || null
           : null,
       }));
       targetBlock = buildTargetContextBlock(enriched, {
@@ -306,32 +807,22 @@ async function generateAIReply(message, userText) {
     }
   }
 
-  // Discord reply reference: when the @ is itself a reply to a specific message,
-  // that message is the explicit referent of "你剛剛說的" / "這個". Resolve it so
-  // 西寶 can see what's being replied to — crucial for replies to her OWN
-  // scheduled posts (daily recap / bedtime story), which never enter conv memory
-  // and are filtered out of group context (it drops the bot's own messages).
+  // Reply context (the reference itself was resolved at the top of the call).
   let replyBlock = "";
-  if (message.reference?.messageId && typeof message.fetchReference === "function") {
-    try {
-      const ref = await message.fetchReference();
-      const refContent = (ref.content || "").trim();
-      if (refContent) {
-        const isSelf = ref.author?.id === message.client?.user?.id;
-        const authorName = sanitizeName(
-          ref.member?.displayName ||
-            ref.author?.globalName ||
-            ref.author?.username,
-        );
-        replyBlock = buildReplyContextBlock({
-          content: trimDescription(refContent, 500),
-          authorName,
-          isSelf,
-        });
-      }
-    } catch (err) {
-      // Referenced message deleted / unfetchable — skip silently.
-      console.log(`[ai] reply reference unresolved: ${err.message}`);
+  if (referenced) {
+    const refContent = (referenced.content || "").trim();
+    if (refContent) {
+      const isSelf = referenced.author?.id === message.client?.user?.id;
+      const authorName = sanitizeName(
+        referenced.member?.displayName ||
+          referenced.author?.globalName ||
+          referenced.author?.username,
+      );
+      replyBlock = buildReplyContextBlock({
+        content: trimDescription(refContent, 500),
+        authorName,
+        isSelf,
+      });
     }
   }
 
@@ -344,6 +835,11 @@ async function generateAIReply(message, userText) {
   if (groupBlock) {
     turns = [{ role: "user", content: groupBlock }, ...turns];
   }
+  // Skill material sits in front of the group context: it is background the
+  // story draws on, while the group context is the immediate scene.
+  if (extraUserContext) {
+    turns = [{ role: "user", content: extraUserContext }, ...turns];
+  }
   if (targetBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
   }
@@ -355,10 +851,13 @@ async function generateAIReply(message, userText) {
     guildChain,
     turns,
     persona,
-    tierConfig.maxTokens,
+    Math.max(tierConfig.maxTokens, minTokens),
   );
   if (result) {
-    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
+    const capped = trimDescription(
+      result.text,
+      Math.max(maxReplyChars || tierConfig.maxReplyChars, minReplyChars),
+    );
     // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the
     // resolved `<:name:id>` syntax, the model would see its own raw IDs next
     // turn and imitate them — mangling the id/colons and producing broken emoji.
@@ -366,22 +865,24 @@ async function generateAIReply(message, userText) {
       message.member?.displayName ||
       message.author?.globalName ||
       message.author?.username;
-    recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns, {
-      guildId: message.guildId,
-      userId: message.author?.id,
-      displayName,
-    });
-    recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
-      guildId: message.guildId,
-      userId: message.client?.user?.id,
-      displayName: message.client?.user?.username || "西寶",
-    });
-    const isPremium = hasGuildApiKey(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
+    if (recordMemory) {
+      recordAITurn(message.channelId, "user", userTurn, tierConfig.memoryMaxTurns, {
+        guildId: message.guildId,
+        userId: message.author?.id,
+        displayName,
+      });
+      recordAITurn(message.channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+        guildId: message.guildId,
+        userId: message.client?.user?.id,
+        displayName: message.client?.user?.username || "西寶",
+      });
+    }
+    const isPremium = isGuildKeyUsable(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} roster=${roster.length} profile=${profileBlock ? 1 : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
     );
 
-    if (AI_LONG_TERM_MEMORY_ENABLED) {
+    if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {
       const guildId = message.guildId;
       const userId = message.author?.id;
       const runChain = (t, p, m) => runProviderChain(guildChain, t, p, m);
@@ -399,6 +900,9 @@ async function generateAIReply(message, userText) {
         appendPendingContext(guildId, guildName, ctxStrings);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
 
+        recordAliasContext(guildId, groupContextLines);
+        maybeExtractAliases(guildId, runChain).catch(() => {});
+
         const personalContextLines = getPersonalMemoryContextEntries(groupContextLines);
         for (const entry of personalContextLines) {
           if (entry.userId) {
@@ -412,22 +916,35 @@ async function generateAIReply(message, userText) {
       }
     }
 
-    return resolveCustomEmojis(capped, emojiMap);
+    // Told once, in the channel that hit it, right after the reply the demoted
+    // tier produced — not recorded into memory, it is ops, not conversation.
+    const reply = consumeGuildKeyNotice(message.guildId)
+      ? `${capped}\n\n${GUILD_KEY_REJECTED_NOTICE}`
+      : capped;
+    return resolveEmojis ? resolveCustomEmojis(reply, emojiMap) : reply;
   }
 
   console.warn(
-    `[ai] chain exhausted (${guildChain.length} providers tried${rateLimited ? ", DeepSeek rate-limited" : ""}), falling back to hardcoded reply`,
+    `[ai] chain exhausted (${guildChain.length} providers tried), falling back to hardcoded reply`,
   );
   return null;
 }
 
 module.exports = {
   AI_PROVIDER_CHAIN,
+  RECAP_PROVIDER_CHAIN,
+  STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
   PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
+  buildRecapProviderChain,
+  buildStoryProviderChain,
   buildGuildChain,
+  buildVisionEntry,
+  fetchReferencedMessage,
   getPersonalMemoryContextEntries,
   runProviderChain,
   generateAIReply,
+  isQuotaReply,
+  QUOTA_REPLIES,
 };

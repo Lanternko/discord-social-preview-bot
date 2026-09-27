@@ -1,10 +1,18 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
 const { getMissingChannelPermissions } = require("./discord-io");
+const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
+const { getGuildLanguage, setGuildLanguage } = require("./language-store");
+const {
+  LANGUAGES,
+  VALID_LANGUAGES,
+  isValidLanguage,
+} = require("./reply-language");
 const {
   TIERS,
   TIER_UI_LABELS,
   TIER_REQUIRES_KEY,
+  getEffectiveTier,
 } = require("./tier-config");
 const {
   getGuildSchedules,
@@ -15,6 +23,9 @@ const {
 const {
   getUserProfile,
   deleteUserProfile,
+  PROFILE_FIELDS,
+  isAliasConfirmed,
+  isItemStale,
 } = require("./user-profile-store");
 const {
   getGuildProfile,
@@ -29,8 +40,10 @@ const {
   hasGuildApiKey,
   setGuildApiKey,
   removeGuildApiKey,
+  getGuildKeyRejection,
 } = require("./ai/guild-key-store");
 const { getUsage } = require("./ai/rate-limiter");
+const { handleVoiceCommand } = require("./voice-reply");
 const {
   isStableObservation,
   describeObservationEvidence,
@@ -45,6 +58,11 @@ const {
 const SERVER_COUNT_COMMAND = {
   name: "servers",
   description: "顯示目前機器人加入的伺服器數量",
+};
+
+const HELP_COMMAND = {
+  name: "help",
+  description: "認識西寶的功能、指令與伺服器設定方式",
 };
 
 const DEBUG_PERMS_COMMAND = {
@@ -66,6 +84,23 @@ const TIER_COMMAND = {
         { name: "標準 — pro，2~8 句（需 API 金鑰）", value: "standard" },
         { name: "精細 — pro，3~15 句（需 API 金鑰）", value: "detailed" },
       ],
+    },
+  ],
+};
+
+const LANGUAGE_COMMAND = {
+  name: "language",
+  description: "查看或切換西寶回覆用的語言（切換需管理伺服器權限）",
+  options: [
+    {
+      name: "language",
+      description: "要切換的語言（不填則顯示目前設定）",
+      type: 3, // STRING
+      required: false,
+      choices: VALID_LANGUAGES.map((code) => ({
+        name: LANGUAGES[code].label,
+        value: code,
+      })),
     },
   ],
 };
@@ -190,6 +225,31 @@ const AI_KEY_COMMAND = {
   ],
 };
 
+// Message context menu command (Apps > 刪除西寶訊息) — same authorization as
+// the 🗑️ reaction (poster / ManageMessages mod / bot owner), for people who
+// reach for a menu instead of a reaction. type 3 = MESSAGE context menu;
+// description MUST be "" (API rejects non-empty for context menu commands,
+// and commandSpecMatches needs it present to diff stably).
+const DELETE_MESSAGE_COMMAND = {
+  name: "刪除西寶訊息",
+  description: "",
+  type: 3,
+};
+
+const VOICE_COMMAND = {
+  name: "voice",
+  description: "讓西寶用語音回答（不影響原本的文字回覆）",
+  options: [
+    {
+      name: "message",
+      description: "想對西寶說的話",
+      type: 3, // STRING
+      required: true,
+      max_length: 500,
+    },
+  ],
+};
+
 // Returns true when the registered command matches the expected spec on the
 // fields we care about. Currently checks description + defaultMemberPermissions
 // — extend here if we ever start diffing options.
@@ -215,12 +275,16 @@ function commandSpecMatches(existing, expected) {
 
 async function ensureApplicationCommands(client) {
   const expectedCommands = [
+    HELP_COMMAND,
     SERVER_COUNT_COMMAND,
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
+    LANGUAGE_COMMAND,
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
     AI_KEY_COMMAND,
+    DELETE_MESSAGE_COMMAND,
+    VOICE_COMMAND,
   ];
   const commands = await client.application.commands.fetch();
   for (const expectedCommand of expectedCommands) {
@@ -245,6 +309,37 @@ async function ensureApplicationCommands(client) {
       console.log(`[commands] deleted stale /${cmd.name}`);
     }
   }
+}
+
+function buildHelpMessage() {
+  return [
+    "## 西寶使用說明",
+    "把支援的社群連結貼到頻道，我會自動回覆比較完整的預覽；也可以 `@西寶` 跟我聊天。",
+    "",
+    "**主要功能**",
+    "- 支援 Threads、X、Instagram、Reddit、Pixiv、Bluesky、Bilibili、Facebook、Pinterest、巴哈姆特與 PTT",
+    "- 自動移除常見追蹤參數、避免短時間內重複預覽",
+    "- 對西寶的訊息按 🗑️，或右鍵選「Apps → 刪除西寶訊息」即可請我刪除",
+    "",
+    "**可用指令**",
+    "- `/help`：顯示這份說明",
+    "- `/voice`：讓西寶用語音回答",
+    "- `/memory show`、`forget-me`、`guild`：查看或管理記憶；管理員可用 `forget-user` 刪除指定使用者的記憶",
+    "- `/ai-tier`：查看 AI 方案；管理員可切換方案",
+    "- `/language`：查看西寶回覆用的語言；管理員可切換（繁體／简体／日本語／English）",
+    "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
+    "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
+    "- `/debug-perms`：檢查目前頻道的機器人權限",
+    "- `/servers`：查看西寶加入的伺服器數量",
+    "",
+    "**伺服器設定**",
+    "1. 邀請時啟用 `bot` 與 `applications.commands` scopes。",
+    "2. 授予查看頻道、傳送訊息、讀取歷史訊息與嵌入連結權限。",
+    "3. 建議加上「管理訊息」，讓我能收起原始連結預覽。",
+    "4. 想使用進階 AI：管理員先執行 `/ai-key set`，再用 `/ai-tier` 選擇方案。",
+    "",
+    "小技巧：訊息包含 `nopreview`、`previewignore` 或 `fxignore`，我就不會產生預覽。",
+  ].join("\n");
 }
 
 function buildPermissionDebugMessage(interaction) {
@@ -298,7 +393,7 @@ function getTierQuotaLine(tierKey, { hasKey, isWhitelisted, usage }) {
   if (isWhitelisted) {
     return "額度：無限制（白名單；入門仍使用 flash 模型）";
   }
-  return `每日免費額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}（超過後改用 Groq / Gemini 備援）`;
+  return `每日免費額度：${usage?.count ?? 0} / ${AI_FREE_DAILY_LIMIT}（用完後西寶今天先休息，台北時間 0 點重置）`;
 }
 
 function buildTierDetailLines(tierKey, status) {
@@ -346,6 +441,10 @@ async function handleTierCommand(interaction) {
       `**目前方案：${TIER_UI_LABELS[current]}**`,
       ...buildTierDetailLines(current, status),
     ];
+    const effective = getEffectiveTier(guildId);
+    if (effective !== current) {
+      lines.push(describeKeyRejection(guildId, effective));
+    }
     lines.push("");
     lines.push("**方案差異：**");
     for (const key of Object.keys(TIER_UI_LABELS)) {
@@ -411,6 +510,69 @@ async function handleTierCommand(interaction) {
     });
   } catch (err) {
     console.warn(`[tier] setGuildTier failed: ${err.message}`);
+    await interaction.reply({
+      content: "切換失敗，請稍後再試。",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+// ── /language handler ─────────────────────────────────────────────────
+async function handleLanguageCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const code = interaction.options.getString("language");
+  const guildId = interaction.guildId;
+
+  if (!code) {
+    const current = getGuildLanguage(guildId);
+    await interaction.reply({
+      content: [
+        `**目前回覆語言：${LANGUAGES[current].label}**`,
+        "",
+        "可選：" + VALID_LANGUAGES.map((c) => LANGUAGES[c].label).join("、"),
+        "只影響西寶的 AI 回覆（聊天、講故事、排程貼文）；預覽的系統訊息、抽籤等固定文字維持繁體中文。",
+        "所有成員都能查看；切換語言需要「管理伺服器」權限。",
+      ].join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!isValidLanguage(code)) {
+    await interaction.reply({
+      content: `未知的語言：${code}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const canManageGuild = interaction.member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
+  );
+  if (!canManageGuild) {
+    await interaction.reply({
+      content: "需要「管理伺服器」權限才能切換語言。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    setGuildLanguage(guildId, code);
+    console.log(`[language] guild=${guildId} set language=${code} by user=${interaction.user.id}`);
+    await interaction.reply({
+      content: `之後西寶會用 **${LANGUAGES[code].label}** 回覆。這個設定已儲存，重啟後仍會保留。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    console.warn(`[language] setGuildLanguage failed: ${err.message}`);
     await interaction.reply({
       content: "切換失敗，請稍後再試。",
       flags: MessageFlags.Ephemeral,
@@ -546,6 +708,45 @@ async function handleScheduleCommand(interaction, client) {
   }
 }
 
+// /memory show: one line per item with its support and when it was last
+// confirmed, so a user can see WHY 西寶 thinks something and that it will
+// fade if it stops being true.
+function formatProfileItemsForShow(items, now = Date.now()) {
+  const lines = ["\n📝 **人格摘要**"];
+  let any = false;
+  for (const f of PROFILE_FIELDS) {
+    const live = (items[f.key] || []).filter((it) => !isItemStale(it, now));
+    if (live.length === 0) continue;
+    any = true;
+    lines.push(`**${f.label}**`);
+    for (const it of live) {
+      const n = new Set((it.evidence || []).map((e) => e?.messageId).filter(Boolean)).size;
+      const day = typeof it.lastSeenAt === "number" ? new Date(it.lastSeenAt).toISOString().slice(0, 10) : "?";
+      const hedge = it.tentative ? "（或許）" : "";
+      lines.push(`• ${hedge}${it.text}（${n} 則佐證，最後確認 ${day}）`);
+    }
+  }
+  return any ? lines : [];
+}
+
+// Unconfirmed aliases are shown too (marked), so people can see what 西寶 is
+// about to start calling them before it sticks.
+function formatAliasesForShow(aliases, now = Date.now()) {
+  if (!Array.isArray(aliases) || aliases.length === 0) return [];
+  const parts = aliases.map((a) => {
+    const n = new Set((a.evidence || []).map((e) => e?.messageId)).size;
+    return `${a.alias}（${n} 則${isAliasConfirmed(a, now) ? "" : "，未確認"}）`;
+  });
+  return [`群友叫你：${parts.join("、")}`];
+}
+
+// Names the person told 西寶 not to use. Listed so they can see it stuck
+// (and how to lift it).
+function formatAliasDenialsForShow(denials) {
+  if (!Array.isArray(denials) || denials.length === 0) return [];
+  return [`你說過不要叫你：${denials.map((d) => d.alias).join("、")}（跟西寶說「叫我X就好」可以取消）`];
+}
+
 async function handleMemoryCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -570,8 +771,12 @@ async function handleMemoryCommand(interaction) {
 
     const lines = [`**西寶對你的記憶**`];
     lines.push(`暱稱：${profile.name || "未知"}`);
+    lines.push(...formatAliasesForShow(profile.aliases));
+    lines.push(...formatAliasDenialsForShow(profile.aliasDenials));
 
-    if (profile.profile) {
+    if (profile.items) {
+      lines.push(...formatProfileItemsForShow(profile.items));
+    } else if (profile.profile) {
       lines.push(`\n📝 **人格摘要**\n${profile.profile}`);
     }
 
@@ -686,6 +891,14 @@ async function handleMemoryCommand(interaction) {
   }
 }
 
+function describeKeyRejection(guildId, effectiveTier) {
+  const rejection = getGuildKeyRejection(guildId);
+  const reason = rejection?.status === 402 ? "餘額不足（HTTP 402）"
+    : rejection?.status ? `金鑰無效（HTTP ${rejection.status}）`
+    : "金鑰無效或餘額不足";
+  return `⚠️ DeepSeek 拒絕了這個伺服器的金鑰：${reason}。目前以**${TIER_UI_LABELS[effectiveTier]}**運作（每天 ${AI_FREE_DAILY_LIMIT} 次）；用 \`/ai-key set\` 換新金鑰立即恢復，儲值的話約 6 小時內會自動重試。`;
+}
+
 async function handleAiKeyCommand(interaction) {
   if (!interaction.inGuild()) {
     await interaction.reply({
@@ -704,7 +917,10 @@ async function handleAiKeyCommand(interaction) {
     const isPremium = hasKey || isWhitelisted;
 
     const lines = ["**AI 方案狀態**"];
-    if (hasKey) {
+    if (hasKey && getGuildKeyRejection(guildId)) {
+      lines.push("方案：進階（自訂金鑰）");
+      lines.push(describeKeyRejection(guildId, getEffectiveTier(guildId)));
+    } else if (hasKey) {
       lines.push("方案：進階（自訂金鑰）");
       lines.push(`模型：\`${DEEPSEEK_MODEL}\``);
       lines.push("額度：無限制");
@@ -779,8 +995,78 @@ async function handleAiKeyCommand(interaction) {
   }
 }
 
+// Apps > 刪除西寶訊息 — menu-flavoured twin of the 🗑️ reaction. Shares
+// isAuthorizedToDelete (poster via reply reference / ManageMessages mod /
+// BOT_OWNER_IDS) and, like the reaction, never touches a non-西寶 message.
+// Unlike the reaction, an interaction MUST be acknowledged — every path
+// replies ephemerally so only the clicker sees the outcome.
+async function handleDeleteMessageContext(interaction, client) {
+  let message = interaction.targetMessage;
+  if (message?.partial) {
+    try {
+      message = await message.fetch();
+    } catch (error) {
+      await interaction.reply({
+        content: `讀不到這則訊息（${error.message}），刪除失敗。`,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+  }
+
+  if (!message || message.author?.id !== client.user.id) {
+    await interaction.reply({
+      content: "這不是西寶的訊息，我只能刪西寶自己發的喔。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!(await isAuthorizedToDelete(message, interaction.user))) {
+    await interaction.reply({
+      content:
+        "你沒有刪這則的權限——要是觸發這則預覽的本人、有「管理訊息」權限的管理員，或 bot owner。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    await message.delete();
+    console.log(
+      `[delete] removed message id=${message.id} by=${interaction.user.id} via=context-menu`,
+    );
+    await interaction.reply({
+      content: "刪掉了。",
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (error) {
+    console.warn(`[delete] context-menu delete failed: ${error.message}`);
+    await interaction.reply({
+      content: `刪除失敗：${error.message}`,
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
 async function handleInteraction(interaction, client) {
+  if (
+    interaction.isMessageContextMenuCommand?.() &&
+    interaction.commandName === DELETE_MESSAGE_COMMAND.name
+  ) {
+    await handleDeleteMessageContext(interaction, client);
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
+
+  if (interaction.commandName === HELP_COMMAND.name) {
+    await interaction.reply({
+      content: buildHelpMessage(),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   if (interaction.commandName === SERVER_COUNT_COMMAND.name) {
     await interaction.reply({
@@ -803,6 +1089,11 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
+  if (interaction.commandName === LANGUAGE_COMMAND.name) {
+    await handleLanguageCommand(interaction);
+    return;
+  }
+
   if (interaction.commandName === SCHEDULE_COMMAND.name) {
     await handleScheduleCommand(interaction, client);
     return;
@@ -815,21 +1106,34 @@ async function handleInteraction(interaction, client) {
 
   if (interaction.commandName === AI_KEY_COMMAND.name) {
     await handleAiKeyCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === VOICE_COMMAND.name) {
+    await handleVoiceCommand(interaction, client);
   }
 }
 
 module.exports = {
+  HELP_COMMAND,
   SERVER_COUNT_COMMAND,
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
+  LANGUAGE_COMMAND,
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
   AI_KEY_COMMAND,
+  DELETE_MESSAGE_COMMAND,
+  handleDeleteMessageContext,
+  VOICE_COMMAND,
   ensureApplicationCommands,
+  buildHelpMessage,
   buildPermissionDebugMessage,
   handleTierCommand,
+  handleLanguageCommand,
   handleScheduleCommand,
   handleMemoryCommand,
   handleAiKeyCommand,
+  handleVoiceCommand,
   handleInteraction,
 };

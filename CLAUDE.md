@@ -1,6 +1,6 @@
 # Discord Social Preview Bot
 
-A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit, Pixiv, Bluesky, Bilibili, Facebook, Bahamut, PTT) and replies with rich previews. Also hosts a `@西寶` AI personality.
+A Discord bot that intercepts social media links (Threads, Instagram, X, Reddit, Pixiv, Bluesky, Bilibili, Facebook, Pinterest, Bahamut, PTT) and replies with rich previews. Also hosts a `@西寶` AI personality.
 
 ## Architecture
 
@@ -8,6 +8,7 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 
 ## NEVER
 
+- **NEVER** do feature work in the shared main checkout — and **NEVER** `git checkout` a different branch there — while another session/feature may be active. A working tree's HEAD is a property of the **folder**, not the conversation: every process pointed at that folder (other Claude sessions, your terminals, the running bot's source dir) shares one branch, so a checkout silently stomps all of them. Each concurrent feature gets its **own** `git worktree` — sibling `apps/dspb-<feature>/` (e.g. `dspb-bilibili`, `dspb-imitation`). See the Workflow section.
 - **NEVER** push directly to `main`. All changes go on a branch → PR → merge.
 - **NEVER** merge a branch into `main` without `npm test` passing locally.
 - **NEVER** let a function own more than one responsibility. When adding behaviour, decide if it belongs in an existing function or needs a new one — don't wedge flags into unrelated code.
@@ -19,32 +20,49 @@ CommonJS modules under `src/`. Entry point [src/index.js](src/index.js) is just 
 ## Core gotchas (load-bearing — won't be obvious from code alone)
 
 - **Mention text → `.normalize("NFC")` before comparison.** Discord can send CJK input in NFD form, causing strict equality (e.g. `抽籤`) to silently fail.
-- **Threads routing order in `buildPreviewPayloads` is load-bearing.** The `if` ladder order determines which branch a mixed (image + video) post falls into. Hard-asserted by `scripts/routing-smoke.js` (MIXED case). Run `npm run test:routing` before merging any reorder.
+- **Threads metadata is GraphQL-first, chromium-second.** [src/threads-graphql.js](src/threads-graphql.js) decodes the shortcode to a numeric post id and POSTs `threads.com/api/graphql` — media counts and the direct mp4 URL come back as *fields*, so the DOM race that used to turn video posts into still covers can't happen, and it's ~4x faster (1.2s vs 5s). It returns null on any miss and probe.js falls back to the Playwright probe; the probe stays the safety net for walled posts. **`THREADS_GRAPHQL_DOC_ID` rots** — Meta rotates it, and when it does everything silently degrades to the slow path. Grep `[threads-gql] api error`.
+- **Threads routing order in `buildPreviewPayloads` is load-bearing.** The `if` ladder order determines which branch a mixed (image + video) post falls into — multi-image is checked before video, so a MIXED post stays a carousel gallery and carries a `videoAttachment` (discord-io downloads the mp4 and uploads it as a playable video below the gallery), rather than dropping to a bare video fixer. Hard-asserted by `scripts/routing-smoke.js` (MIXED case). Run `npm run test:routing` before merging any reorder.
+- **Video attachment is the only way to show a playable video the bot controls.** Bot-built embeds can't hold a video, so [src/video.js](src/video.js) downloads the mp4 and re-uploads it. It's the last thing `sendPreviews` resolves (`resolveOutgoing`); on ANY miss (disabled / guild not allow-listed / over the guild upload cap / at the concurrency cap / fetch fail) it returns null and the payload keeps its existing behaviour (carousel for MIXED, fixer chain for video-only). Guards: HEAD size pre-check, `VIDEO_ATTACHMENT_MAX_CONCURRENT`, per-fetch timeout — so a flood of video links can't overwhelm the host. Grep `[video]`.
 - **`normalizeUrl` tracking-param lists are NOT interchangeable.** `t` is a tracking param on X/Twitter but a timestamp on YouTube — that's why there's a `HOST_GATED_TRACKING_PARAMS` list. When adding a param, decide if it's meaningful on any supported host and gate accordingly.
 - **`inFlightReplies` Set uses two key formats** (`msgId:urls...` and `mention:msgId`) because Discord gateway reconnects can fire `messageCreate` twice — without dedup, the mention path would produce both an AI reply and a fallback reply for the same message.
 - **AI chain failures are silent by design.** Each provider failure (network, timeout, safety block, empty candidate) returns a `{ ok: false, kind }` and moves to the next layer. The ops signal is the single log line `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — grep for it when debugging a dead 西寶.
-- **Circuit breaker skips cooling-down providers.** A failed provider gets a kind-specific cooldown (`auth` 10 min, `rate_limit` honours `Retry-After`, `timeout`/`network`/`server` 60 s, `empty` 0 s). Until cooldown clears, the chain logs `[ai] skip cooling-down provider=<label>` and goes straight to the next layer. State is in-memory; restart clears it.
-- **Empty embed fallback chain has 4 layers**, in order: `content` (primary fixer) → `fallbackContent` (secondary fixer) → `embedFallback` (pre-built embed) → **OG recovery** (`recoverUrls` lazy fetched + parsed for og:title/description/image, rendered as a generic embed). Only if all four fail does `checkAndHandleEmptyEmbeds` delete the bot's message and post `抱歉，預覽載入失敗 🙏`. The OG layer is what makes "至少要顯示 description" hold even when both fixers are dead. Implementation: [src/og-fallback.js](src/og-fallback.js), wiring in [src/discord-io.js](src/discord-io.js).
+- **Circuit breaker skips cooling-down providers.** A failed provider gets a kind-specific cooldown (`auth` 10 min, `rate_limit` honours `Retry-After`, `network`/`server` 60 s, `timeout` 60 s **only on the 2nd in a row** — the first is a strike, since chat timeouts are one overthinking request, not an outage; `empty` 0 s). Until cooldown clears, the chain logs `[ai] skip cooling-down provider=<label>` and goes straight to the next layer. State is in-memory; restart clears it.
+- **偵測失敗比多一層 fallback 更重要。** 壞掉的 viewer 不會回空卡，而是回一張漂亮的錯誤卡（"Temporarily unavailable / Couldn't load this post right now"），舊的片語清單認不得就當成功放過，整條鏈一層都沒跑（IG，2026-09 一週三次）。錯誤詞彙統一在 [src/viewer-cards.js](src/viewer-cards.js)：HARD 一律否決、SOFT 只在沒媒體時否決；IG 另外強制要有封面，viewer 自家 logo（`/rsrc.php/`）不算。被拒時 log 會印實際卡片文字，新詞彙補進同一份清單。詳見 [routing.md](docs/routing.md)。
+- **Empty embed fallback chain has 6 layers**, in order: `content` (primary fixer) → `fallbackContent` (secondary fixer) → `embedFallback` (pre-built embed) → **OG recovery** (`recoverUrls` lazy fetched + parsed for og:title/description/image, rendered as a generic embed；IG 走 `collect` 併發＋跨主機合併，並把 instagram.com 原站列為候選) → **weak-card restore**（有文字沒封面的半成品卡貼回去）→ `placeholderFallback` (content-less link card; Instagram). Only if all fail does `checkAndHandleEmptyEmbeds` delete the bot's message and post `抱歉，預覽載入失敗 🙏`. The OG layer is what makes "至少要顯示 description" hold even when both fixers are dead. Implementation: [src/og-fallback.js](src/og-fallback.js), wiring in [src/discord-io.js](src/discord-io.js).
 - **Suppress original embed is deferred for URL-only previews.** When the bot's preview is URL-only, `suppressOriginalEmbeds` runs only AFTER `checkAndHandleEmptyEmbeds` confirms success. Why: if every layer above fails and we delete our preview, the user's native Discord embed must still be visible — otherwise they lose all preview. Pre-rendered embed payloads (Threads probe success, Bilibili API success, Bahamut/PTT) suppress immediately.
 
 ## Key behavioural summary
 
-- **Threads**: text-only (no image AND no video) → custom embed. Video (with or without og:image) → fixer link with secondary + OG recovery. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷或含 video 時最後一個 embed description 追加 `... 還有 N 張 + 影片` 提示。Probe error → primary + secondary fixer + OG recovery list (no longer just dropping to a single fixer). Full decision table in [routing.md](docs/routing.md).
-- **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom embed. Failure → vxbilibili fixer + OG recovery.
+- **Threads**: text-only (no image AND no video) → custom embed. Video → **video attachment** (download mp4 → upload it; [src/video.js](src/video.js)), falling back to the fixer chain + OG recovery when it can't attach. Single image → custom embed. Multiple images → carousel of 前 `MULTI_IMAGE_PREVIEW_COUNT` 張（default 3）；截斷時最後一個 embed description 追加 `... 還有 N 張` 提示；含 video 的混合貼文另外把影片當附件上傳（放不下才退 fixer）。Probe error → primary + secondary fixer + OG recovery list. Full decision table in [routing.md](docs/routing.md).
+- **Bilibili**: API-first via `https://api.bilibili.com/x/web-interface/view` (already in code, now wired). Success → custom info bar **+ `videoAttachment`**（media.vxbilibili 的直鏈 mp4）：discord-io 下載後上傳可播放影片，上方以 `videoAttachmentContent` 純文字資訊欄呈現（可點標題＋作者，無 embed 框）。**放不下（超過上傳上限）/停用/失敗 → 改貼 vxbilibili fixer 連結**（`videoAttachmentMissContent`）——Discord 串流遠端 mp4 不吃上傳上限，大影片仍有原生播放器；unfurl 空了才退含封面 embed（embedFallback）→ OG recovery。Failure（API error）→ vxbilibili fixer + OG recovery.
+- **Pinterest**: pidgets JSON (`widgets.pinterest.com/v3/pidgets/pins/info`) by pin id — NOT the page's og tags, which often describe a *related* pin. `V_720P` mp4 present → video attachment (ignore `is_video`, it lies). pin.it expanded first; any miss → fixembed + OG recovery. Grep `[pinterest]`.
 - **Instagram Stories**: no fixer works — bot replies with owner username in 西寶 voice and skips the embed-check pipeline entirely.
 - **Everything else (X/Twitter / Reddit / Pixiv / Bluesky / Facebook)**: fixer host as primary with `recoverUrls` for OG-recovery if unfurl is empty.
 - **@西寶 AI reply chain**: Per-guild tier determines model — 入門 uses DeepSeek Flash (20/day free limit), 標準/精細 use DeepSeek Pro (requires guild API key or whitelist). Fallback: Groq (llama 70B → 8B) → Gemini. First non-null wins; chain exhausted → hardcoded reply. Per-channel short-term memory keeps last `tierConfig.memoryMaxTurns` turns. Guild keys stored in `data/guild-api-keys.json`; daily counters in-memory (reset on restart). Details in [ai-providers.md](docs/ai-providers.md).
+- **貼圖**：西寶 在回覆裡寫 `[貼圖:名字]` 就會附上貼圖——來源是「所在伺服器的貼圖」（用 sticker id 送，同名優先）＋「她自己的圖庫」`assets/stickers/`（當附件上傳，因為 Discord 沒有 application sticker API）。表只在呼叫端傳 `stickerCatalog` 時才進 prompt（recap/story/voice 不傳），亂編的名字直接吃掉不外洩，送失敗退純文字。詳見 [persona.md](docs/persona.md)。
+- **西寶自己的 emoji 庫**：application emoji（2000 個上限，不吃伺服器 50-100 額度，每個群都能用），`node scripts/app-emoji.js list|upload|delete` 管理。gateway 不會推播，`clientReady` 抓一次 → **上傳後要重啟才看得到**；名字推導不出用途的不會進 prompt 表（上傳時會警告）。
+- **圖片辨識**：@西寶 附圖（或 @ 她去回覆一則有圖的訊息）→ 鏈頭插一個 `deepseek-flash` vision entry（舊的 `-exp` id 已下架；v4-pro 不吃圖），圖以 `image_url` content block 掛在最後一個 user turn。**底下每一層都是瞎的**，所以 user turn 帶一行「你這次看不到，別假裝看得到」的註記（vision entry 送出前才換成「圖在下面」）；vision 模型改名/掛掉只是失去眼睛，回覆照常。實作 [src/ai/vision.js](src/ai/vision.js)，細節見 [ai-providers.md](docs/ai-providers.md)。
+- **技能（自然語言叫出特製 prompt）**：聊天裡說「講個故事」→ `src/ai/skills/` 的 story pack 把晚間故事那份調校過的規格（`## ` 標題、180～420 字、融進兩則真實對話）折進**同一次**回覆呼叫，零額外 API call。素材在聊天情境下就是 chain 既有的 group context。「你會什麼／指令／額度／最近更新」→ help pack 從 `src/ai/skills/help-knowledge.md`＋即時伺服器狀態＋`help-changelog.md` 回答（**使用者看得到的 PR 合併時補 changelog 一行**）。硬編碼回應（抽籤/道歉）永遠不進註冊表。詳見 [skills.md](docs/skills.md)。
 - **Hardcoded mention responses**: `抽籤`/`運勢` → weighted fortune draw; `道歉` → fixed apology string. Never routed to AI. See [persona.md](docs/persona.md).
 - **Ignore markers**: `nopreview`, `previewignore`, `fxignore` anywhere in a message suppresses the bot.
 - **Dedup window**: 60 s per channel+URL (`DEDUPE_WINDOW_MS`).
-- **刪除西寶的訊息**：在西寶發的**任何**訊息上按 🗑️ 反應 → 貼連結的本人（用 reply reference 認出，不需額外狀態）或有 `ManageMessages` 的管理員可刪掉那則（清掉傳錯連結的誤發預覽）。只動西寶自己的訊息。需 `GuildMessageReactions` intent + Message/Channel/Reaction partials（皆已設於 [src/index.js](src/index.js)）。實作 [src/reaction-delete.js](src/reaction-delete.js)，grep `[delete]`。
+- **刪除西寶的訊息**：在西寶發的**任何**訊息上按 🗑️ 反應，**或**右鍵 → 應用程式 > `刪除西寶訊息`（context menu，實作在 [src/commands.js](src/commands.js)）→ 貼連結的本人（用 reply reference 認出，不需額外狀態）、有 `ManageMessages` 的管理員，或 `BOT_OWNER_IDS` 裡的 bot owner 可刪掉那則。只動西寶自己的訊息。需 `GuildMessageReactions` intent + Message/Channel/Reaction partials（皆已設於 [src/index.js](src/index.js)）。反應路徑實作 [src/reaction-delete.js](src/reaction-delete.js)，grep `[delete]`。
 
 ## Workflow
 
-1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`). No direct commits to `main`.
+0. **Isolate parallel work in a `git worktree`.** The main checkout is shared by every process in that folder (other sessions, terminals, the running bot). Do NOT `git checkout` a feature branch there while others are active — spin up a dedicated worktree instead:
+   ```bash
+   git worktree add ../dspb-<feature> feat/<feature>      # sibling of the repo, own branch
+   ln -sf "$(pwd)/.env" ../dspb-<feature>/.env            # .env + node_modules are gitignored,
+   ln -sf "$(pwd)/node_modules" ../dspb-<feature>/node_modules   #   so link (or reinstall) per worktree
+   ```
+   Work, commit, and run/deploy the bot from that worktree. `git worktree list` shows who's on what; `git worktree remove <path>` when done. (The harness may reset cwd back to the main dir between commands — address the worktree by absolute path or `git -C <path>`.)
+   ⚠️ **`npm test` in a worktree creates a fake `data/`.** The stores write relative to cwd, so a test run leaves a real `data/` holding fixtures (`sk-mykey`). Any later script you point at real guild data then reads the fixtures. Before touching live data from a worktree: `rm -rf data && ln -s "$(pwd)/../discord-social-preview-bot/data" data`.
+   ⚠️ **Never `git add -A` in a worktree before checking `git status` for the `.env`/`node_modules`/`data` symlinks.** A trailing-slash gitignore pattern (`data/`) does NOT match a symlink, so `add -A` commits it — and checking that branch out in the main tree then **replaces the real directory with a self-pointing link, deleting its contents** (lost `data/` once, 2026-07-05; recovered from the running bot's memory). `.gitignore` now uses slash-less patterns to block this, but older branches may predate the fix — verify with `git ls-tree <branch> -- data node_modules .env` before any checkout in the main tree.
+1. New work → branch off `main` (`feat/xxx`, `fix/xxx`, `docs/xxx`) in its own worktree. No direct commits to `main`.
 2. Commit on branch. Run `npm test` (all three smokes) before requesting merge.
 3. Open PR → merge to `main`.
-4. After merge, **provide redeploy steps** (see [deploy.md](docs/deploy.md)) — the host tracks GitHub, not the local tree.
+4. After merge, redeploy (see [deploy.md](docs/deploy.md)). **Prod is the main checkout's working tree on whatever branch it currently has** — there is no `deploy/*` branch; check `git branch --show-current` there and merge the PR into *that* branch, so deploying never needs a `git checkout` in the shared folder.
 5. Status reports: include **current branch, commit hash, push status, test status**. All human-facing communication in 繁體中文.
 
 ## Quick start (local)
@@ -68,6 +86,7 @@ Pure data and per-topic depth live under `docs/` so this file stays lean. **They
 - [`routing.md`](docs/routing.md) — per-platform routing tables, empty-embed fallback flow, URL normalization, ignore markers, dedup.
 - [`ai-providers.md`](docs/ai-providers.md) — provider chain, call shapes, circuit breaker, observability, short-term memory, Gemini billing trap.
 - [`persona.md`](docs/persona.md) — 西寶 persona (narrative-driven), mention routing, fortune weights, `/ai-tier` / `/ai-key`.
+- [`skills.md`](docs/skills.md) — skill registry: 自然語言觸發特製 prompt、personaSuffix vs user turn、加新技能的步驟。
 - [`scripts.md`](docs/scripts.md) — three smoke layers and when to run which.
 - [`deploy.md`](docs/deploy.md) — local run, SSH deploy, redeploy steps, secrets.
 

@@ -1,9 +1,20 @@
 const cron = require("node-cron");
-const { EMOJI_TRUSTED_GUILD_IDS } = require("./config");
+const {
+  EMOJI_TRUSTED_GUILD_IDS,
+  RECAP_DEEPSEEK_MAX_TOKENS,
+  STORY_MAX_TOKENS,
+  STORY_QUIZ_RATE,
+} = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
+const { getGuildLanguage } = require("./language-store");
 const { trimDescription } = require("./utils");
-const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const {
+  AI_PROVIDER_CHAIN,
+  RECAP_PROVIDER_CHAIN,
+  STORY_PROVIDER_CHAIN,
+  runProviderChain,
+} = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
 const {
   buildEmojiMap,
@@ -23,7 +34,17 @@ const {
   BEDTIME_LOOKBACK_MS,
   buildBedtimeStoryPrompt,
   markBedtimeStoryUsed,
+  sanitizeBedtimeTitle,
+  selectStoryIngredients,
 } = require("./bedtime-story");
+const { describeStoryImages } = require("./story-images");
+const {
+  QUIZ_EXTRA_TOKENS,
+  formatStoryQuiz,
+  parseStoryQuiz,
+} = require("./story-quiz");
+const { repairNames } = require("./name-repair");
+const { STORY_MIN_REPLY_CHARS } = require("./ai/skills/story");
 
 // ── Task types ──────────────────────────────────────────────────────────
 // Static tasks have a `prompt` string; dynamic tasks have a `buildPrompt`
@@ -37,7 +58,7 @@ const TASK_TYPES = {
         console.warn("[bedtime-story] no guild for channel, falling back");
         return {
           prompt:
-            "（系統提示：現在是睡前時間。請主動講一個短短的原創床邊故事，溫馨可愛但要有一個小轉折。故事講完後，用你平常的語氣哄大家去睡覺。）",
+            "（系統提示：現在是睡前時間。請主動講一個短短的原創故事，有一個小轉折。自己決定場景和結尾，不要硬接到睡覺。）",
         };
       }
 
@@ -45,19 +66,26 @@ const TASK_TYPES = {
         guild,
         BEDTIME_LOOKBACK_MS,
       );
+      const selection = selectStoryIngredients(messages, channelStats);
+      await describeStoryImages(selection.ingredients);
       const built = buildBedtimeStoryPrompt({
         guildName: guild.name,
-        messages,
-        channelStats,
         schedule,
+        selection,
+        quiz: Math.random() < STORY_QUIZ_RATE,
+        language: getGuildLanguage(guild.id),
       });
       console.log(
-        `[bedtime-story] guild=${guild.name} mode=${built.modeKey} ingredients=${messages.length}`,
+        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length} quiz=${built.quiz}`,
       );
+      if (built.buffet?.length) {
+        console.log(`[bedtime-story] buffet=${built.buffet.join(" | ")}`);
+      }
       return {
         prompt: built.prompt,
-        onSuccess: () =>
-          markBedtimeStoryUsed(schedule, built.modeKey, built.dateKey),
+        quiz: built.quiz,
+        names: selection.ingredients.map((item) => item.authorName),
+        onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
       };
     },
   },
@@ -91,10 +119,24 @@ const VALID_TASK_TYPES = Object.keys(TASK_TYPES);
 // ── Active cron jobs ────────────────────────────────────────────────────
 // Map<scheduleId, cron.ScheduledTask>
 const activeJobs = new Map();
+const RECAP_PREGENERATE_MS = 60 * 1000;
+
+function waitUntil(notBeforeMs, options = {}) {
+  if (!Number.isFinite(notBeforeMs)) return Promise.resolve();
+  const now = options.now || Date.now;
+  const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const delayMs = Math.max(0, notBeforeMs - now());
+  return delayMs > 0 ? sleep(delayMs) : Promise.resolve();
+}
+
+async function sendAtOrAfter(channel, payload, notBeforeMs, options = {}) {
+  await waitUntil(notBeforeMs, options);
+  return channel.send(payload);
+}
 
 // ── Task execution ──────────────────────────────────────────────────────
 
-async function executeScheduledTask(schedule, client) {
+async function executeScheduledTask(schedule, client, options = {}) {
   const { channelId, guildId, taskType, customPrompt } = schedule;
 
   const channel = client.channels.cache.get(channelId);
@@ -116,11 +158,15 @@ async function executeScheduledTask(schedule, client) {
 
   let prompt;
   let onSuccess;
+  let wantsQuiz = false;
+  let taskNames = [];
   if (taskDef && taskDef.buildPrompt) {
     const built = await taskDef.buildPrompt(channel, client, schedule);
     if (built && typeof built === "object" && !Array.isArray(built)) {
       prompt = built.prompt;
       onSuccess = built.onSuccess;
+      wantsQuiz = Boolean(built.quiz);
+      taskNames = built.names || [];
     } else {
       prompt = built;
     }
@@ -135,7 +181,12 @@ async function executeScheduledTask(schedule, client) {
     return;
   }
 
-  if (AI_PROVIDER_CHAIN.length === 0) {
+  const providerChain = taskType === "daily_recap"
+    ? RECAP_PROVIDER_CHAIN
+    : taskType === "bedtime_story"
+      ? STORY_PROVIDER_CHAIN
+      : AI_PROVIDER_CHAIN;
+  if (providerChain.length === 0) {
     console.warn("[scheduler] no AI providers, skipping scheduled task");
     return;
   }
@@ -152,13 +203,24 @@ async function executeScheduledTask(schedule, client) {
   }
 
   const turns = [{ role: "user", content: prompt }];
+  const maxTokens = taskType === "daily_recap"
+    ? Math.max(tierConfig.maxTokens, RECAP_DEEPSEEK_MAX_TOKENS)
+    : taskType === "bedtime_story"
+      ? Math.max(tierConfig.maxTokens, STORY_MAX_TOKENS) +
+        (wantsQuiz ? QUIZ_EXTRA_TOKENS : 0)
+      : tierConfig.maxTokens;
+  if (taskType === "daily_recap") {
+    console.log(
+      `[daily-recap] promptChars=${prompt.length} personaChars=${persona.length} maxTokens=${maxTokens}`,
+    );
+  }
 
   try {
     const result = await runProviderChain(
-      AI_PROVIDER_CHAIN,
+      providerChain,
       turns,
       persona,
-      tierConfig.maxTokens,
+      maxTokens,
     );
 
     if (!result) {
@@ -168,9 +230,50 @@ async function executeScheduledTask(schedule, client) {
       return;
     }
 
-    const capped = trimDescription(result.text, tierConfig.maxReplyChars);
-    const text = resolveCustomEmojis(capped, emojiMap);
-    const sent = await channel.send({ content: text });
+    // Put back member names the model spelled with kana spliced in
+    // (lインchien) — see src/name-repair.js. Before the quiz split so the
+    // quiz gets the fix too.
+    const repaired = repairNames(result.text, [
+      ...roster.map((r) => r.name),
+      ...taskNames,
+    ]);
+    // Split the quiz off BEFORE the length cap — capping first would cut the
+    // quiz in half, or leave half a quiz glued to the story.
+    const { story, quiz } = taskType === "bedtime_story"
+      ? parseStoryQuiz(repaired)
+      : { story: repaired, quiz: null };
+    // A story (title + 150～300 字 + punctuation) overruns 入門's 300-char
+    // reply cap, which cut it off mid-sentence. Same floor as the chat skill.
+    const maxChars = taskType === "bedtime_story"
+      ? Math.max(tierConfig.maxReplyChars, STORY_MIN_REPLY_CHARS)
+      : tierConfig.maxReplyChars;
+    const capped = trimDescription(story, maxChars);
+    const titled = taskType === "bedtime_story"
+      ? sanitizeBedtimeTitle(capped)
+      : capped;
+    const text = resolveCustomEmojis(titled, emojiMap);
+    // Generation starts one minute early, but publication must never happen
+    // before the user-configured wall-clock time. Awaiting a timer is
+    // non-blocking; if generation ran long, waitUntil resolves immediately.
+    const sent = await sendAtOrAfter(
+      channel,
+      { content: text },
+      options.notBeforeMs,
+      options,
+    );
+    const quizText = quiz ? formatStoryQuiz(quiz) : null;
+    if (quizText) {
+      try {
+        await channel.send({ content: quizText });
+      } catch (quizErr) {
+        console.warn(
+          `[story-quiz] send failed schedule=${schedule.id}: ${quizErr.message}`,
+        );
+      }
+    }
+    if (wantsQuiz) {
+      console.log(`[story-quiz] schedule=${schedule.id} posted=${Boolean(quizText)}`);
+    }
 
     // Record this post into the channel's short-term memory so that when
     // someone @s or replies to 西寶 shortly after, she remembers having
@@ -190,7 +293,9 @@ async function executeScheduledTask(schedule, client) {
       tierConfig.memoryMaxTurns,
       { guildId },
     );
-    recordAITurn(channelId, "assistant", capped, tierConfig.memoryMaxTurns, {
+    // The quiz (answer included) rides along so she can tell whoever asks.
+    const remembered = quizText ? `${capped}\n\n${quizText}` : capped;
+    recordAITurn(channelId, "assistant", remembered, tierConfig.memoryMaxTurns, {
       guildId,
       userId: client.user?.id,
       displayName: client.user?.username || "西寶",
@@ -247,18 +352,37 @@ function buildCronExpression(hour, minute) {
   return `${minute} ${hour} * * *`;
 }
 
+function subtractScheduleMinute(hour, minute) {
+  const totalMinutes = (Number(hour) * 60 + Number(minute) - 1 + 24 * 60) % (24 * 60);
+  return {
+    hour: Math.floor(totalMinutes / 60),
+    minute: totalMinutes % 60,
+  };
+}
+
+function recapNotBeforeMs(taskContext, now = Date.now) {
+  const scheduledStart = taskContext?.date;
+  const startMs = scheduledStart instanceof Date && Number.isFinite(scheduledStart.getTime())
+    ? scheduledStart.getTime()
+    : now();
+  return startMs + RECAP_PREGENERATE_MS;
+}
+
 function registerJob(schedule, client) {
   if (activeJobs.has(schedule.id)) {
     // Already registered — unregister first to avoid duplicates.
     unregisterJob(schedule.id);
   }
 
-  const cronExpr = buildCronExpression(schedule.hour, schedule.minute);
+  const executionTime = schedule.taskType === "daily_recap"
+    ? subtractScheduleMinute(schedule.hour, schedule.minute)
+    : { hour: schedule.hour, minute: schedule.minute };
+  const cronExpr = buildCronExpression(executionTime.hour, executionTime.minute);
   const tz = schedule.timezone || "Asia/Taipei";
 
   const task = cron.schedule(
     cronExpr,
-    () => {
+    (taskContext) => {
       // Re-read the schedule from store in case it was disabled/removed
       // between registration and execution.
       const current = getScheduleById(schedule.id);
@@ -268,7 +392,10 @@ function registerJob(schedule, client) {
         );
         return;
       }
-      executeScheduledTask(current, client).catch((err) => {
+      const executionOptions = current.taskType === "daily_recap"
+        ? { notBeforeMs: recapNotBeforeMs(taskContext) }
+        : {};
+      executeScheduledTask(current, client, executionOptions).catch((err) => {
         console.error(
           `[scheduler] unhandled error schedule=${schedule.id}: ${err?.message || err}`,
         );
@@ -309,6 +436,7 @@ function stopScheduler() {
 }
 
 module.exports = {
+  RECAP_PREGENERATE_MS,
   TASK_TYPES,
   VALID_TASK_TYPES,
   startScheduler,
@@ -316,4 +444,9 @@ module.exports = {
   registerJob,
   unregisterJob,
   executeScheduledTask,
+  buildCronExpression,
+  subtractScheduleMinute,
+  recapNotBeforeMs,
+  waitUntil,
+  sendAtOrAfter,
 };

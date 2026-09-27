@@ -6,6 +6,10 @@
 
 Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild AI plan (see `/ai-tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../src/ai/persona.js).
 
+## Voice output layer
+
+`/voice` has a dedicated bilingual spoken persona and does not overwrite `AI_PERSONA`. It shares Xibao's identity and relationships but keeps its own short voice-response format. It explicitly requires a direct answer (and a choice plus reason for comparisons), while naturally using injected familiarity, personal/guild memory, and recent conversation without announcing or fabricating memory. Output has a public Traditional-Chinese `display` line and a semantically and emotionally equivalent Japanese TTS-only `speech` line; the latter converts Latin names and non-Japanese nicknames to kana readings, with deterministic exceptions such as `ROSELIA` → `ロゼリア` and `摳捷`/`Kojek` → `コジェック`. If a provider returns a plain Traditional-Chinese reply instead of both fields, a separate repair persona translates only the speech script once while preserving the public text. The slash interaction is public so the question and Chinese transcript are visible before the matching Japanese voice message. The initial delivery uses the listening-test winner `clean-41-sep`; a future monologue voice should be an explicit style/embedding option, not a change to the text persona.
+
 ## Mention response routing
 
 When a user mentions the bot (`@西寶`), the bot checks the message text after stripping the mention:
@@ -20,6 +24,31 @@ When a user mentions the bot (`@西寶`), the bot checks the message text after 
 
 **Mention text MUST be `.normalize("NFC")` before comparison.** Discord can send CJK input in NFD form, causing substring match to silently fail (e.g. `抽籤` not matching).
 
+## 貼圖（stickers）
+
+西寶 can post a **sticker** — a standalone big image, as opposed to an inline `:emoji:`. She asks for one by writing `[貼圖:名字]` anywhere in her reply; [src/mention.js](../src/mention.js) `sendAIReply` pulls the token out and attaches the sticker to the same message.
+
+Two sources, merged by [src/stickers.js](../src/stickers.js) into one name→entry catalog (**guild wins on a name clash** — if the group has its own 「起床重睡」, she posts *that* one):
+
+| Source | Mechanism | Scope |
+|---|---|---|
+| `kind:"guild"` | `message.reply({ stickers: [id] })` | Only the guild she's posting in. Discord gives bots no Nitro, so a bot can never send another server's sticker |
+| `kind:"library"` | image file uploaded as an attachment | Every guild. There is **no application-owned sticker API** (unlike emoji), so a bot-wide sticker library can only be images — an attachment with no text renders at sticker size, and the count is bounded by disk, not by Discord |
+
+- **The prompt block only appears when the caller passes `stickerCatalog`.** `generateAIReply` never builds one itself (it would need a guild fetch + a disk read), so the recap / story / voice paths — which can't attach anything — never see the table and never emit a stray `[貼圖:…]`.
+- **An invented sticker name is dropped, not printed.** Same policy as unknown `:emoji:`; the model reliably makes up plausible names. If the whole reply *was* the bad token, she says a `STICKER_MISS_REPLIES` line instead of posting silence or leaking the raw token.
+- **A sticker send is best-effort.** A guild sticker can be deleted between catalog build and send (and a library file can vanish from disk) — either 400s the whole message, so a failure retries once as text-only. Losing the sticker is fine; losing the reply is not. Grep `[sticker]`.
+- Library folder + `index.json` format: [assets/stickers/README.md](../assets/stickers/README.md).
+
+## 西寶自己的 emoji 庫（application emoji）
+
+A guild only has 50-100 emoji slots, shared with the humans. An **application-owned** emoji costs the server nothing, works in every guild the bot can speak in, only 西寶 can use it, and the app gets **2000** of them. [scripts/app-emoji.js](../scripts/app-emoji.js) uploads/lists/deletes them.
+
+- They're appended **last** in `buildEmojiMap`, so a guild's own `:name:` always wins. This is the one cross-guild emoji source that doesn't violate the guild-scoping rule — the library is curated by the bot owner, not another server's meme vocabulary leaking in.
+- **The gateway never pushes them.** Unlike guild emoji there's no GUILD_CREATE equivalent, so the cache is empty until `client.application.emojis.fetch()` runs at `clientReady` — and an empty cache silently means the whole library is invisible. Startup logs `[emoji] 機器人自己的 emoji 庫：N 個`; a `0` there when you expect hundreds is the signal.
+- **Naming is load-bearing.** An emoji whose name yields no hint from `emotionForName` (EXACT_HINTS → PREFIX_HINTS → SUFFIX_HINTS) is left out of the prompt table entirely once it ages past the 30-day 【新】 window — 西寶 can't use what she can't see. `app-emoji.js` warns per-emoji at upload time.
+- **A restart is needed** for newly uploaded emoji to appear (the fetch is once per session).
+
 ## Mention dedup
 
 Same message.id is processed only once. `inFlightReplies.add("mention:${message.id}")` before work; removed in `finally`. Discord gateway reconnects can fire `messageCreate` twice for the same message — without this, parallel `generateAIReply` calls would race and sometimes produce both an AI reply *and* a fallback reply for the same @.
@@ -30,15 +59,24 @@ Same message.id is processed only once. `inFlightReplies.add("mention:${message.
 
 Each AI plan has a hardcoded plan-specific comment.
 
+## `/language` (reply language per guild)
+
+Same permission model as `/ai-tier`: anyone can view, `ManageGuild` switches. Choices: 繁體中文 (default) / 简体中文 / 日本語 / English. Catalog + prompt snippets in [src/reply-language.js](../src/reply-language.js); storage `data/language-settings.json` (default stored as absence) via [src/language-store.js](../src/language-store.js).
+
+- **Fixed, not auto-detected — on purpose.** Short messages (`lol`, `草`, `ok`), kanji-only Japanese and 繁簡同形 text make detection wrong on exactly the most common messages, and a model-side guess fails silently. Revisit only if a genuinely mixed-language guild asks.
+- Persona gets `{LANGUAGE}` substituted **and**, for non-default languages, a `## 回覆語言` block appended (so a custom `AI_PERSONA` without the placeholder still switches). The block insists the character survives the switch — without it English/Japanese drift into assistant voice.
+- Story spec's language line comes from the same catalog (`storyRule`), passed via `buildStoryCraftBlock({ language })`.
+- Out of scope: hardcoded strings (preview errors, 抽籤, 道歉), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
+
 ## `/ai-tier` (AI plan per guild)
 
 Slash command — anyone can run `/ai-tier` (no arg) to view the current plan, model, and remaining free quota; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 AI 方案」。檢視則對所有人開放，方便群友確認目前設定。Internal keys are English; Discord UI labels are Chinese.
 
 | Key | UI label | DeepSeek model | sentences cap | max chars | memoryMaxTurns | group context | key required |
 |---|---|---|---|---|---|---|---|
-| `brief` (default) | 入門 | `DEEPSEEK_MODEL_FREE` (`deepseek-v4-flash`) | 1~4 | 300 | 8 | ✗ | no, 20/day free quota |
-| `standard` | 標準 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 2~8 | 1200 | 40 | recent 15 non-bot msgs | yes, unless whitelisted |
-| `detailed` | 精細 | `DEEPSEEK_MODEL` (`deepseek-chat`) | 3~15 | 2000 | 60 | recent 15 non-bot msgs | yes, unless whitelisted |
+| `brief` (default) | 入門 | `DEEPSEEK_MODEL_FREE` (`deepseek-flash`) | 1~4 | 300 | 8 | ✗ | no, 20/day free quota |
+| `standard` | 標準 | `DEEPSEEK_MODEL` (`deepseek-flash`) | 2~8 | 1200 | 40 | recent 15 non-bot msgs | yes, unless whitelisted |
+| `detailed` | 精細 | `DEEPSEEK_MODEL` (`deepseek-flash`) | 3~15 | 2000 | 60 | recent 15 non-bot msgs | yes, unless whitelisted |
 
 - Storage: `data/tier-settings.json` (gitignored), `{ guildId: "brief"|"standard"|"detailed" }`.
 - Guild API keys: `data/guild-api-keys.json` (gitignored), set/remove via `/ai-key`.

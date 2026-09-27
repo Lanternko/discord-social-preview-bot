@@ -1,4 +1,8 @@
-const { PermissionsBitField } = require("discord.js");
+const {
+  PermissionsBitField,
+  AttachmentBuilder,
+  EmbedBuilder,
+} = require("discord.js");
 const {
   SUPPRESS_ORIGINAL_EMBEDS,
   REPLY_MODE,
@@ -6,6 +10,17 @@ const {
   DEDUPE_WINDOW_MS,
 } = require("./config");
 const { tryRecoverEmbedFromUrls } = require("./og-fallback");
+const {
+  matchErrorCard,
+  collectEmbedText,
+  embedHasMedia,
+  embedHasPostMedia,
+  hasMeaningfulText,
+} = require("./viewer-cards");
+const { fetchVideoAttachment } = require("./video");
+const { fetchSpoilerImageAttachments } = require("./image-attachment");
+const { fetchPanoramaAttachment } = require("./panorama");
+const { trimDescription } = require("./utils");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -115,6 +130,245 @@ async function suppressOriginalEmbeds(message) {
   }
 }
 
+// Viewer-card judgement lives in ./viewer-cards (shared error vocabulary);
+// what stays here is the per-platform policy plus the quality tier the
+// fallback chain needs.
+//
+// `quality` matters: "full" is a preview we are happy to keep, "weak" is a
+// card that carries real text but no media (an Instagram post always HAS
+// media, so this is a half-failed viewer). A weak card does not stop the
+// chain — we keep looking for a full one and only fall back to the weak card
+// if nothing better turns up, so detection can be strict without ever
+// downgrading what the user already sees.
+function classifyThreadsViewerEmbed(embed) {
+  const hasMedia = embedHasPostMedia(embed);
+  const errorReason = matchErrorCard(embed, { hasMedia });
+  if (errorReason)
+    return { useful: false, quality: "none", reason: errorReason };
+
+  const { title } = collectEmbedText(embed);
+  const meaningfulText = hasMeaningfulText(embed, /^threads?$/i);
+  if (/^threads?$/i.test(title) && !meaningfulText) {
+    return { useful: false, quality: "none", reason: "generic-card" };
+  }
+  if (!hasMedia && !meaningfulText) {
+    return { useful: false, quality: "none", reason: "no-content" };
+  }
+  // Threads text posts are a real thing, so a caption-only card is complete.
+  return { useful: true, quality: "full", reason: "ok" };
+}
+
+function classifyInstagramViewerEmbed(embed) {
+  const hasMedia = embedHasPostMedia(embed);
+  const errorReason = matchErrorCard(embed, { hasMedia });
+  if (errorReason)
+    return { useful: false, quality: "none", reason: errorReason };
+
+  if (hasMedia) return { useful: true, quality: "full", reason: "ok" };
+  if (!hasMeaningfulText(embed)) {
+    // No cover and nothing but the viewer's own branding: pure failure card.
+    return {
+      useful: false,
+      quality: "none",
+      reason: embedHasMedia(embed) ? "viewer-artwork-only" : "empty-card",
+    };
+  }
+  // Caption without a cover: every Instagram post is a photo or a video, so
+  // this viewer only half-answered. Keep it as a floor, keep looking.
+  return { useful: false, quality: "weak", reason: "no-media" };
+}
+
+// fxtwitter / vxtwitter error pages ("This post is unavailable :(", "Failed
+// to scan your link!") unfurl as a normal-looking card with no post content.
+// fxtwitter also sometimes drops a post's media, leaving just the "Name
+// (@handle)" title — useless with no body, and wrong when the post HAS media.
+function classifyTwitterViewerEmbed(embed, { requireMedia = false } = {}) {
+  const hasMedia = embedHasPostMedia(embed);
+  const errorReason = matchErrorCard(embed, { hasMedia });
+  if (errorReason)
+    return { useful: false, quality: "none", reason: errorReason };
+
+  // fxtwitter sometimes drops a post's media, leaving just the "Name
+  // (@handle)" title — wrong when the post HAS media, hence requireMedia.
+  if (requireMedia && !hasMedia) {
+    return { useful: false, quality: "none", reason: "missing-media" };
+  }
+  const { description } = collectEmbedText(embed);
+  if (!hasMedia && !description) {
+    return { useful: false, quality: "none", reason: "no-content" };
+  }
+  return { useful: true, quality: "full", reason: "ok" };
+}
+
+function isUsefulThreadsViewerEmbed(embed) {
+  return classifyThreadsViewerEmbed(embed).useful;
+}
+
+function isUsefulInstagramViewerEmbed(embed) {
+  return classifyInstagramViewerEmbed(embed).useful;
+}
+
+function isUsefulTwitterViewerEmbed(embed, options = {}) {
+  return classifyTwitterViewerEmbed(embed, options).useful;
+}
+
+// Judges a whole message's embeds, returning the best card's verdict so the
+// caller can log WHY a preview was rejected — the log line is how a new viewer
+// failure wording gets discovered before users report it three times.
+function classifyViewerPreview(
+  embeds,
+  viewerValidation = null,
+  { requireMedia = false } = {},
+) {
+  if (!Array.isArray(embeds) || embeds.length === 0) {
+    return { useful: false, quality: "none", reason: "no-embed" };
+  }
+  let classify;
+  if (viewerValidation === "threads") classify = classifyThreadsViewerEmbed;
+  else if (viewerValidation === "instagram")
+    classify = classifyInstagramViewerEmbed;
+  else if (viewerValidation === "twitter")
+    classify = (embed) => classifyTwitterViewerEmbed(embed, { requireMedia });
+  else return { useful: true, quality: "full", reason: "unvalidated" };
+
+  const verdicts = embeds.map(classify);
+  return (
+    verdicts.find((verdict) => verdict.useful) ||
+    verdicts.find((verdict) => verdict.quality === "weak") ||
+    verdicts[0]
+  );
+}
+
+function isViewerPreviewUseful(
+  embeds,
+  viewerValidation = null,
+  { requireMedia = false } = {},
+) {
+  return classifyViewerPreview(embeds, viewerValidation, { requireMedia })
+    .useful;
+}
+
+// A payload may carry `videoAttachment` (a direct mp4 URL). Try to download +
+// re-upload it so Discord shows a real playable video the bot controls; on a
+// miss (too big / disabled / at capacity / fetch fail) the payload keeps its
+// existing behaviour — the carousel for a MIXED post, the fixer chain for a
+// video-only post — unless it supplied `videoAttachmentMissContent`, a fixer
+// URL to swap in instead: Discord unfurls the fixer's og:video by streaming
+// the remote mp4, so a video over the guild's upload cap still gets a native
+// player. Returns the message body to send.
+// A payload may instead carry `spoilerImages` (sensitive X post): download
+// them and upload as SPOILER_ attachments under the bot's own card, so nothing
+// explicit renders until a reader opens it. On any miss the payload falls back
+// to `spoilerMissContent` — the fixer link in spoiler bars, which makes Discord
+// blur its own unfurl.
+async function resolveSpoilerImages(base, message, options = {}) {
+  const urls = base.spoilerImages;
+  const missContent = base.spoilerMissContent;
+  const spoilerContent = base.spoilerContent;
+  delete base.spoilerImages;
+  delete base.spoilerMissContent;
+  delete base.spoilerContent;
+  if (!Array.isArray(urls) || urls.length === 0) return base;
+
+  const fetchAttachments =
+    options.fetchSpoilerImageAttachments || fetchSpoilerImageAttachments;
+  const attachments = await fetchAttachments(urls, message.guild);
+  if (!attachments) {
+    if (typeof missContent === "string" && missContent) {
+      console.log(`[spoiler] miss → 打碼連結`);
+      base.content = missContent;
+      delete base.embeds;
+    }
+    return base;
+  }
+
+  base.files = attachments.map(
+    (attachment) =>
+      new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  );
+  if (spoilerContent) base.content = spoilerContent;
+  return base;
+}
+
+// A payload may carry `panoramaImages` (equal-size slices from X / pixiv /
+// Threads): stitch them into one wide attachment shown in the lead embed,
+// replacing the album that Discord would lay out 2x2. On any miss — including slices whose seams
+// don't line up, i.e. not a panorama after all — the gallery goes out as is.
+async function resolvePanorama(base, message, options = {}) {
+  const urls = base.panoramaImages;
+  delete base.panoramaImages;
+  const fetchAttachment =
+    options.fetchPanoramaAttachment || fetchPanoramaAttachment;
+  const attachment = await fetchAttachment(urls, message.guild);
+  if (!attachment) return base;
+
+  base.embeds = [
+    EmbedBuilder.from(base.embeds[0]).setImage(
+      `attachment://${attachment.name}`,
+    ),
+  ];
+  base.files = [
+    new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  ];
+  return base;
+}
+
+async function resolveOutgoing(payload, message, options = {}) {
+  const base = { ...payload };
+  if (base.spoilerImages)
+    return await resolveSpoilerImages(base, message, options);
+  if (base.panoramaImages)
+    return await resolvePanorama(base, message, options);
+  const videoUrl = base.videoAttachment;
+  const attachmentEmbeds = base.videoAttachmentEmbeds;
+  const attachmentContent = base.videoAttachmentContent;
+  const missContent = base.videoAttachmentMissContent;
+  delete base.videoAttachment;
+  delete base.videoAttachmentEmbeds;
+  delete base.videoAttachmentContent;
+  delete base.videoAttachmentMissContent;
+  if (!videoUrl) return base;
+
+  const fetchAttachment = options.fetchVideoAttachment || fetchVideoAttachment;
+  const attachment = await fetchAttachment(videoUrl, message.guild);
+  if (!attachment) {
+    if (typeof missContent === "string" && missContent) {
+      console.log(`[video] miss → fixer unfurl ${missContent}`);
+      base.content = missContent;
+      delete base.embeds;
+    }
+    return base;
+  }
+
+  base.files = [
+    new AttachmentBuilder(attachment.buffer, { name: attachment.name }),
+  ];
+  // Now that the video attached, pick how the caption rides with it:
+  //   1. `videoAttachmentContent` (Bilibili) — a text info bar shown as message
+  //      content ABOVE the player, replacing the embed box entirely (clickable
+  //      title + mark, no duplicate cover).
+  //   2. `videoAttachmentEmbeds` (Threads video-only) — a cover-less embed that
+  //      replaces the fixer link.
+  //   3. neither (Threads MIXED carousel, whose gallery differs from the video)
+  //      — keep the original embeds untouched.
+  if (typeof attachmentContent === "string" && attachmentContent) {
+    base.content = attachmentContent;
+    delete base.embeds;
+  } else if (Array.isArray(attachmentEmbeds)) {
+    base.embeds = attachmentEmbeds;
+  }
+  // Video-only posts carry the fixer URL as `content`; now that the video is a
+  // real attachment, drop that link (and its secondary) so the post isn't a
+  // bare player sitting under a link unfurl. (Skipped for the info-bar case —
+  // that content isn't an http URL.)
+  if (typeof base.content === "string" && base.content.startsWith("http")) {
+    delete base.content;
+    delete base.fallbackContent;
+    delete base.fallbackContents;
+  }
+  return base;
+}
+
 async function sendPreviews(message, payloads) {
   const missingPermissions = getMissingChannelPermissions(message);
   if (missingPermissions.length > 0) {
@@ -125,8 +379,9 @@ async function sendPreviews(message, payloads) {
   const sent = [];
 
   for (const payload of payloads) {
+    const base = await resolveOutgoing(payload, message);
     const outgoing = {
-      ...payload,
+      ...base,
       allowedMentions: { repliedUser: false },
     };
 
@@ -136,7 +391,8 @@ async function sendPreviews(message, payloads) {
         sentMessage = await message.channel.send(outgoing);
       } catch (error) {
         const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0) logMissingChannelPermissions(message, inferred);
+        if (inferred.length > 0)
+          logMissingChannelPermissions(message, inferred);
         throw error;
       }
     } else {
@@ -144,24 +400,40 @@ async function sendPreviews(message, payloads) {
         sentMessage = await message.reply(outgoing);
       } catch (error) {
         const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0) logMissingChannelPermissions(message, inferred);
+        if (inferred.length > 0)
+          logMissingChannelPermissions(message, inferred);
         throw error;
       }
     }
 
+    // A resolved video attachment adds `files` and clears the fixer `content`,
+    // so a successful upload counts as a pre-rendered (not url-only) preview and
+    // skips the empty-embed delete path.
     const isUrlOnly = Boolean(
-      payload.content && !payload.embeds && payload.content.startsWith("http"),
+      base.content &&
+      !base.embeds &&
+      !base.files &&
+      base.content.startsWith("http"),
     );
     sent.push({
       sentMessage,
       isUrlOnly,
-      fallbackContent: payload.fallbackContent ?? null,
-      embedFallback: payload.embedFallback ?? null,
-      recoverUrls: Array.isArray(payload.recoverUrls)
-        ? payload.recoverUrls
-        : null,
-      recoverEmbedOptions: payload.recoverEmbedOptions ?? null,
-      sourceUrl: payload.sourceUrl ?? null,
+      fallbackContents: Array.isArray(base.fallbackContents)
+        ? base.fallbackContents.filter(
+            (candidate) =>
+              typeof candidate === "string" && candidate.startsWith("http"),
+          )
+        : typeof base.fallbackContent === "string" && base.fallbackContent
+          ? [base.fallbackContent]
+          : [],
+      viewerValidation: base.viewerValidation ?? null,
+      viewerRequiresMedia: base.viewerRequiresMedia ?? null,
+      embedFallback: base.embedFallback ?? null,
+      recoverUrls: Array.isArray(base.recoverUrls) ? base.recoverUrls : null,
+      recoverEmbedOptions: base.recoverEmbedOptions ?? null,
+      recoverStrategy: base.recoverStrategy ?? null,
+      placeholderFallback: base.placeholderFallback ?? null,
+      sourceUrl: base.sourceUrl ?? null,
     });
   }
 
@@ -179,11 +451,52 @@ async function apologyReply(originalMessage) {
   }
 }
 
-async function tryOgRecover(target, recoverUrls, sourceUrl, embedOptions) {
+async function tryEmbedFallback(target, fallback, label) {
+  if (!fallback) return false;
+  try {
+    await target.edit({
+      content: "",
+      ...fallback,
+      allowedMentions: { repliedUser: false },
+    });
+    console.log(`[preview] ${label} used ${target.id}`);
+    return true;
+  } catch (error) {
+    console.warn(`[preview] could not edit to ${label}:`, error.message);
+    return false;
+  }
+}
+
+// Folds whatever the weak viewer card DID have (usually the caption) into the
+// recovered embed, so a cover-only recovery doesn't throw away text we already
+// saw. Mutates and returns the builder.
+function mergeWeakCardInto(embed, weakFloor) {
+  if (!weakFloor) return embed;
+  if (!embed.data.description && weakFloor.description) {
+    embed.setDescription(trimDescription(weakFloor.description, 1024));
+  }
+  if (!embed.data.author && weakFloor.author) {
+    embed.setAuthor({ name: trimDescription(weakFloor.author, 256) });
+  }
+  if (!embed.data.title && weakFloor.title) {
+    embed.setTitle(trimDescription(weakFloor.title, 256));
+  }
+  return embed;
+}
+
+async function tryOgRecover(
+  target,
+  recoverUrls,
+  sourceUrl,
+  embedOptions,
+  strategy,
+  weakFloor = null,
+) {
   if (!Array.isArray(recoverUrls) || recoverUrls.length === 0) return false;
   let recovered;
   try {
     recovered = await tryRecoverEmbedFromUrls(recoverUrls, {
+      ...(strategy || {}),
       sourceUrl: sourceUrl || recoverUrls[0],
       embedOptions: embedOptions || undefined,
     });
@@ -195,7 +508,7 @@ async function tryOgRecover(target, recoverUrls, sourceUrl, embedOptions) {
   try {
     await target.edit({
       content: "",
-      embeds: [recovered.embed],
+      embeds: [mergeWeakCardInto(recovered.embed, weakFloor)],
       allowedMentions: { repliedUser: false },
     });
     console.log(
@@ -204,6 +517,46 @@ async function tryOgRecover(target, recoverUrls, sourceUrl, embedOptions) {
     return true;
   } catch (error) {
     console.warn("[preview] og-recover edit failed:", error.message);
+    return false;
+  }
+}
+
+// One-line snapshot of what the viewer actually served, so an unknown failure
+// wording can be added to viewer-cards.js from the log alone.
+function describeCard(embeds) {
+  const embed = Array.isArray(embeds) ? embeds[0] : null;
+  if (!embed) return "none";
+  const { title, description } = collectEmbedText(embed);
+  const text = [title, description].filter(Boolean).join(" / ").slice(0, 120);
+  return `"${text}" media=${embedHasMedia(embed) ? "yes" : "no"}`;
+}
+
+// Remembers a half-useful card: the URL that produced it (to put it back) and
+// the text it showed (to graft onto a later cover-only recovery).
+function buildWeakFloor(content, layer, embeds) {
+  const embed = Array.isArray(embeds) ? embeds[0] : null;
+  const { title, description, author } = embed
+    ? collectEmbedText(embed)
+    : { title: "", description: "", author: "" };
+  return { content, layer, title, description, author };
+}
+
+// Re-posts the viewer URL whose card was only half-useful (caption, no cover).
+// Discord re-unfurls from its own cache, so the card comes back as it was.
+async function tryRestoreWeakCard(target, weakFloor) {
+  if (!weakFloor || typeof weakFloor.content !== "string") return false;
+  try {
+    await target.edit({
+      content: weakFloor.content,
+      embeds: [],
+      allowedMentions: { repliedUser: false },
+    });
+    console.log(
+      `[preview] weak card restored ${target.id} from=${weakFloor.layer}`,
+    );
+    return true;
+  } catch (error) {
+    console.warn("[preview] could not restore weak card:", error.message);
     return false;
   }
 }
@@ -220,12 +573,20 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
   for (const item of urlMessages) {
     const {
       sentMessage,
-      fallbackContent,
+      fallbackContents,
+      viewerValidation,
+      viewerRequiresMedia,
       embedFallback,
       recoverUrls,
       recoverEmbedOptions,
+      recoverStrategy,
+      placeholderFallback,
       sourceUrl,
     } = item;
+    // May be a lookup promise started at payload build; resolved by now.
+    const validationOptions = {
+      requireMedia: (await viewerRequiresMedia) === true,
+    };
 
     let fetched;
     try {
@@ -237,13 +598,37 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
       continue;
     }
 
-    if (fetched.embeds.length > 0) continue;
+    const platform = viewerValidation || "generic";
+    const firstVerdict = classifyViewerPreview(
+      fetched.embeds,
+      viewerValidation,
+      validationOptions,
+    );
+    if (firstVerdict.useful) {
+      console.log(
+        `[preview] chain resolved platform=${platform} layer=viewer1`,
+      );
+      continue;
+    }
 
-    console.log(`[preview] empty-embed detected ${fetched.id}`);
+    console.log(
+      `[preview] empty-or-useless-embed detected ${fetched.id} platform=${platform} quality=${firstVerdict.quality} reason=${firstVerdict.reason} card=${describeCard(fetched.embeds)}`,
+    );
 
     let current = fetched;
+    // A "weak" card (real caption, no media) is a floor, not a success: we keep
+    // walking the chain for a full card and come back to it only if every
+    // richer layer fails, so strict detection never costs the user a preview
+    // they already had.
+    let weakFloor =
+      firstVerdict.quality === "weak"
+        ? buildWeakFloor(fetched.content, "viewer1", fetched.embeds)
+        : null;
 
-    if (fallbackContent) {
+    let viewerSucceeded = false;
+    let viewerLayer = 1;
+    for (const fallbackContent of fallbackContents || []) {
+      viewerLayer += 1;
       console.log(`[preview] trying fallback url ${current.id}`);
       try {
         await current.edit({
@@ -264,36 +649,80 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      if (current?.embeds?.length > 0) {
-        console.log(`[preview] fallback url succeeded ${current.id}`);
-        continue;
+      const verdict = classifyViewerPreview(
+        current?.embeds,
+        viewerValidation,
+        validationOptions,
+      );
+      if (verdict.useful) {
+        console.log(
+          `[preview] chain resolved platform=${platform} layer=viewer${viewerLayer}`,
+        );
+        viewerSucceeded = true;
+        break;
       }
-      console.log(`[preview] fallback url also empty ${current.id}`);
-    }
-
-    if (embedFallback) {
-      try {
-        await current.edit({
-          content: "",
-          ...embedFallback,
-          allowedMentions: { repliedUser: false },
-        });
-        console.log(`[preview] embed fallback used ${current.id}`);
-        continue;
-      } catch (error) {
-        console.warn(
-          "[preview] could not edit to embed fallback:",
-          error.message,
+      if (verdict.quality === "weak" && !weakFloor) {
+        weakFloor = buildWeakFloor(
+          fallbackContent,
+          `viewer${viewerLayer}`,
+          current?.embeds,
         );
       }
+      console.log(
+        `[preview] fallback url empty or useless ${current.id} reason=${verdict.reason}`,
+      );
     }
+    if (viewerSucceeded) continue;
 
-    if (
-      await tryOgRecover(current, recoverUrls, sourceUrl, recoverEmbedOptions)
-    ) {
+    if (await tryEmbedFallback(current, embedFallback, "embed fallback")) {
+      console.log(
+        `[preview] chain resolved platform=${platform} layer=embed-fallback`,
+      );
       continue;
     }
 
+    if (
+      await tryOgRecover(
+        current,
+        recoverUrls,
+        sourceUrl,
+        recoverEmbedOptions,
+        recoverStrategy,
+        weakFloor,
+      )
+    ) {
+      console.log(
+        `[preview] chain resolved platform=${platform} layer=og-recover`,
+      );
+      continue;
+    }
+
+    // Nothing richer worked — put the half-good viewer card back.
+    if (await tryRestoreWeakCard(current, weakFloor)) {
+      console.log(
+        `[preview] chain resolved platform=${platform} layer=weak-${weakFloor.layer}`,
+      );
+      continue;
+    }
+
+    // A placeholder carries no post content (just a link card), so it ranks
+    // below OG recovery — unlike `embedFallback`, which holds real metadata.
+    if (
+      await tryEmbedFallback(
+        current,
+        placeholderFallback,
+        "placeholder fallback",
+      )
+    ) {
+      console.log(
+        `[preview] chain resolved platform=${platform} layer=placeholder`,
+      );
+      continue;
+    }
+
+    console.warn(
+      `[preview] chain exhausted platform=${platform} ${sourceUrl || ""}`,
+    );
     try {
       await current.delete();
     } catch (error) {
@@ -323,6 +752,12 @@ module.exports = {
   logMissingChannelPermissions,
   inferMissingPermissionsFromError,
   suppressOriginalEmbeds,
+  isUsefulThreadsViewerEmbed,
+  isUsefulInstagramViewerEmbed,
+  isUsefulTwitterViewerEmbed,
+  classifyViewerPreview,
+  isViewerPreviewUseful,
+  resolveOutgoing,
   sendPreviews,
   apologyReply,
   checkAndHandleEmptyEmbeds,

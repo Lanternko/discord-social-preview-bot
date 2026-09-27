@@ -9,6 +9,7 @@
 
 const { EmbedBuilder } = require("discord.js");
 const { trimDescription } = require("./utils");
+const { matchHardError } = require("./viewer-cards");
 
 const DEFAULT_TIMEOUT_MS = 6000;
 const MAX_HTML_BYTES = 1024 * 1024; // 1 MiB cap to avoid OOM on rogue hosts.
@@ -75,8 +76,10 @@ function buildMetaRegex(attrName, attrValue) {
 }
 
 function findMeta(html, attrName, attrValue) {
-  const { forwardDQ, forwardSQ, reverseDQ, reverseSQ } =
-    buildMetaRegex(attrName, attrValue);
+  const { forwardDQ, forwardSQ, reverseDQ, reverseSQ } = buildMetaRegex(
+    attrName,
+    attrValue,
+  );
   return (
     extractMetaContent(html, forwardDQ) ||
     extractMetaContent(html, forwardSQ) ||
@@ -110,23 +113,33 @@ function parseOgFromHtml(html) {
     findMeta(head, "name", "twitter:image");
 
   const siteName = findMeta(head, "property", "og:site_name");
+  const url = findMeta(head, "property", "og:url");
   const author =
     findMeta(head, "name", "author") ||
     findMeta(head, "property", "article:author") ||
     findMeta(head, "property", "og:author");
 
-  return { title, description, image, siteName, author };
+  return { title, description, image, siteName, author, url };
 }
 
-async function fetchHtml(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
+async function fetchHtml(
+  url,
+  {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    userAgent = DEFAULT_USER_AGENT,
+    signal,
+  } = {},
+) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener("abort", abortFromCaller, { once: true });
   try {
     const response = await fetch(url, {
       redirect: "follow",
       signal: controller.signal,
       headers: {
-        "User-Agent": DEFAULT_USER_AGENT,
+        "User-Agent": userAgent,
         Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
       },
@@ -172,11 +185,12 @@ async function fetchHtml(url, timeoutMs = DEFAULT_TIMEOUT_MS) {
     return html;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", abortFromCaller);
   }
 }
 
-async function fetchOgMetadata(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-  const html = await fetchHtml(url, timeoutMs);
+async function fetchOgMetadata(url, options = {}) {
+  const html = await fetchHtml(url, options);
   const meta = parseOgFromHtml(html);
   return meta;
 }
@@ -184,6 +198,16 @@ async function fetchOgMetadata(url, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
 function hasUsefulMetadata(meta) {
   if (!meta) return false;
   return Boolean(meta.title || meta.description || meta.image);
+}
+
+// A dead viewer answers with HTTP 200 and a full set of OG tags describing its
+// own error page ("Temporarily unavailable"). Recovering that into a pretty
+// degraded card is worse than moving to the next candidate, so the same error
+// vocabulary that guards the Discord-side cards guards this path too.
+function isErrorPageMetadata(meta) {
+  if (!meta) return false;
+  const text = [meta.title, meta.description].filter(Boolean).join(" ");
+  return Boolean(matchHardError(text));
 }
 
 function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
@@ -198,10 +222,16 @@ function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
     .setURL(originalUrl)
     .setFooter({ text: footerText });
 
-  if (meta.title) {
-    embed.setTitle(trimDescription(meta.title, 256));
+  const title =
+    typeof options.titleTransform === "function"
+      ? options.titleTransform(meta.title, meta)
+      : meta.title;
+  if (title) {
+    embed.setTitle(trimDescription(title, 256));
   }
-  if (meta.author) {
+  // Some viewers (instagram7) put the profile URL in `author` — a raw URL is
+  // noise as an author name, so skip it.
+  if (meta.author && !/^https?:\/\//i.test(meta.author)) {
     embed.setAuthor({ name: trimDescription(meta.author, 256) });
   }
   if (meta.description) {
@@ -213,40 +243,201 @@ function buildGenericFallbackEmbed(meta, originalUrl, options = {}) {
   return embed;
 }
 
-// Walks `recoverUrls` in order, returning the first embed we can build from a
-// usable OG metadata response. Returns null if every URL fails.
+// A recover candidate is either a plain URL or
+// `{ url, userAgent, requireOgUrl }`. `requireOgUrl` is for origins that answer
+// a walled/missing post with a 200 login page carrying a generic og:title
+// (facebook.com: "登入或註冊即可查看") — only real posts expose og:url.
+function normalizeCandidate(candidate) {
+  if (typeof candidate === "string") return { url: candidate };
+  if (candidate && typeof candidate.url === "string") return candidate;
+  return null;
+}
+
+// Fetches one candidate and builds the embed. Throws on fetch failure; returns
+// null when the page has nothing usable.
+async function recoverFromCandidate(candidate, options) {
+  const {
+    timeoutMs,
+    sourceUrl,
+    embedOptions,
+    signal,
+    validateMeta,
+    normalizeMeta,
+  } = options;
+  const raw = await fetchOgMetadata(candidate.url, {
+    timeoutMs,
+    userAgent: candidate.userAgent,
+    signal,
+  });
+  // Platform cleanup (e.g. drop an og:image that is just the viewer's logo)
+  // runs BEFORE every check, so a decoration can't pass as a cover.
+  const meta = typeof normalizeMeta === "function" ? normalizeMeta(raw) : raw;
+  if (!hasUsefulMetadata(meta) || (candidate.requireOgUrl && !meta.url)) {
+    console.log(`[og-fallback] empty meta candidate=${candidate.url}`);
+    return null;
+  }
+  if (isErrorPageMetadata(meta)) {
+    console.log(
+      `[og-fallback] error-page meta candidate=${candidate.url} title=${meta.title || ""}`,
+    );
+    return null;
+  }
+  // Platform rule (e.g. Instagram: a real post always has a cover image).
+  if (typeof validateMeta === "function" && !validateMeta(meta)) {
+    console.log(
+      `[og-fallback] rejected by platform check candidate=${candidate.url}`,
+    );
+    return null;
+  }
+  const embed = buildGenericFallbackEmbed(
+    meta,
+    sourceUrl || candidate.url,
+    embedOptions || {},
+  );
+  console.log(
+    `[og-fallback] recovered candidate=${candidate.url} title=${meta.title ? "yes" : "no"} desc=${meta.description ? "yes" : "no"} image=${meta.image ? "yes" : "no"}`,
+  );
+  return { embed, source: candidate.url, meta };
+}
+
+function logFetchFailure(candidate, error, startedAt) {
+  console.log(
+    `[og-fallback] fetch failed candidate=${candidate.url} reason=${error.message} elapsed=${Date.now() - startedAt}ms`,
+  );
+}
+
+// Walks candidates in order, returning the first usable embed.
+async function recoverSequentially(candidates, options) {
+  for (const candidate of candidates) {
+    const startedAt = Date.now();
+    try {
+      const result = await recoverFromCandidate(candidate, options);
+      if (result) return result;
+    } catch (error) {
+      logFetchFailure(candidate, error, startedAt);
+    }
+  }
+  return null;
+}
+
+// Fetches all candidates at once; the first usable embed wins and the losers
+// are aborted (their aborts aren't logged — they didn't fail, they lost).
+async function recoverByRace(candidates, options) {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const attempts = candidates.map(async (candidate) => {
+    try {
+      const result = await recoverFromCandidate(candidate, {
+        ...options,
+        signal: controller.signal,
+      });
+      if (result) return result;
+    } catch (error) {
+      if (!controller.signal.aborted)
+        logFetchFailure(candidate, error, startedAt);
+    }
+    throw new Error("no embed");
+  });
+  try {
+    return await Promise.any(attempts);
+  } catch {
+    return null;
+  } finally {
+    controller.abort();
+  }
+}
+
+// How complete a recovered card is: a cover plus a caption beats a bare cover,
+// which beats a title alone. Used by `collect` mode to pick the best candidate
+// instead of the fastest one — the hosts answer in whatever order they like,
+// and "fastest" has repeatedly meant "the one with the least information".
+function scoreMeta(meta) {
+  if (!meta) return 0;
+  return (
+    (meta.image ? 4 : 0) +
+    (meta.description ? 2 : 0) +
+    (meta.author ? 1 : 0) +
+    (meta.title ? 1 : 0)
+  );
+}
+
+// Fills gaps in the winning metadata from the runners-up: hosts fail in
+// different ways (one keeps the caption but serves its own logo as the cover,
+// another has the real cover but no caption), so the union of what they
+// answered is a better card than any single one of them.
+function mergeMetas(results) {
+  const ranked = [...results].sort(
+    (a, b) => scoreMeta(b.meta) - scoreMeta(a.meta),
+  );
+  const merged = { ...ranked[0].meta };
+  for (const { meta } of ranked.slice(1)) {
+    for (const key of ["title", "description", "image", "author", "url"]) {
+      if (!merged[key] && meta[key]) merged[key] = meta[key];
+    }
+  }
+  return { merged, best: ranked[0], ranked };
+}
+
+// Fetches every candidate concurrently and keeps the richest result. Costs one
+// timeout window in total (same worst case as racing), and unlike the race it
+// cannot settle for a cover-less card when another host had the whole post.
+async function recoverByCollect(candidates, options) {
+  const startedAt = Date.now();
+  const settled = await Promise.all(
+    candidates.map(async (candidate) => {
+      try {
+        return await recoverFromCandidate(candidate, options);
+      } catch (error) {
+        logFetchFailure(candidate, error, startedAt);
+        return null;
+      }
+    }),
+  );
+  const usable = settled.filter(Boolean);
+  if (usable.length === 0) return null;
+  const { merged, best } = mergeMetas(usable);
+  console.log(
+    `[og-fallback] collected=${usable.length}/${candidates.length} best=${best.source} score=${scoreMeta(best.meta)}→${scoreMeta(merged)}`,
+  );
+  return {
+    embed: buildGenericFallbackEmbed(
+      merged,
+      options.sourceUrl || best.source,
+      options.embedOptions || {},
+    ),
+    source: best.source,
+    meta: merged,
+  };
+}
+
+// Returns the first embed we can build from a usable OG metadata response, or
+// null if every candidate fails. `race: true` fetches candidates concurrently
+// instead of in order.
 async function tryRecoverEmbedFromUrls(recoverUrls, options = {}) {
   if (!Array.isArray(recoverUrls) || recoverUrls.length === 0) return null;
   const {
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    race = false,
+    collect = false,
     sourceUrl,
     embedOptions,
+    validateMeta,
+    normalizeMeta,
   } = options;
-
-  for (const candidate of recoverUrls) {
-    if (!candidate) continue;
-    try {
-      const meta = await fetchOgMetadata(candidate, { timeoutMs });
-      if (!hasUsefulMetadata(meta)) {
-        console.log(`[og-fallback] empty meta candidate=${candidate}`);
-        continue;
-      }
-      const embed = buildGenericFallbackEmbed(
-        meta,
-        sourceUrl || candidate,
-        embedOptions || {},
-      );
-      console.log(
-        `[og-fallback] recovered candidate=${candidate} title=${meta.title ? "yes" : "no"} desc=${meta.description ? "yes" : "no"} image=${meta.image ? "yes" : "no"}`,
-      );
-      return { embed, source: candidate, meta };
-    } catch (error) {
-      console.log(
-        `[og-fallback] fetch failed candidate=${candidate} reason=${error.message}`,
-      );
-    }
-  }
-  return null;
+  const candidates = recoverUrls.map(normalizeCandidate).filter(Boolean);
+  if (candidates.length === 0) return null;
+  const recover = collect
+    ? recoverByCollect
+    : race
+      ? recoverByRace
+      : recoverSequentially;
+  return recover(candidates, {
+    timeoutMs,
+    sourceUrl,
+    embedOptions,
+    validateMeta,
+    normalizeMeta,
+  });
 }
 
 module.exports = {
@@ -255,5 +446,8 @@ module.exports = {
   buildGenericFallbackEmbed,
   tryRecoverEmbedFromUrls,
   hasUsefulMetadata,
+  isErrorPageMetadata,
+  scoreMeta,
+  mergeMetas,
   decodeHtmlEntities,
 };

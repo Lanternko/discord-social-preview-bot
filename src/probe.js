@@ -1,14 +1,65 @@
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 
+const { fetchThreadsGraphqlMetadata } = require("./threads-graphql");
+
 const {
+  THREADS_GRAPHQL_ENABLED,
   THREADS_PROBE_NODE,
   THREADS_PROBE_SCRIPT,
   THREADS_PROBE_TIMEOUT_MS,
+  THREADS_PROBE_MAX_CONCURRENT,
+  THREADS_PROBE_QUEUE_TIMEOUT_MS,
   THREADS_METADATA_CACHE_TTL_MS,
 } = require("./config");
 
 const execFileAsync = promisify(execFile);
+
+// Every probe is a full chromium. Unbounded, a busy channel starts a dozen at
+// once and they starve each other's rendering — the page then reports zero
+// media because the DOM hasn't been laid out yet, and a video post degrades to
+// a still cover frame. Queue instead of racing: waiting a beat for a slot is
+// cheaper than a probe that returns wrong metadata.
+//
+// But the queue must never be the thing that makes a preview late. A probe can
+// take THREADS_PROBE_TIMEOUT_MS, so an unbounded queue would put the 12th link
+// in a burst minutes behind. Waiting past THREADS_PROBE_QUEUE_TIMEOUT_MS runs
+// the probe anyway: under a flood we degrade to the old free-for-all (fast,
+// occasionally wrong) rather than to a preview nobody is still looking at.
+let activeProbes = 0;
+const probeWaiters = new Set();
+
+async function acquireProbeSlot() {
+  if (activeProbes < THREADS_PROBE_MAX_CONCURRENT) {
+    activeProbes += 1;
+    return;
+  }
+
+  const admitted = await new Promise((resolve) => {
+    const waiter = (value) => {
+      if (!probeWaiters.delete(waiter)) return;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const timer = setTimeout(() => waiter(false), THREADS_PROBE_QUEUE_TIMEOUT_MS);
+    probeWaiters.add(waiter);
+  });
+
+  if (!admitted) {
+    console.warn(
+      `[probe] queue wait exceeded ${THREADS_PROBE_QUEUE_TIMEOUT_MS}ms (active=${activeProbes}) — running over the cap`,
+    );
+  }
+  activeProbes += 1;
+}
+
+function releaseProbeSlot() {
+  activeProbes -= 1;
+  // Hand the slot to the next waiter; `activeProbes` is re-incremented by the
+  // waiter itself, so a timed-out waiter that already left can't double-count.
+  const next = probeWaiters.values().next().value;
+  if (next) next(true);
+}
 
 const threadsMetadataCache = new Map();
 
@@ -21,15 +72,27 @@ function cleanupThreadsMetadataCache() {
   }
 }
 
-async function runProbe(url) {
-  const { stdout, stderr } = await execFileAsync(
-    THREADS_PROBE_NODE,
-    [THREADS_PROBE_SCRIPT, url],
-    {
-      timeout: THREADS_PROBE_TIMEOUT_MS,
-      maxBuffer: 1024 * 1024,
-    },
-  );
+// cookies: Playwright addCookies entries for a logged-in fetch. They ride in
+// the child's env rather than argv so a session token never shows up in `ps`.
+async function runProbe(url, { cookies } = {}) {
+  await acquireProbeSlot();
+  let stdout;
+  let stderr;
+  try {
+    ({ stdout, stderr } = await execFileAsync(
+      THREADS_PROBE_NODE,
+      [THREADS_PROBE_SCRIPT, url],
+      {
+        timeout: THREADS_PROBE_TIMEOUT_MS,
+        maxBuffer: 1024 * 1024,
+        env: cookies?.length
+          ? { ...process.env, PROBE_COOKIES: JSON.stringify(cookies) }
+          : process.env,
+      },
+    ));
+  } finally {
+    releaseProbeSlot();
+  }
   if (stderr && stderr.trim()) {
     console.warn(`[probe] stderr ${url}: ${stderr.trim()}`);
   }
@@ -43,6 +106,150 @@ async function runProbe(url) {
   }
 }
 
+// Threads serves a logged-out interstitial ("Threads • Log in" + a generic
+// "Join Threads to share ideas...") when it walls a probe — common on sensitive
+// / flagged posts. Never render that text: salvage the media if the DOM still
+// has it, otherwise treat it as a probe failure (fixer chain + OG recovery).
+function isThreadsLoginWall(metadata) {
+  if (!metadata) return false;
+  const title = (metadata.title || "").trim();
+  const description = (metadata.description || "").trim();
+  return (
+    /^threads\b.*\blog\s?in$/i.test(title) ||
+    description.startsWith("Join Threads to share ideas")
+  );
+}
+
+// The single shape buildThreadsPayload reads, whichever source produced it.
+function normalizeThreadsMetadata(metadata) {
+  return {
+    title: metadata.title,
+    description: metadata.description,
+    image: metadata.image,
+    images: metadata.images || [],
+    // GraphQL only; the probe has no sizes, so it never offers a panorama.
+    imageSizes: metadata.imageSizes || null,
+    twitterCard: metadata.twitterCard,
+    video: metadata.video,
+    imageCount: metadata.imageCount || 0,
+    videoCount: metadata.videoCount || 0,
+    ancestors: metadata.ancestors || [],
+    postText: metadata.postText || null,
+  };
+}
+
+function logThreadsMetadata(metadata, source, extra = "") {
+  console.log(
+    `[threads-meta]${extra} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} ancestors=${metadata.ancestors?.length ?? 0} source=${source}`,
+  );
+}
+
+// A walled post usually REDIRECTS a logged-out browser to the home feed, and
+// that feed's DOM holds other people's media — salvaging it previewed random
+// posts (2026-09-15: all three salvages that day were feed media). Treat any
+// probe that ended up off a /post/ permalink as a miss.
+function isRedirectedOffPost(metadata) {
+  return metadata?.onPostPage === false;
+}
+
+// A walled / removed post can also come back as a CONTENT-LESS stub: the probe
+// stays on the permalink, but Threads renders none of the post's meta — the
+// title is the bare site name, there is no og:description, no twitter card and
+// no media. Downstream that shape reaches the text-only branch, which renders
+// it as a real preview: an embed whose entire content is the word "Threads"
+// linking back to the post. Treat it as a probe miss so the fixer chain + OG
+// recovery (and finally the local "預覽載入失敗" embed) get their turn.
+function isContentlessStub(metadata) {
+  if (!metadata) return false;
+  if (metadata.description || metadata.postText) return false;
+  if (metadata.image || metadata.video) return false;
+  if ((metadata.imageCount || 0) > 0 || (metadata.videoCount || 0) > 0) {
+    return false;
+  }
+  if ((metadata.ancestors || []).length > 0) return false;
+  // A real post's title always carries the author ("X (@y) on Threads"), so
+  // only the bare site name (or nothing at all) counts as a stub.
+  const title = (metadata.title || "").trim();
+  return title === "" || /^threads$/i.test(title);
+}
+
+// If a walled page does stay on the permalink, its media is the post's own
+// even though every meta tag is the login interstitial. The fixers get the
+// same wall (vx unfurls "Threads • Log in"), so keep the media and drop the
+// wall's text. Returns null when there is no media worth keeping.
+function salvageLoginWallMedia(metadata, url) {
+  const images = metadata.images || [];
+  const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
+  if (!images.length && !hasVideo) return null;
+
+  const handle = url.match(/\/@([A-Za-z0-9._]+)\/post\//)?.[1];
+  return {
+    ...metadata,
+    title: handle ? `@${handle} 的 Threads 貼文` : "Threads 貼文",
+    description: null,
+    image: images[0] || null,
+    twitterCard: images.length ? "summary_large_image" : null,
+    imageCount: Math.max(metadata.imageCount || 0, images.length),
+  };
+}
+
+// Every "Threads won't show this to a logged-out visitor" outcome is tagged so
+// the fallback card can say WHY instead of a generic "couldn't load".
+function walledError(message) {
+  const error = new Error(message);
+  error.walled = true;
+  return error;
+}
+
+async function fetchThreadsMetadataViaProbe(url) {
+  const metadata = await runProbe(url);
+
+  if (isRedirectedOffPost(metadata)) {
+    throw walledError(
+      `Threads redirected the probe off the post (walled / unavailable logged-out) for ${url}`,
+    );
+  }
+
+  if (isThreadsLoginWall(metadata)) {
+    const salvaged = salvageLoginWallMedia(metadata, url);
+    if (!salvaged) {
+      throw walledError(
+        `Threads served a logged-out login wall (no public metadata) for ${url}`,
+      );
+    }
+    logThreadsMetadata(salvaged, "playwright-subprocess", " login-wall-salvaged");
+    return normalizeThreadsMetadata(salvaged);
+  }
+
+  if (isContentlessStub(metadata)) {
+    throw walledError(
+      `Threads served a content-less stub (walled / unavailable logged-out) for ${url}`,
+    );
+  }
+
+  logThreadsMetadata(
+    metadata,
+    "playwright-subprocess",
+    ` metaTags=${metadata.metaTagCount}`,
+  );
+  return normalizeThreadsMetadata(metadata);
+}
+
+// GraphQL first, chromium second. The fast path returns null (never throws) on
+// any miss — a walled post, a rotated doc_id, a share link we couldn't
+// canonicalise — so the probe stays the safety net rather than being replaced.
+async function resolveThreadsMetadata(url) {
+  if (THREADS_GRAPHQL_ENABLED) {
+    const metadata = await fetchThreadsGraphqlMetadata(url);
+    if (metadata) {
+      logThreadsMetadata(metadata, "graphql");
+      return normalizeThreadsMetadata(metadata);
+    }
+    console.log(`[threads-meta] graphql miss → playwright ${url}`);
+  }
+  return fetchThreadsMetadataViaProbe(url);
+}
+
 async function fetchThreadsMetadata(url) {
   cleanupThreadsMetadataCache();
 
@@ -52,33 +259,23 @@ async function fetchThreadsMetadata(url) {
     return cached.metadata;
   }
 
-  const metadata = await runProbe(url);
-
-  console.log(
-    `[threads-meta] metaTags=${metadata.metaTagCount} title=${metadata.title ? "yes" : "no"} desc=${metadata.description ? "yes" : "no"} image=${metadata.image ? "yes" : "no"} card=${metadata.twitterCard ?? "null"} imageCount=${metadata.imageCount ?? 0} imagesLen=${metadata.images?.length ?? 0} videoCount=${metadata.videoCount ?? 0} source=playwright-subprocess`,
-  );
-
-  const result = {
-    title: metadata.title,
-    description: metadata.description,
-    image: metadata.image,
-    images: metadata.images || [],
-    twitterCard: metadata.twitterCard,
-    video: metadata.video,
-    imageCount: metadata.imageCount || 0,
-    videoCount: metadata.videoCount || 0,
-  };
+  const result = await resolveThreadsMetadata(url);
 
   threadsMetadataCache.set(url, { metadata: result, cachedAt: Date.now() });
   return result;
 }
 
-async function fetchPageProbeMetadata(url) {
-  return runProbe(url);
+async function fetchPageProbeMetadata(url, options) {
+  return runProbe(url, options);
 }
 
 module.exports = {
   runProbe,
+  normalizeThreadsMetadata,
   fetchThreadsMetadata,
   fetchPageProbeMetadata,
+  isThreadsLoginWall,
+  isRedirectedOffPost,
+  isContentlessStub,
+  salvageLoginWallMedia,
 };

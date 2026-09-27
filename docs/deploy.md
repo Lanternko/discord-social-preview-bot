@@ -14,26 +14,38 @@ macOS convenience scripts: `start-bot.command` / `stop-bot.command`.
 
 ## Production deployment
 
-Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/discord-social-preview-bot/`.
+Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup`. No SSH needed — just run commands directly. Path: `~/side_projects/apps/discord-social-preview-bot/`.
+
+**Production is the main checkout's working tree, whatever branch it is on** — `scripts/bot-watchdog.sh` hardcodes `REPO=~/side_projects/apps/discord-social-preview-bot` and relaunches `node src/index.js` from there. Two consequences:
+
+- **There is no separate deploy branch.** Whatever `git branch --show-current` prints in that folder is what's live (2026-08-29: `fix/recap-deepseek-empty`, not `main` and not a `deploy/*` branch). Check it before assuming.
+- **Uncommitted edits in that working tree go live on the next restart.** Run `git status` before restarting; another session's half-finished work is not your deploy.
+
+A cron watchdog runs every minute and restarts the bot if the process is gone, so `kill <pid>` alone is a valid restart — or run `scripts/bot-watchdog.sh` by hand to skip the wait. Do **not** `pkill -f 'node src/index.js'`: that pattern also matches Claude Code's own tool shells (use `pkill -xf` or the pid).
 
 ### Daily ops
 
 ```bash
 # See recent log
-tail -50 ~/side_projects/discord-social-preview-bot/bot.log
+tail -50 ~/side_projects/apps/discord-social-preview-bot/bot.log
 
 # Health check
 pgrep -f 'node src/index.js'
 ```
 
-### Redeploy after merging to main
+### Redeploy after merging
+
+Merge the PR into **the branch the main checkout is already on** (see above) so the deploy never needs a `git checkout` in that shared folder.
 
 ```bash
-cd ~/side_projects/discord-social-preview-bot
-git pull
-pkill -f 'src/index.js' && sleep 1
-nohup node src/index.js > bot.log 2>&1 &
-sleep 3 && tail -20 bot.log
+cd ~/side_projects/apps/discord-social-preview-bot
+git branch --show-current          # confirm this is the branch you merged into
+git status --short                 # anything uncommitted goes live too — check whose it is
+git merge --ff-only origin/<that-branch>
+npm test
+kill "$(pgrep -xf 'node src/index.js')"   # watchdog relaunches within 60s
+./scripts/bot-watchdog.sh                 # or restart immediately
+tail -20 bot.log
 ```
 
 ### Verify restart success
@@ -65,7 +77,7 @@ grep 'chain exhausted' bot.log   # AI chain drained for every mention
 ### Shadow-deploy a branch (test before merge)
 
 ```bash
-cd ~/side_projects/discord-social-preview-bot
+cd ~/side_projects/apps/discord-social-preview-bot
 git fetch origin
 git checkout <branch-name>
 pkill -f 'src/index.js' && sleep 1
@@ -89,7 +101,13 @@ nohup node src/index.js > bot.log 2>&1 &
 
 A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSPC, reboot). Script: [scripts/bot-watchdog.sh](../scripts/bot-watchdog.sh), installed as `* * * * *` in the user crontab. Restart events log to `/tmp/bot_watchdog.log`; bot stdout still appends to `bot.log`.
 
-- The watchdog matches the process with `pgrep -f '[n]ode src/index.js'` — the `[n]` bracket trick stops the pattern from matching the watchdog's own shell. (Plain `pkill -f 'src/index.js'` from an interactive shell self-matches and can kill the shell — prefer `pgrep -f 'node src/index.js'` → `kill <pid>` for manual ops.)
+**Current status (2026-06): the watchdog cron line is commented out — no auto-restart is active.** If the bot dies it will NOT relaunch on its own; restart it manually via the redeploy steps above. The commented crontab line also still points at the old pre-`apps/` flat path, so it would fail even if uncommented as-is. It's left disabled pending a decision on whether the watchdog should run — **do not re-enable it without confirming that's intended.** If you do re-enable it, first correct the path to the new `apps/` location:
+
+```cron
+* * * * * /home/kojiek/side_projects/apps/discord-social-preview-bot/scripts/bot-watchdog.sh
+```
+
+- The watchdog counts a process as the bot only if its cwd is the repo, its exe is node, and argv is exactly `node src/index.js` — so a shell whose command merely *mentions* that string is not a live bot (a substring match once hid a dead bot for minutes and could kill such shells as "duplicates"). Launch the bot with exactly that argv or the watchdog won't see it. A `flock` on `/tmp/bot_watchdog.lock` stops a manual run and the cron tick from double-launching.
 - **To stop the bot for maintenance, comment out the cron line first** — otherwise the watchdog relaunches it within a minute.
 
 ## Future hardening (not yet done)

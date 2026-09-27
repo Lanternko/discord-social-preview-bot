@@ -8,6 +8,12 @@ const PLAYWRIGHT_META_WAIT_TIMEOUT_MS = Number.parseInt(
   process.env.PLAYWRIGHT_META_WAIT_TIMEOUT_MS || "1500",
   10,
 );
+// How long to keep polling for the post's media to mount after the first read
+// came back empty. Bounded so an image-only post costs at most this much.
+const PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS = Number.parseInt(
+  process.env.PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS || "2500",
+  10,
+);
 
 const THREADS_HOSTS = new Set([
   "threads.net",
@@ -57,6 +63,10 @@ async function openPage(browser, url) {
       { name: "over18", value: "1", domain: "www.ptt.cc", path: "/" },
       { name: "over18", value: "1", domain: "ptt.cc", path: "/" },
     ]);
+  }
+
+  if (process.env.PROBE_COOKIES) {
+    await context.addCookies(JSON.parse(process.env.PROBE_COOKIES));
   }
 
   const page = await context.newPage();
@@ -113,6 +123,71 @@ async function readThreadsMetadata(page) {
         return rect.width >= 160 && rect.height >= 160;
       };
 
+      // A shared Threads link very often points at a REPLY, and og:description
+      // then carries only the punchline — the post it answers is nowhere in the
+      // preview. The thread page renders every ancestor post above the target
+      // in DOM order, so locate the target by its own permalink (the page
+      // auto-scrolls it to the top, but that scroll is async — position would
+      // be a race, the permalink is not) and take everything before it as the
+      // ancestor chain.
+      const postContainers = Array.from(
+        document.querySelectorAll('div[data-pressable-container="true"]'),
+      );
+      const permalinkOf = (container) => {
+        const href = container
+          .querySelector("time")
+          ?.closest("a")
+          ?.getAttribute("href");
+        return href ? href.split("?")[0].replace(/\/$/, "") : null;
+      };
+      const handleOf = (container) =>
+        permalinkOf(container)?.match(/^\/@([A-Za-z0-9._]+)\//)?.[1] || null;
+      // Threads' class names are obfuscated and rotate per build, so identify
+      // the post body by role instead: it is the only dir="auto" span that is
+      // neither inside a link (author name), nor a timestamp wrapper (that span
+      // is the PARENT of its <a>, so closest("a") misses it), nor inside an
+      // interaction button (the like/repost counters).
+      const bodyTextOf = (container) => {
+        const spans = Array.from(
+          container.querySelectorAll('span[dir="auto"]'),
+        ).filter(
+          (span) =>
+            !span.closest("a") &&
+            !span.closest('[role="button"]') &&
+            !span.querySelector("time"),
+        );
+        const outermost = spans.filter(
+          (span) =>
+            !spans.some((other) => other !== span && other.contains(span)),
+        );
+        // innerText would be ideal but a body span also holds the "Translate" /
+        // "See more" buttons; walk instead so those subtrees can be dropped
+        // while <br> still becomes a real line break.
+        const collect = (node) => {
+          if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+          if (node.nodeType !== Node.ELEMENT_NODE) return "";
+          if (node.getAttribute("role") === "button") return "";
+          if (node.tagName === "BR") return "\n";
+          return Array.from(node.childNodes).map(collect).join("");
+        };
+        return (
+          outermost.map(collect).join("\n").replace(/\n{3,}/g, "\n\n").trim() ||
+          null
+        );
+      };
+
+      const targetPath = location.pathname.replace(/\/$/, "");
+      const targetIndex = postContainers.findIndex(
+        (container) => permalinkOf(container) === targetPath,
+      );
+      const ancestors =
+        targetIndex > 0
+          ? postContainers.slice(0, targetIndex).map((container) => ({
+              author: handleOf(container),
+              text: bodyTextOf(container),
+            }))
+          : [];
+
       const candidateVideos = Array.from(
         mediaContainer.querySelectorAll("video"),
       ).filter(inMainPost);
@@ -141,6 +216,13 @@ async function readThreadsMetadata(page) {
           getMeta("name", "twitter:player:stream") ||
           candidateVideos[0]?.getAttribute("src") ||
           null,
+        // A walled post redirects a logged-out browser to the home feed ("/"),
+        // whose DOM is full of OTHER people's media. Anything read off a page
+        // that isn't a post permalink must not be attributed to this link.
+        onPostPage: /\/post\//.test(location.pathname),
+        ancestors,
+        postText:
+          targetIndex >= 0 ? bodyTextOf(postContainers[targetIndex]) : null,
         images: candidateImages.map((img) => getBestSrc(img)).filter(Boolean),
         imageCount: candidateImages.length,
         videoCount: Math.max(
@@ -153,12 +235,53 @@ async function readThreadsMetadata(page) {
 
   let metadata = await readMetadata();
 
+  // Threads mounts the <video> element ~0.3-1.5s AFTER DOMContentLoaded, and
+  // serves NO og:video — the DOM is the only place a direct mp4 URL exists. The
+  // old code read once and blindly retried +1500ms, so a slow render (the host
+  // is busy, several probes are competing) silently produced videoCount=0 and a
+  // null video, and the post degraded to a still cover frame that LOOKS like a
+  // successful preview. Poll for the media instead of guessing at a delay.
+  //
+  // Only media posts (og:image present / summary_large_image) can wait: a
+  // text-only post has nothing to wait for and must not pay the deadline.
   if (
-    metadata.twitterCard === "summary_large_image" &&
+    (metadata.twitterCard === "summary_large_image" || metadata.image) &&
     !metadata.video &&
     metadata.videoCount === 0
   ) {
-    await page.waitForTimeout(1500).catch(() => null);
+    await page
+      .waitForFunction(
+        () => {
+          const viewportHeight = window.innerHeight;
+          const mediaContainer =
+            document.querySelector("article") || document.body;
+          const inMainPost = (element) => {
+            const rect = element.getBoundingClientRect();
+            if (rect.top >= viewportHeight) return false;
+            return rect.width >= 160 && rect.height >= 160;
+          };
+          // Settle as soon as a playable <video src> exists, or as soon as the
+          // post is provably image-only: Threads renders the video element and
+          // its "video player" aria marker together, so a laid-out cover image
+          // with neither marker nor <video> after the grace period is a real
+          // image post, not a race we should keep waiting on.
+          const video = Array.from(
+            mediaContainer.querySelectorAll("video"),
+          ).filter(inMainPost)[0];
+          if (video?.getAttribute("src")) return true;
+          return Boolean(
+            Array.from(mediaContainer.querySelectorAll('[aria-label]')).find(
+              (element) =>
+                (element.getAttribute("aria-label") || "")
+                  .toLowerCase()
+                  .includes("video player") && inMainPost(element),
+            ),
+          );
+        },
+        null,
+        { timeout: PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS, polling: 150 },
+      )
+      .catch(() => null); // genuine image-only post — fall through and re-read
     metadata = await readMetadata();
   }
 
@@ -179,15 +302,49 @@ async function readBahamutMetadata(page) {
       bodyText.includes("如要閱覽請先登入") ||
       bodyText.includes("兒少保護");
 
+    // The post header is a block of chrome — 樓主 / 暱稱 / 自訂頭銜 / 帳號 /
+    // GP / BP — and its textContent glues all of it into one line. Discord
+    // renders that above the title, so it eats more vertical space than the
+    // article itself. Pull the two fields that identify the poster and drop
+    // the rest.
+    const header = document.querySelector(".c-post__header__author");
+    const username = header?.querySelector(".username")?.textContent?.trim() || null;
+    const userid = header?.querySelector(".userid")?.textContent?.trim() || null;
     const author =
-      document.querySelector(".c-article__content .userid")?.textContent?.trim() ||
-      document.querySelector(".c-post__header__author")?.textContent?.trim() ||
-      null;
+      (username && userid && username !== userid
+        ? `${username} (${userid})`
+        : username || userid) || null;
 
     const articleText =
       document.querySelector(".c-article__content")?.innerText ||
       document.querySelector("#BH-master")?.innerText ||
       bodyText;
+
+    // The article's own media never reaches og:*: a post with a YouTube embed
+    // advertises the video thumbnail, and a post whose punchline is a GIF
+    // advertises nothing at all. Read both out of the article so the preview
+    // can show the picture people actually posted (an animated GIF stays
+    // animated in an embed) and hand the video URL to Discord's own player.
+    const article = document.querySelector(".c-article__content");
+    const articleImages = Array.from(article?.querySelectorAll("img") || [])
+      .map((img) =>
+        (img.getAttribute("data-src") || img.getAttribute("src") || "").trim(),
+      )
+      // Emoticons and avatars are chrome, not content.
+      .filter((src) => /^https?:\/\//.test(src) && !/\/(?:emotion|avatar)\//i.test(src));
+
+    const videoUrls = Array.from(
+      new Set(
+        Array.from(article?.querySelectorAll("iframe") || [])
+          .map((frame) =>
+            (frame.getAttribute("src") || frame.getAttribute("data-src") || "").match(
+              /(?:youtube(?:-nocookie)?\.com\/embed\/|youtu\.be\/)([\w-]{6,20})/,
+            )?.[1],
+          )
+          .filter(Boolean)
+          .map((id) => `https://www.youtube.com/watch?v=${id}`),
+      ),
+    );
 
     const candidateImage = Array.from(document.querySelectorAll("img")).find((img) => {
       const src = img.getAttribute("src") || "";
@@ -196,9 +353,28 @@ async function readBahamutMetadata(page) {
       return rect.width >= 160 && rect.height >= 160;
     });
 
+    // og:title is the browser-tab title: "<標題> @<板名> 哈啦板 - 巴哈姆特".
+    // The footer already says 巴哈姆特, so that tail only makes the title wrap
+    // an extra line. Require the site suffix before cutting, so a title that
+    // legitimately ends in "@某某" survives.
+    const stripSiteSuffix = (title) => {
+      if (!title) return null;
+      const trimmed = title
+        .replace(/\s*@[^@]{1,80}?[-–—]\s*巴哈姆特\s*$/, "")
+        .replace(/\s*[-–—]\s*巴哈姆特\s*$/, "")
+        .trim();
+      return trimmed || title;
+    };
+
+    // og:description flattens the post onto one line; the article's own
+    // innerText keeps the author's line breaks (each <div> is a line), so it
+    // wins. Runs of blank lines are collapsed later by trimText.
+    const articleBody = article?.innerText?.trim() || null;
+
     return {
-      title: getMeta("property", "og:title") || document.title || null,
+      title: stripSiteSuffix(getMeta("property", "og:title") || document.title),
       description:
+        articleBody ||
         getMeta("property", "og:description") ||
         getMeta("name", "description") ||
         articleText ||
@@ -208,6 +384,8 @@ async function readBahamutMetadata(page) {
         getMeta("name", "thumbnail") ||
         candidateImage?.getAttribute("src") ||
         null,
+      images: articleImages.slice(0, 10),
+      videoUrls: videoUrls.slice(0, 3),
       author,
       restricted,
       metaTagCount: document.head.querySelectorAll("meta").length,
@@ -301,7 +479,13 @@ async function main() {
 
       metadata.title = trimText(metadata.title, 256);
       metadata.description = trimText(metadata.description, 4000);
-      metadata.author = trimText(metadata.author, 256);
+          // Discord's embed author is a single line; anything multi-line arrives
+      // as one run-on string. Collapse here so a site layout change can't
+      // smuggle a whole header block back into the preview.
+      metadata.author = trimText(
+        metadata.author ? metadata.author.replace(/\s+/g, " ") : null,
+        256,
+      );
       process.stdout.write(JSON.stringify(metadata));
     } finally {
       await page.close();

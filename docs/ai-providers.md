@@ -12,19 +12,85 @@ The chain is wrapped by a circuit breaker so a known-broken provider gets skippe
 
 ## Per-guild chain
 
-DeepSeek is selected per guild, then the shared fallback chain is appended:
+DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback chain are appended:
 
 1. 入門 (`brief`) — `deepseek:<DEEPSEEK_MODEL_FREE>` using the owner `DEEPSEEK_API_KEY`, limited by `AI_FREE_DAILY_LIMIT` for guilds without `/ai-key` or whitelist.
 2. 標準 / 精細 (`standard` / `detailed`) — `deepseek:<DEEPSEEK_MODEL>` using the guild `/ai-key`, or the owner key for `DEEPSEEK_PREMIUM_GUILD_IDS`.
-3. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
-4. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
-5. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
+   - A guild with its own `/ai-key` pays with it on every tier, 入門 included (no daily limit).
+   - **Rejected guild key (401/402/403) → demoted to 入門.** `trackGuildKey` marks it in `data/guild-api-keys.json` (`rejectedAt`); `getTierConfig` then returns brief budgets (`demotedFrom` = stored tier) and the chain uses owner flash + daily limit. The stored tier is untouched. After `KEY_RECHECK_MS` (6 h) the key gets one real call again — success restores the tier, so a top-up heals itself; `/ai-key set` clears it at once. The channel gets a one-time `-#` notice. Grep `[ai-key]`.
+   - The circuit breaker keys guild-key entries by `circuitKey` (`…:guild:<guildId>`), not by label — they all share one label, and keying on it let one dead key cool down every other guild's working key.
+3. `kimi:<KIMI_MODEL>` — second-choice provider; removed entirely when `KIMI_ENABLED=false`.
+4. `groq:llama-3.3-70b-versatile` — fast backup, 100k tokens/day free.
+5. `groq:llama-3.1-8b-instant` — Groq-internal fallback, 500k tokens/day free, lower quality.
+6. `gemini:gemini-2.0-flash` — last resort, has billing trap history (see below).
 
-If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipped and only Groq/Gemini fallbacks are tried. If no fallback keys are configured, chain exhaustion returns `null` and mention handling uses the hardcoded fallback reply.
+### GLM 鏈頭（`GLM_ENABLED`，預設關）
+
+開啟後 `glm:<GLM_MODEL>`（Vercel AI Gateway，走 `callOpenAI` 帶 baseUrl/key 覆寫）排在 **owner 付費**的鏈頭：白名單（標準/精細）與入門免費 guild 變成 `glm → deepseek → kimi → fallback`。自帶 `/ai-key` 的 guild 不受影響（他們選的是 DeepSeek）。GLM 是 flat-rate，尖峰降級只移 DeepSeek，GLM 照樣在最前面。module-level 的 `AI_PROVIDER_CHAIN`（早安問候等排程）也以 GLM 開頭；recap / story 鏈不動。
+
+- **為什麼**：2026-09-27 從 `data/ai-turn-log.json` 抽 20 題 prod 真實對話重播（同 persona、同前文），使用者盲投 GLM 11、deepseek-flash 3、平手 4。flash 冒簡體字、把 emoji 語法寫壞；GLM 的缺點是偶爾替西寶捏造親身經歷。
+- **`GLM_TIMEOUT_MS` 12 s**（比 DeepSeek 的 40 s 短很多）：盲測裡 GLM 也會 25 s 逾時，卡住時要快點交給 DeepSeek。逾時第一次只記 strike，連兩次才冷卻 60 s。
+- 付費走 Vercel 儲值額度，額度用完 gateway 回 402 → 歸類為 `auth`（冷卻 10 分鐘），鏈自動落到 DeepSeek。grep `glm:`。
+
+### 尖峰時段降級（`AI_PEAK_PREFER_FALLBACK`，預設開）
+
+DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 owner key 的 DeepSeek entry 會被移到鏈尾**，改由 flat-rate 的 fallback（luna）先跑。DeepSeek 沒有被移除——上面全掛了還是會打到它，只是不再是預設花錢的那一層。
+
+- **時段以 UTC 為準**：`Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday`（[DeepSeek pricing](https://api-docs.deepseek.com/quick_start/pricing)）。換算台北是平日 09:00–12:00 與 14:00–18:00，但實作**刻意不寫死本地時間**：計費依據是 UTC，寫成本地時間會在主機時區改變時無聲飄掉。判斷在 [src/ai/peak-hours.js](../src/ai/peak-hours.js)。
+- **自帶 key 的 guild 與白名單都不降級**。自帶 key 是他們自己付錢、自己選 DeepSeek；白名單是 owner 刻意要養的伺服器，降級等於把它交給 Luna（2026-09-27 搖E露營一天 33 則有 19 則是 Luna 回的，群友直接說「變笨」）。只有免費 guild 的 owner-key flash 會被移到鏈尾。
+- **降級期間照樣扣 `AI_FREE_DAILY_LIMIT`**。額度計的是「一則回覆」，不是「一次 DeepSeek 呼叫」——尖峰先跑的 Luna 一樣是 owner 付錢（2026-09-27 前只扣 DeepSeek entry，額度用完的 guild 就在 Luna 上無限聊）。
+- log 只在**狀態切換時**各印一行（`[ai] deepseek peak window on/off`），不是每則回覆都印。
+- 排程任務（daily recap / bedtime story / morning greeting）走的是 module-level 的 `AI_PROVIDER_CHAIN` / `STORY_PROVIDER_CHAIN`，**不受影響**；它們的排程時間（台北 08:00 / 19:00 / 22:00 → UTC 00:00 / 11:00 / 14:00）本來就全部落在離峰。
+
+### 額度與全域保險絲
+
+owner 付錢的回覆（免費 guild＋白名單）**每則回覆計一次**，不管最後是哪一層回的：
+
+- 免費 guild 每天 `AI_FREE_DAILY_LIMIT`（20）次；白名單不受這個限制。
+- 全部 owner 付費回覆加總每天 `AI_OWNER_DAILY_LIMIT`（1500）次——這是 owner 帳單的保險絲，白名單也算在內。自帶 key 的 guild 不計、不擋。
+- 超過任一條 → 鏈是空的（連 vision 都不打），`generateAIReply` 直接回 `QUOTA_REPLIES` 裡的罐頭句（西寶口吻＋一行 `-#` 說明是哪個額度、怎麼解除），零成本。log：`[ai] guild=… hit daily limit` / `[ai] owner daily limit hit`。
+- 計數跟每日重置同一份 `data/ai-daily-usage.json`（台北 0 點），全域那列的 key 是 `__owner_total__`。
+- 背景工作（profile sweep）用 `metered: false` 建鏈，不吃額度。
+
+## DeepSeek 現役 model（2026-09-21 實測）
+
+`/models` 只剩兩個 id，舊的 `deepseek-chat`、`deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 全數下架——這是 vision entry 長期 404、免費層打不到模型的真正原因。
+
+| | `deepseek-flash`（V4.1-Flash） | `deepseek-v4-pro`（V4-Pro-0813） |
+|---|---|---|
+| 吃圖 | ✅ | ❌ |
+| 價格（離峰 in/out，每 1M） | $0.15 / $0.60 | $0.66 / $1.98 |
+| 實測延遲（同 persona、同題目） | 2.1 / 3.4 / 4.5 s | 15.5 / 24.8 / 39.4 s |
+| prod 歷史（1105 次 v4-pro 呼叫） | — | 平均 20.4 s，**27% 超過 25 s 逾時線**（bot.log 有 188 次 deepseek timeout） |
+| thinking | 預設開，可 `thinking:{type:"disabled"}` | 同左 |
+
+**為什麼主力換成 flash（2026-09-21）**：v4-pro 的 39 s 那題在線上會直接撞 `AI_TIMEOUT_MS=25000` 逾時、掉到下一層，等於花了 pro 的錢拿 luna 的回答。品質方面重跑了當初讓 pro 勝出的「模仿語氣」題：這次**反而是 pro 照抄範例句**（原句 "欸不是/這個真的假的啦/但沒事了各位/懂?" 幾乎原封不動搬回來），flash 用同樣語氣造了新句子。當初的結論是拿 V3.2 的 `deepseek-chat` 比的，換代之後不成立了。要換回去只改 `.env` 一行 `DEEPSEEK_MODEL=deepseek-v4-pro`。
+
+> 待辦（未做）：`AI_PEAK_PREFER_FALLBACK` 當初是為了避開 v4-pro 的尖峰成本才把 DeepSeek 移到鏈尾，flash 便宜 4 倍之後這個取捨值得重新評估。
+
+## 圖片辨識（DeepSeek vision）
+
+DeepSeek 2026-08-21 開的那個實驗性 endpoint `deepseek-v4-flash-vision-exp` 已經下架（2026-09-21 查 `/models` 只剩兩個 id），現在吃圖的是 **`deepseek-flash`**（V4.1-Flash；`deepseek-v4-pro` 純文字不吃圖）。實測 `thinking:{type:"disabled"}` 在 flash 上照樣有效，15 個 token 就正確描述完一張圖。（[docs](https://api-docs.deepseek.com/guides/vision/)）實作在 [src/ai/vision.js](../src/ai/vision.js)，鏈的組裝在 `buildVisionEntry`（[chain.js](../src/ai/chain.js)）。
+
+**vision 是插在鏈頭，不是取代鏈。** 只有這個 endpoint 看得到圖，底下每一層都是瞎的，所以：
+
+- 圖片以 OpenAI 相容的 content block（`{type:"image_url", image_url:{url}}`）掛在**最後一個 user turn** 上，而且只用 `overrides.images` 傳進 `callDeepSeek`——`turns` 本身永遠是純字串，否則同一個陣列丟給下游純文字 endpoint 會直接 400。
+- **我們自己下載圖，送 base64 data URL，不把連結丟給 DeepSeek。** DeepSeek 是支援外部 URL，但它得自己去抓：實測（2026-09-10）連一個普通的公開圖片 URL 都回 `Failed to download image`，而 Discord CDN 連結還多了簽章與過期。連結路徑會用我們看不到也重試不了的方式壞掉。下載失敗 → 那張不送 → 全部失敗就等於沒有圖，退回瞎的文字鏈。
+- **thinking 一律關（`thinking:{type:"disabled"}` + headroom 0）。** 實測同一張圖：thinking 開著時燒掉 300+ 個 `reasoning_content` token 然後回**空字串**；關掉之後 1.8 s 正確描述。看圖是用看的，不是用想的。
+- 歷史 turn 不重掛圖：舊圖已經在她自己的回覆裡被描述過，重送等於每一輪重新計費。
+- user turn 會多一行「附了 N 張圖片，但你這次看不到內容，別假裝看得到」的註記；vision entry 在送出前把它換成「內容就在下面」。**這行是給瞎的那幾層看的**——沒有它，模型會很開心地編出圖片內容。這行也會進短期記憶，所以她記得剛才有張她沒看到的圖。
+- vision 模型死掉/改名 → 該次回覆退回瞎的文字鏈，聲音不變、只是看不到。Ops signal：`[vision] deepseek model=… images=N` 有出現但 `provider failed label=deepseek:…:vision`。
+
+**圖片從哪來**：@ 她的那則訊息的附件；那則沒附件時，取**被回覆訊息**的附件——「@西寶 這張是什麼」去回覆別人的照片是最常見的送圖方式，而那則訊息自己一張圖都沒有。只吃 DeepSeek 支援的四種格式（jpeg/png/gif/webp），其他格式、超過 `VISION_MAX_BYTES` 的直接跳過（`[vision] skip oversized attachment`）。貼圖片**連結**（embed）目前不算。
+
+**成本與時段**：一張圖最多 384 tokens、flash 費率。vision entry **尖峰也留在鏈頭**——`AI_PEAK_PREFER_FALLBACK` 是拿來省文字錢的，而再怎麼降級，瞎的 provider 也回答不了「這張是什麼」。但免費 guild 燒完 `AI_FREE_DAILY_LIMIT` 之後連 vision 也不給（額度就是用來擋 owner key 的花費，而圖是比較貴的那半）。
+
+**timeout 另計**：`VISION_FETCH_TIMEOUT_MS`（10 s）管我們抓 Discord CDN 那段，`VISION_TIMEOUT_MS`（25 s）管送給 DeepSeek 那段——兩段網路加起來本來就不該塞進文字用的 `AI_TIMEOUT_MS`（8 s）。
 
 ## Call shape
 
 - All providers use `withAbortTimeout()` for timeout + error handling.
+- DeepSeek V4 defaults to thinking mode. `/voice` and daily recaps explicitly use the regular `high` thinking policy with reasoning headroom; voice requests therefore retain the provider's long-tail latency risk.
 - DeepSeek + Groq share OpenAI-compatible format: `messages[]`, `Bearer` auth.
 - Gemini uses its own REST shape: `contents[]`, `?key=`.
 - Each provider call returns a result object: `{ ok: true, text }` on success, `{ ok: false, kind, ... }` on failure (`kind` ∈ `auth` / `rate_limit` / `timeout` / `network` / `server` / `queue_exceeded` / `empty` / `unknown`). Helpers `ok(text)` / `fail(kind, extra)` in [providers.js](../src/ai/providers.js).
@@ -60,6 +126,10 @@ If a free guild has exhausted `AI_FREE_DAILY_LIMIT`, the DeepSeek entry is skipp
 
 **`empty` is intentional non-cooldown.** Safety blocks and empty model output are about *what was asked*, not about *the provider being unhealthy*. Cooling on `empty` would punish the next innocent caller and mask provider availability. Asserted by `scripts/smoke-ai-circuit.js` — see [scripts.md](scripts.md).
 
+**單次 `timeout` 只記一次 strike，不冷卻**（2026-09-27）。聊天的逾時幾乎都是「這一則想太久」（flash 在故事／說明題上燒 2000～4000+ reasoning tokens），不是 endpoint 掛了；但 owner flash 的 label 是全 guild 共用，一次逾時冷卻 60 s = 下一分鐘所有伺服器都被送去 fallback。現在同一個 key **連續兩次**逾時（中間沒有成功、相隔 ≤ `TIMEOUT_STRIKE_WINDOW_MS` 5 分鐘）才冷卻 60 s；log 上第一次會是 `kind=timeout cooldownMs=0`。
+
+**等待時的「正在輸入」**：[src/typing.js](../src/typing.js) `withTyping` 在 `generateAIReply` 期間每 8 s 重送一次 `sendTyping`（Discord 的提示一次只撐 ~10 s）。失敗不影響回覆。技能可以回傳 `providerOptions`（mention.js 原樣傳給 `generateAIReply`）：故事拉長 DeepSeek 逾時到 60 s、說明題用 `reasoningEffort: "low"`。
+
 ## Observability
 
 Log prefix: `[ai]`.
@@ -89,7 +159,7 @@ No persistence — restart clears everything.
 
 ## Long-term memory (evidence pipeline)
 
-Per-user profiles in `data/user-profiles.json` ([user-profile-store.js](../src/user-profile-store.js)), built by [observation-extractor.js](../src/ai/observation-extractor.js). Flow: pending interactions → LLM 萃取 observations → LLM consolidation 成人格摘要. Log prefixes: `[observation-extractor]`, `[consolidate]`, `[backlog-sweep]`.
+Per-user profiles in `data/user-profiles.json` ([user-profile-store.js](../src/user-profile-store.js)), built by [observation-extractor.js](../src/ai/observation-extractor.js). Flow: pending interactions → LLM 萃取 observations → LLM consolidation 成結構化條目. Log prefixes: `[observation-extractor]`, `[consolidate]`, `[backlog-sweep]`, `[alias]`.
 
 **Two intake paths, one Discord messageId each.** `direct` = the user @ed 西寶 and got an AI reply. `passive` = the user's line sat in the last 3 group-context rows when *someone else* triggered 西寶 (`getPersonalMemoryContextEntries` in chain.js). Dedup is **by messageId only, never by text** — repeating the same sentence across messages can itself be a trait; the same message scooped twice is the only certain duplicate. Backlog is capped at `PENDING_MAX_COUNT` (60, oldest dropped).
 
@@ -97,9 +167,17 @@ Per-user profiles in `data/user-profiles.json` ([user-profile-store.js](../src/u
 
 **Stability bar** (`isStableObservation`): ≥3 distinct messageIds, or 2 distinct messageIds ≥6 h apart. Consolidation splits observations into 已達證據門檻 (may be stated in the profile) vs 證據不足 (must be ignored or hedged with 或許/有時 — never asserted). Both personas demand neutral behavioural wording and explicitly ban unsupported praise (靈魂人物/精準/擅長…).
 
-**Profile format & old-vs-new weighting.** Consolidated profiles are field-per-line（`說話風格：…\n常聊話題：…\n互動偏好：…\n注意：…`，選填欄省略）; `setConsolidatedProfile` preserves the newlines and `buildUserProfileBlock` flattens them to `；` for prompt injection. The consolidation persona treats the existing profile as **舊印象**: new observations win on conflict, and evaluative sentences (praise *or* put-downs) with no surviving observation behind them get rewritten to behaviour or deleted — first impressions no longer anchor forever. 暱稱 is explicitly a Discord display name (joke decorations included), usable as a form of address only — never as「自稱」or trait evidence.
+**Profile format: structured items, not prose.** A profile is `entry.items = {style, topics, interaction, notes}` (說話風格／常聊話題／互動偏好／注意, max 3/4/3/2). Each item is `{text ≤40字, evidence[], firstAt, lastSeenAt, tentative}`. `entry.profile` is still written — it's the rendered text (one field per line, items joined with `；`), kept for legacy readers and history. `buildUserProfileBlock` injects a nested dot list; `profileTextOf(entry)` is the one accessor for "the profile as text" (chain target enrichment, story ingredients).
 
-**One-shot migration** — [scripts/redistill-profiles.js](../scripts/redistill-profiles.js) rewrites all pre-existing profiles with the current persona (`--dry-run` to preview, `--guild <id>` to scope, `--all` to redo already-migrated). It must run **while the bot is stopped** (the bot's in-memory store cache clobbers outside writes on its next save) and refuses to start if a `src/index.js` process is visible; mind the watchdog cron before stopping the bot.
+**Provenance is code-enforced, like evidence.** The consolidation prompt numbers sources — `I*` = existing items (舊印象), `O*` = observations split into 已達證據門檻 / 證據不足 — and the model must return `{"items":[{"field","text","from":["I2","O5"]}]}`. `resolveConsolidatedItems` drops any item citing no known source, pools evidence from cited sources, and only advances `lastSeenAt` when a cited *observation* backs it — rewording an old item doesn't refresh it. `tentative` (rendered `（或許）`) is set by code when the pooled evidence isn't stable and every cited source was itself tentative; the persona is told not to write 或許 itself. `{"items":[]}` = keep the old profile.
+
+**Theseus's ship: decay + history.** An item unconfirmed for `ITEM_STALE_MS` (120 d) is hidden at render time and dropped at the next consolidation — impressions must keep earning their place, first impressions can't anchor forever. New observations win on conflict; evaluative wording (praise *or* put-downs) and 西寶's own reactions are not traits. `profileHistory` keeps the last 5 rendered profiles (pushed only when the text changes) so drift is auditable. `/memory show` lists each item with its 佐證 count and 最後確認 date. 暱稱 is a Discord display name (joke decorations included) — a form of address only, never「自稱」or trait evidence.
+
+**綽號 (aliases) — what other people call someone.** Display names are joke-decorated and often don't contain the name friends actually use (「峰哥」 for 「峰【…】」). [alias-extractor.js](../src/ai/alias-extractor.js) reuses the group-context rows a reply already fetched (no extra Discord call; rows carry raw `content` + `replyToUserId`), buffers them per guild in memory (≤80, dedup by messageId), and every 30 new lines asks the model for `{person: P#, alias, evidence: [L#]}` over a numbered roster and numbered lines. **The model only proposes; code decides** (`resolveAliasCandidates`): the alias must literally appear in a cited line, the speaker can't be the target, a line that replies to / tags someone *else* doesn't count, and pronouns / kinship terms (姐姐, 哥哥, 學長…) / 西寶's own names / anyone's display name verbatim are rejected — the 2026-09-27 real-chat probe had the model proposing 「姐姐」 (5 messages, would have confirmed) and 「西寶寶」 for humans. Stored on the profile entry as `aliases[{alias, evidence[{messageId, at, speakerId}], lastSeenAt}]`; **confirmed at ≥2 distinct messages**, ages out after 120 d like items. Confirmed aliases appear in the profile block (`群友常叫他：…`), the familiarity roster (`名字（群友叫：…）`), and imitation name matching (`nameMatchCandidates`); `/memory show` also lists unconfirmed ones.
+
+**Self-denials outrank group evidence.** When someone tells 西寶 「別叫我X」「我不叫X」「我的綽號不是X」「X不是我的綽號」, [alias-statements.js](../src/ai/alias-statements.js) catches it by regex (clause by clause; captures opening with a verb or ending in 嗎/呢 are rejected so 「別叫我去上班」 isn't a name) at the top of `generateAIReply` — before assembly, so that same reply already sees it. Only the author speaks for themselves. Stored as `aliasDenials[{alias, at, messageId}]` (≤10, **never expire**): the alias is removed from `aliases`, `recordAliasEvidence` refuses it, `confirmedAliases` filters it, and the profile block carries `他親口說過不要這樣叫他（別用）：X`. 「叫我X就好」「可以叫我X」 lifts it. Log: `[alias] statement guild=… deny=…/allow=…`.
+
+**One-shot migration** — [scripts/redistill-profiles.js](../scripts/redistill-profiles.js) converts pre-items prose into items: each old clause becomes an `I*` source (`legacy`, no evidence, `lastSeenAt = profileAt` so it still ages; clauses the old text already hedged with 或許/可能/有時 stay tentative), and the model splits/cites them. Skips already-migrated entries unless `--all`; `--dry-run` to preview old vs new, `--guild <id>` to scope. It must run **while the bot is stopped** (the bot's in-memory store cache clobbers outside writes on its next save) and refuses to start if a `src/index.js` process is visible; mind the watchdog cron before stopping the bot.
 
 **Backlog sweep** ([profile-sweep.js](../src/ai/profile-sweep.js)). Extraction normally fires only on the user's own next successful AI reply — passively-scooped users would otherwise accumulate forever (the 30-筆 小翔 case, 2026-07-19). A timer (start +5 min, then every `PROFILE_SWEEP_INTERVAL_MS`, default 1 h, `0` disables) drains users whose backlog ≥ `EXTRACT_MIN_COUNT`: max 3 users per pass, skips anyone whose last pending row is <10 min old (mid-conversation), oldest `lastExtractedAt` first. Uses the same per-guild provider chain as live replies.
 

@@ -4,7 +4,7 @@
 
 一個會攔截 Threads / X / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebook / 巴哈姆特 / PTT 連結、並回覆完整預覽的 Discord bot。
 
-同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)）。
+同時附帶一個害羞內向的 AI 人格可以聊天（見下方 [@西寶 AI 回覆](#西寶-ai-回覆可選)），也可用 `/voice` 明確要求西寶發一則語音訊息。
 
 ###  [邀請西寶到你的伺服器](https://discord.com/oauth2/authorize?client_id=1491051091524059316&permissions=2815164231806016&scope=bot+applications.commands)
 
@@ -104,6 +104,14 @@ DISCORD_TOKEN=剛剛複製的 bot token
 
 其他變數（fixer 網域、AI key 等）全部可以先留空，bot 會用預設值啟動。詳情見 [docs/env.md](docs/env.md)。
 
+Threads viewer 可選擇依序設定最多三個純 hostname（預設先 `fzthreads.com`、再 `fixthreads.seria.moe`）：
+
+```env
+THREADS_VIEWER_HOSTS=fzthreads.com,fixthreads.seria.moe
+```
+
+舊的 `FIXER_THREADS` / `FIXER_THREADS_SECONDARY` 設定仍相容。若填入完整 URL、path、port、IP、`localhost` 或超過三個 hostname，bot 會拒絕啟動，避免把不可信網址帶進預覽流程。
+
 ### Step 5：啟動
 
 ```bash
@@ -125,6 +133,16 @@ npm start
 ## @西寶 AI 回覆（可選）
 
 在任何頻道 `@西寶 你今天好嗎？` 會觸發回覆。
+
+原本的文字模式仍是預設行為。只有執行 `/voice message:想說的話` 才會生成適合朗讀的日文短句；西寶會先在頻道貼出相同台詞，再送 Discord 語音訊息。語音人格會參考既有的群友熟悉度、個人／群組記憶與最近對話，但語音回合不會寫入文字模式的對話記憶。若 TTS 暫時不可用，已送出的文字台詞仍會保留。
+
+語音服務沿用 Arale 專案的 Irodori HTTP 契約。啟動西寶的害羞聲線服務：
+
+```bash
+./scripts/start-voice-tts.sh
+```
+
+預設讀取已通過聽感比較的 `data/voice/xibao/irodori/clean-41-sep/speaker_inversion/checkpoint_final.speaker.safetensors`，監聽 `127.0.0.1:8056`。路徑不同時可設定 `XIBAO_VOICE_EMBED` 與 `XIBAO_TTS_SERVER_SCRIPT`；完整環境變數見 [docs/env.md](docs/env.md)。
 
 > **「西寶」只是預設的顯示名稱與人格**。
 > - 改名字：到 Discord Developer Portal → Bot → 改 username，或直接在伺服器幫 bot 改暱稱
@@ -257,19 +275,23 @@ docker run -d \
 
 ### Threads
 
+`threads.com/share/...` 短連結會先安全展開成官方 canonical `@user/post/id`，再拿 canonical URL 做 probe 與 viewer fallback。展開只讀取官方 share 回應的單一 redirect header，不會跟隨或抓取 redirect 目的地。
+
 | 貼文類型 | 預覽行為 |
 |---|---|
 | 純文字 | 自訂 embed（標題＋內文） |
 | 單張圖片 | 自訂 embed（標題＋內文＋圖片） |
-| 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery） |
-| 影片 | 依序嘗試 fixthreads → threadsez → 資訊卡 fallback |
+| 多張圖片 | 全圖集 embed（每張圖各一個 embed，Discord 渲染成 gallery）。含影片的混合貼文會在圖集下方額外附上可播放影片 |
+| 影片 | 先把影片下載後當附件上傳（可播放）；放不下才依序嘗試 `THREADS_VIEWER_HOSTS`，全部失敗則顯示可點回 canonical 原文的本機資訊卡 |
 
 ### Instagram
+
+貼文與 Reels 會先正規化成無追蹤參數的 canonical Instagram URL，再依序交給最多三個 viewer。預設順序為 `instagram7.com → fxig.seria.moe → deinstagram.com`；空白、登入牆或「Post not found」會自動嘗試下一層。
 
 | 貼文類型 | 預覽行為 |
 |---|---|
 | 限時動態 | 無法預覽，直接回報作者名稱 |
-| 貼文 / Reels | 依序嘗試 ddinstagram → fxstagram → FixEmbed |
+| 貼文 / Reels | 依序嘗試 `INSTAGRAM_VIEWER_HOSTS`；全部失敗則顯示可點回 canonical 原文的本機資訊卡 |
 
 ### 其他平台
 
@@ -288,9 +310,9 @@ docker run -d \
 
 | 情形 | Bot 的反應 |
 |---|---|
-| Threads 影片（所有 fixer 失敗） | 資訊卡：作者名稱＋文案＋「影片無法載入，請點連結觀看」 |
+| Threads（所有 viewer 失敗） | 本機資訊卡：canonical 原文連結；影片貼文另保留作者／文案與「影片無法載入」提示 |
 | Instagram 限時動態 | 文字訊息：「這是 **@xxx** 的限動！」 |
-| Instagram Reels（所有 fixer 失敗） | FixEmbed 連結（最後防線） |
+| Instagram 貼文 / Reels（所有 viewer 失敗） | 本機資訊卡：canonical Instagram 原文連結 |
 | 巴哈姆特限制板 / 登入牆 | 顯示公開部分，內文可能為空 |
 | 已刪除 / 私人 / 被限流的貼文 | 道歉訊息：「對不起對不起…預覽載入失敗了…」 |
 
@@ -306,7 +328,7 @@ docker run -d \
 - **群友熟悉度**：每個伺服器自動累積每個成員的發言次數，分 5 級（剛認識 1+ / 認識 5+ / 熟人 20+ / 老朋友 100+ / 摯友 500+），餵給西寶讓她對熟人較自然、對新人略生疏。資料存在 `data/familiarity.json`（gitignored）。**只計算重啟後的訊息**，不會回填過去聊天記錄
 - **群組脈絡**（標準 / 精細方案）：被 @ 時西寶會看到頻道最近 15 條訊息（含貼圖名稱），能理解貼圖梗、跨人對話、誰回應誰
 - **忽略標記**：訊息含 `nopreview` / `previewignore` / `fxignore` 任一字串 → bot 直接跳過
-- **Slash 指令**：`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）
+- **Slash 指令**：`/help`（功能、指令與設定說明）、`/servers`（看 bot 在幾個伺服器）、`/debug-perms`（檢查頻道權限）、`/ai-tier`（查看 / 切換 AI 方案）、`/ai-key`（管理 API 金鑰）、`/memory`（管理記憶）、`/schedule`（管理定時任務）、`/voice`（語音回答）
 
 ---
 

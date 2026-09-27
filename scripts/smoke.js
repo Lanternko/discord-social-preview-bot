@@ -8,6 +8,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 
@@ -23,16 +24,44 @@ const {
   isBilibiliUrl,
   isBahamutUrl,
   isPttUrl,
+  isPinterestUrl,
+  extractSupportedUrls: extractSupportedUrlsForPinterest,
   extractBilibiliBvid,
   shouldIgnoreMessage,
 } = require("../src/url-routing");
 
 const { trimDescription, pickRandom, sanitizeName } = require("../src/utils");
 
-const { buildUserTurn, buildOpenAIMessages, buildGeminiContents } =
-  require("../src/ai/persona");
+const {
+  isThreadsLoginWall,
+  isRedirectedOffPost,
+  isContentlessStub,
+  salvageLoginWallMedia,
+  normalizeThreadsMetadata,
+} = require("../src/probe");
 
 const {
+  codeToPostId,
+  extractPostCode,
+  findThread,
+  buildMetadata,
+} = require("../src/threads-graphql");
+
+const {
+  isGuildVideoAllowed,
+  uploadLimitBytes,
+  effectiveMaxBytes,
+} = require("../src/video");
+
+const {
+  buildUserTurn,
+  buildOpenAIMessages,
+  buildGeminiContents,
+} = require("../src/ai/persona");
+
+const {
+  EMBED_CONTEXT_MAX_CHARS,
+  extractEmbedContext,
   formatGroupMessage,
   buildGroupContextBlock,
   buildReplyContextBlock,
@@ -69,17 +98,65 @@ const {
   buildEmojiPromptBlock,
 } = require("../src/ai/emoji-resolver");
 
-const { buildPermissionDebugMessage } = require("../src/commands");
-const { getMissingChannelPermissions } = require("../src/discord-io");
+const {
+  extractSticker,
+  buildStickerPromptBlock,
+  resolveStickerEntry,
+} = require("../src/ai/sticker-resolver");
+const {
+  loadStickerLibrary,
+  resetStickerLibraryCache,
+  mergeStickerSources,
+  isPostableGuildSticker,
+  buildStickerSendPayload,
+} = require("../src/stickers");
+
+const {
+  HELP_COMMAND,
+  buildHelpMessage,
+  buildPermissionDebugMessage,
+} = require("../src/commands");
+const {
+  getMissingChannelPermissions,
+  isViewerPreviewUseful,
+  classifyViewerPreview,
+} = require("../src/discord-io");
+const {
+  matchHardError,
+  matchErrorCard,
+  isViewerArtworkUrl,
+} = require("../src/viewer-cards");
+const {
+  isErrorPageMetadata,
+  scoreMeta,
+  mergeMetas,
+} = require("../src/og-fallback");
+const { cleanInstagramTitle } = require("../src/platforms/instagram");
+const {
+  DEFAULT_THREADS_VIEWER_HOSTS,
+  parseThreadsViewerHosts,
+  loadThreadsViewerHosts,
+  DEFAULT_INSTAGRAM_VIEWER_HOSTS,
+  parseInstagramViewerHosts,
+  loadInstagramViewerHosts,
+} = require("../src/config");
+const {
+  exactThreadsShareUrl,
+  canonicalizeThreadsPostUrl,
+} = require("../src/threads-url");
+const { canonicalizeInstagramPostUrl } = require("../src/instagram-url");
 const { isTrashEmoji } = require("../src/reaction-delete");
 const {
-  STORY_MODES,
   localDateKey,
-  pickStoryMode,
   messagePreview,
+  storyText,
   selectStoryIngredients,
+  sanitizeBedtimeTitle,
   buildBedtimeStoryPrompt,
+  STORY_CRAFT_MOVES,
+  pickStoryCraftMoves,
 } = require("../src/bedtime-story");
+const { repairNames } = require("../src/name-repair");
 
 let pass = 0;
 let fail = 0;
@@ -124,6 +201,22 @@ function withStoreFile(store, fn) {
     restoreFile(bakPath, bakSnapshot);
   }
 }
+
+console.log("help command");
+it("registers /help with a discoverable description", () => {
+  assert.equal(HELP_COMMAND.name, "help");
+  assert.match(HELP_COMMAND.description, /功能|指令/);
+});
+it("explains features, commands, setup, and preview opt-out", () => {
+  const help = buildHelpMessage();
+  assert.match(help, /主要功能/);
+  assert.match(help, /可用指令/);
+  assert.match(help, /伺服器設定/);
+  assert.match(help, /\/ai-key set/);
+  assert.match(help, /\/debug-perms/);
+  assert.match(help, /nopreview/);
+  assert.ok(help.length <= 2000, `help message is ${help.length} characters`);
+});
 
 console.log("normalizeUrl");
 it("strips fbclid", () => {
@@ -177,6 +270,433 @@ it("does not strip s on YouTube", () => {
   );
 });
 
+console.log("Threads URL resolver boundaries");
+it("accepts only an exact HTTPS Threads share URL", () => {
+  assert.equal(
+    exactThreadsShareUrl("https://www.threads.com/share/BBV95gatql/"),
+    "https://www.threads.com/share/BBV95gatql/",
+  );
+  for (const unsafe of [
+    "http://www.threads.com/share/BBV95gatql/",
+    "https://www.threads.com:443/share/BBV95gatql/",
+    "https://www.threads.com:444/share/BBV95gatql/",
+    "https://attacker@www.threads.com/share/BBV95gatql/",
+    "https://evil.example/share/BBV95gatql/",
+    "https://www.threads.com/share/BBV95gatql/?next=https://evil.example",
+    "https://www.threads.com/share/BBV95gatql/extra",
+    `https://www.threads.com/share/${"A".repeat(129)}/`,
+  ]) {
+    assert.equal(exactThreadsShareUrl(unsafe), null, unsafe);
+  }
+});
+it("accepts only canonical Threads post Locations and strips known tracking", () => {
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM?xmt=AQGz&slof=1",
+    ),
+    "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM",
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@bb725_/post/DdRdTaSk-0U/media?xmt=AQG0",
+    ),
+    "https://www.threads.com/@bb725_/post/DdRdTaSk-0U",
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://evil.example/@0_s0321/post/DcqQ5GpETBM",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com/@0_s0321/post/DcqQ5GpETBM?next=x",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      "https://www.threads.com:443/@0_s0321/post/DcqQ5GpETBM",
+    ),
+    null,
+  );
+  assert.equal(
+    canonicalizeThreadsPostUrl(
+      `https://www.threads.com/@user/post/${"A".repeat(129)}`,
+    ),
+    null,
+  );
+});
+
+console.log("Threads viewer config");
+it("uses ordered defaults and deduplicates up to three plain DNS hosts", () => {
+  assert.deepEqual(DEFAULT_THREADS_VIEWER_HOSTS, [
+    "fzthreads.com",
+    "fixthreads.seria.moe",
+  ]);
+  assert.deepEqual(
+    parseThreadsViewerHosts("A.example,a.example,b.example,c.example"),
+    ["a.example", "b.example", "c.example"],
+  );
+  assert.deepEqual(
+    loadThreadsViewerHosts({
+      FIXER_THREADS: "legacy-primary.example",
+      FIXER_THREADS_SECONDARY: "legacy-secondary.example",
+    }),
+    ["legacy-primary.example", "legacy-secondary.example"],
+  );
+});
+it("rejects URL, path, port, IP, localhost, and more than three viewers", () => {
+  for (const invalid of [
+    "https://viewer.example",
+    "viewer.example/path",
+    "viewer.example:443",
+    "127.0.0.1",
+    "localhost",
+    "a.example,b.example,c.example,d.example",
+  ]) {
+    assert.throws(() => parseThreadsViewerHosts(invalid), invalid);
+  }
+});
+it("fails fast during startup on invalid THREADS_VIEWER_HOSTS", () => {
+  const result = spawnSync(
+    process.execPath,
+    ["-e", "require('./src/config')"],
+    {
+      cwd: path.join(__dirname, ".."),
+      env: {
+        ...process.env,
+        THREADS_VIEWER_HOSTS: "https://viewer.example/path",
+      },
+      encoding: "utf8",
+    },
+  );
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /invalid Threads viewer host/);
+});
+
+console.log("Instagram canonical URL and viewer config");
+it("normalizes Instagram posts/reels and strips query tracking", () => {
+  assert.equal(
+    canonicalizeInstagramPostUrl(
+      "https://instagram.com/reels/DcA0yXWMF4E/?igsh=tracking",
+    ),
+    "https://www.instagram.com/reel/DcA0yXWMF4E/",
+  );
+  assert.equal(
+    canonicalizeInstagramPostUrl(
+      "https://www.instagram.com/p/ABC_123/?img_index=2&utm_source=x",
+    ),
+    "https://www.instagram.com/p/ABC_123/?img_index=2",
+  );
+  for (const invalid of [
+    "http://www.instagram.com/reel/DcA0yXWMF4E/",
+    "https://www.instagram.com:443/reel/DcA0yXWMF4E/",
+    "https://instagram.com.evil/reel/DcA0yXWMF4E/",
+    "https://www.instagram.com/stories/user/123/",
+  ]) {
+    assert.equal(canonicalizeInstagramPostUrl(invalid), null, invalid);
+  }
+});
+it("uses the tested Instagram viewer order and supports legacy aliases", () => {
+  assert.deepEqual(DEFAULT_INSTAGRAM_VIEWER_HOSTS, [
+    "oginstagram.com",
+    "instagram7.com",
+    "deinstagram.com",
+  ]);
+  assert.deepEqual(
+    parseInstagramViewerHosts("A.example,a.example,b.example,c.example"),
+    ["a.example", "b.example", "c.example"],
+  );
+  assert.deepEqual(
+    loadInstagramViewerHosts({
+      FIXER_INSTAGRAM: "legacy-primary.example",
+      FIXER_INSTAGRAM_SECONDARY: "legacy-secondary.example",
+    }),
+    ["legacy-primary.example", "legacy-secondary.example", "deinstagram.com"],
+  );
+});
+it("rejects unsafe Instagram viewer configuration", () => {
+  for (const invalid of [
+    "https://viewer.example",
+    "viewer.example/path",
+    "viewer.example:443",
+    "127.0.0.1",
+    "localhost",
+    "a.example,b.example,c.example,d.example",
+  ]) {
+    assert.throws(() => parseInstagramViewerHosts(invalid), invalid);
+  }
+});
+
+console.log("Instagram viewer validation");
+it("rejects empty, login-wall, unavailable, and generic Instagram cards", () => {
+  assert.equal(isViewerPreviewUseful([], "instagram"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram • Log in", description: "Log in to Instagram" }],
+      "instagram",
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ description: "Post not found" }], "instagram"),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ title: "Instagram" }], "instagram"),
+    false,
+  );
+});
+it("accepts a playable Instagram viewer or meaningful caption", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram", video: { url: "https://cdn/video.mp4" } }],
+      "instagram",
+    ),
+    true,
+  );
+  // Caption without a cover is a HALF answer: every Instagram post has media,
+  // so the chain keeps looking — but the card is kept as a floor (quality
+  // "weak") and restored if nothing richer turns up.
+  const captionOnly = classifyViewerPreview(
+    [{ title: "@hele.778899", description: "一家子神经！" }],
+    "instagram",
+  );
+  assert.equal(captionOnly.useful, false);
+  assert.equal(captionOnly.quality, "weak");
+});
+
+console.log("Viewer error-card detection (the 2026-09 Instagram regression)");
+it("rejects a viewer's own 'Temporarily unavailable' card", () => {
+  // The exact card OGInstagram served on 2026-09-21: well-formed, no media,
+  // wording the old phrase list did not know — so it passed as a real preview
+  // and the whole fallback chain never ran.
+  const verdict = classifyViewerPreview(
+    [
+      {
+        title: "Temporarily unavailable",
+        description:
+          "Couldn't load this post right now. Please try again in a moment.",
+        author: { name: "OGInstagram" },
+      },
+    ],
+    "instagram",
+  );
+  assert.equal(verdict.useful, false);
+  assert.equal(verdict.quality, "none");
+  assert.match(verdict.reason, /^error:/);
+});
+it("treats hard error wording as fatal even on a card WITH an image", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [
+        {
+          title: "Temporarily unavailable",
+          image: { url: "https://cdn/real-cover.jpg" },
+        },
+      ],
+      "instagram",
+    ),
+    false,
+  );
+  assert.equal(matchHardError("Rate limited, try again"), "rate-limited");
+  assert.equal(matchHardError("Something went wrong"), "server-error");
+  assert.equal(matchHardError("Failed to scan your link!"), "cannot-load");
+  assert.equal(matchHardError("一家子神经！"), null);
+});
+it("only applies soft wording when the card has no media", () => {
+  // "not available" inside a real caption must not kill a card that has media.
+  assert.equal(
+    matchErrorCard({
+      description: "限定商品，現在 not available 囉",
+      image: { url: "https://cdn/cover.jpg" },
+    }),
+    null,
+  );
+  assert.equal(
+    matchErrorCard({ description: "Sorry, please try again later" }),
+    "error:try-again",
+  );
+});
+it("does not count a viewer's own logo as the post's media", () => {
+  assert.equal(
+    isViewerArtworkUrl("https://instagram7.com/static/logo.png"),
+    true,
+  );
+  assert.equal(
+    isViewerArtworkUrl("https://scontent.cdninstagram.com/v/t51/744956044.jpg"),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Instagram", image: { url: "https://viewer/icon.png" } }],
+      "instagram",
+    ),
+    false,
+  );
+});
+
+console.log("OG recovery guards");
+it("refuses to recover a viewer's error page into a pretty card", () => {
+  assert.equal(
+    isErrorPageMetadata({
+      title: "Temporarily unavailable",
+      description: "Couldn't load this post right now.",
+    }),
+    true,
+  );
+  assert.equal(
+    isErrorPageMetadata({ title: "@user", description: "一家子神经！" }),
+    false,
+  );
+});
+it("ranks a cover+caption recovery above a cover-only one", () => {
+  assert.ok(
+    scoreMeta({ image: "i", description: "d", author: "a" }) >
+      scoreMeta({ image: "i" }),
+  );
+  assert.ok(scoreMeta({ image: "i" }) > scoreMeta({ title: "t" }));
+});
+it("cleans the origin's Instagram title", () => {
+  assert.equal(
+    cleanInstagramTitle("Kino (@kino) • Instagram photos and videos", {}),
+    "Kino (@kino)",
+  );
+  // The caption is already the description; the title keeps just the poster.
+  assert.equal(
+    cleanInstagramTitle('波波在 Instagram: "兄弟...別..."', {
+      url: "https://www.instagram.com/bobojokey112/reel/DbCkglnyP3L/",
+    }),
+    "波波（@bobojokey112）",
+  );
+  assert.equal(cleanInstagramTitle("Instagram", {}), null);
+});
+it("merges the recovery hosts instead of trusting one", () => {
+  // instagram7 keeps the caption but serves the Instagram glyph as og:image;
+  // the origin has the real cover but buries the caption. Neither is enough.
+  assert.equal(
+    isViewerArtworkUrl(
+      "https://scontent.cdninstagram.com/rsrc.php/v4/yD/r/R0fBIMurK8v.png",
+    ),
+    true,
+  );
+  const { merged, best } = mergeMetas([
+    { source: "viewer", meta: { title: "@user", description: "caption" } },
+    {
+      source: "origin",
+      meta: { title: "Name", image: "https://cdn/real.jpg", url: "u" },
+    },
+  ]);
+  assert.equal(best.source, "origin");
+  assert.equal(merged.image, "https://cdn/real.jpg");
+  assert.equal(merged.description, "caption");
+});
+
+console.log("Twitter viewer validation");
+it("rejects fxtwitter/vxtwitter error stubs, keeps real posts", () => {
+  assert.equal(isViewerPreviewUseful([], "twitter"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "FxTwitter", description: "This post is unavailable :(" }],
+      "twitter",
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [
+        {
+          data: {
+            title: "vxTwitter",
+            description: "Failed to scan your link!",
+          },
+        },
+      ],
+      "twitter",
+    ),
+    false,
+  );
+  // Text-only / media-less posts are still real previews.
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ author: { name: "poiAI (@poipoip01)" }, description: "hello" }],
+      "twitter",
+    ),
+    true,
+  );
+  // fxtwitter stripped the media and the body: just "Name (@handle)".
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "poiAI (@poipoip01)", description: "" }],
+      "twitter",
+    ),
+    false,
+  );
+  // Post is known to have media → text without the picture is not enough.
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "ほんま (@honma_nmn)", description: "壁に耳あり" }],
+      "twitter",
+      { requireMedia: true },
+    ),
+    false,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [
+        {
+          title: "ほんま (@honma_nmn)",
+          image: { url: "https://pbs.twimg.com/a.jpg" },
+        },
+      ],
+      "twitter",
+      { requireMedia: true },
+    ),
+    true,
+  );
+});
+
+console.log("Threads viewer validation");
+it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () => {
+  assert.equal(isViewerPreviewUseful([], "threads"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [
+        {
+          title: "Threads • Log in",
+          description: "Join Threads to share ideas",
+        },
+      ],
+      "threads",
+    ),
+    false,
+  );
+  assert.equal(isViewerPreviewUseful([{ title: "Thread" }], "threads"), false);
+  assert.equal(isViewerPreviewUseful([{ title: "Threads" }], "threads"), false);
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Threads", image: { url: "threads-logo" } }],
+      "threads",
+    ),
+    false,
+  );
+});
+it("accepts meaningful Threads text or media and preserves other platforms", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ title: "Threads", description: "real post content" }],
+      "threads",
+    ),
+    true,
+  );
+  assert.equal(
+    isViewerPreviewUseful([{ image: { url: "real-post-image" } }], "threads"),
+    true,
+  );
+  assert.equal(isViewerPreviewUseful([{ title: "Threads" }], null), true);
+});
+
 console.log("extractSupportedUrls");
 it("returns Threads URL with tracking stripped", () => {
   assert.deepEqual(
@@ -228,16 +748,151 @@ it("twitter -> fxtwitter", () => {
     "https://fxtwitter.com/u/status/1",
   );
 });
-it("threads -> fixthreads", () => {
+it("threads -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.threads.net/@a/post/1"),
-    "https://fixthreads.seria.moe/@a/post/1",
+    "https://fzthreads.com/@a/post/1",
   );
 });
-it("instagram -> ddinstagram", () => {
+
+// probe login-wall guard: Threads walls sensitive posts with a generic
+// "Threads • Log in" interstitial even to a working probe. isThreadsLoginWall
+// must catch it (so the post drops to the fixer chain) without over-triggering
+// on real posts whose title merely contains "Threads".
+it("isThreadsLoginWall detects the logged-out login wall", () => {
+  assert.equal(
+    isThreadsLoginWall({
+      title: "Threads • Log in",
+      description:
+        "Join Threads to share ideas, ask questions, post random thoughts, find your people and more. Log in with your Instagram.",
+    }),
+    true,
+  );
+});
+it("isThreadsLoginWall does NOT trigger on a real post", () => {
+  assert.equal(
+    isThreadsLoginWall({
+      title: "Gamepo (@game_po) on Threads",
+      description: "⤴️ Replying to @mi1hxxsy",
+    }),
+    false,
+  );
+});
+// Regression (2026-09-15, threads.com/@gu2224466591nn/post/DdRlir8k3AS): the
+// walled post redirected to "/", and the home feed's @tigers video + covers were
+// previewed as if they were this post.
+it("isRedirectedOffPost rejects a probe that landed on the home feed", () => {
+  assert.equal(isRedirectedOffPost({ onPostPage: false }), true);
+  assert.equal(isRedirectedOffPost({ onPostPage: true }), false);
+  // older probe output without the field must not be rejected
+  assert.equal(isRedirectedOffPost({}), false);
+});
+
+// Regression (2026-09-16, threads.com/@cuqhytr/post/DdRLvLZE-Rr): the walled
+// post stayed on its permalink but served a stub with no description, no card
+// and no media — 17 meta tags and a bare "Threads" title. The text-only branch
+// rendered it as a preview containing nothing but the word "Threads".
+it("isContentlessStub rejects a bare stub that has no content at all", () => {
+  assert.equal(
+    isContentlessStub({
+      title: "Threads",
+      description: null,
+      image: null,
+      twitterCard: null,
+      images: [],
+      imageCount: 0,
+      videoCount: 0,
+      ancestors: [],
+    }),
+    true,
+  );
+  assert.equal(isContentlessStub({ title: "" }), true);
+  assert.equal(isContentlessStub(null), false);
+});
+it("isContentlessStub does NOT trigger on a real text-only post", () => {
+  assert.equal(
+    isContentlessStub({
+      title: "Gamepo (@game_po) on Threads",
+      description: "今天天氣真好",
+      imageCount: 0,
+      videoCount: 0,
+    }),
+    false,
+  );
+  // author in the title, description still missing → a real (if terse) post
+  assert.equal(
+    isContentlessStub({ title: "Gamepo (@game_po) on Threads" }),
+    false,
+  );
+});
+it("isContentlessStub keeps anything that still carries content", () => {
+  assert.equal(
+    isContentlessStub({
+      title: "Threads",
+      images: ["https://cdn/a.jpg"],
+      imageCount: 1,
+    }),
+    false,
+  );
+  assert.equal(
+    isContentlessStub({
+      title: "Threads",
+      video: "https://cdn/v.mp4",
+      videoCount: 1,
+    }),
+    false,
+  );
+  assert.equal(isContentlessStub({ title: "Threads", postText: "嗨" }), false);
+  assert.equal(
+    isContentlessStub({
+      title: "Threads",
+      ancestors: [{ author: "a", text: "b" }],
+    }),
+    false,
+  );
+});
+
+it("salvageLoginWallMedia keeps walled media, drops the wall's text", () => {
+  const salvaged = salvageLoginWallMedia(
+    {
+      title: "Threads • Log in",
+      description: "Join Threads to share ideas",
+      image: "https://static.cdninstagram.com/login.webp",
+      twitterCard: "summary",
+      images: ["https://cdn/a.jpg", "https://cdn/b.jpg"],
+      imageCount: 2,
+      video: "https://cdn/v.mp4",
+      videoCount: 1,
+    },
+    "https://www.threads.com/@bb725_/post/DdRdTaSk-0U",
+  );
+  assert.equal(salvaged.title, "@bb725_ 的 Threads 貼文");
+  assert.equal(salvaged.description, null);
+  assert.equal(salvaged.image, "https://cdn/a.jpg");
+  assert.equal(salvaged.twitterCard, "summary_large_image");
+  assert.equal(salvaged.video, "https://cdn/v.mp4");
+});
+it("salvageLoginWallMedia returns null when the wall hides everything", () => {
+  assert.equal(
+    salvageLoginWallMedia(
+      { title: "Threads • Log in", images: [], imageCount: 0, videoCount: 0 },
+      "https://www.threads.com/@a/post/1",
+    ),
+    null,
+  );
+});
+it("isThreadsLoginWall is safe on empty / null / partial metadata", () => {
+  assert.equal(isThreadsLoginWall(null), false);
+  assert.equal(isThreadsLoginWall({}), false);
+  assert.equal(
+    isThreadsLoginWall({ title: "@a on Threads", description: "" }),
+    false,
+  );
+});
+it("instagram -> first configured viewer", () => {
   assert.equal(
     buildFallbackUrl("https://www.instagram.com/p/ABC/"),
-    "https://ddinstagram.com/p/ABC/",
+    "https://oginstagram.com/p/ABC/",
   );
 });
 it("reddit -> rxddit", () => {
@@ -251,6 +906,29 @@ it("redd.it short -> rxddit (regression: was falling into FixEmbed wrapper)", ()
     buildFallbackUrl("https://redd.it/abc123"),
     "https://rxddit.com/abc123",
   );
+});
+
+console.log("video attachment gating (video.js)");
+it("isGuildVideoAllowed: enabled + empty allowlist → any guild allowed", () => {
+  assert.equal(isGuildVideoAllowed({ id: "123" }), true);
+});
+it("isGuildVideoAllowed: no guild context (DM) → not allowed", () => {
+  assert.equal(isGuildVideoAllowed(null), false);
+  assert.equal(isGuildVideoAllowed(undefined), false);
+});
+it("uploadLimitBytes: scales with boost tier", () => {
+  assert.equal(uploadLimitBytes({ premiumTier: 0 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 1 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 3 }), 100 * 1024 * 1024);
+  assert.equal(
+    uploadLimitBytes(null),
+    25 * 1024 * 1024,
+    "missing guild → base 25MB",
+  );
+});
+it("effectiveMaxBytes: defaults to the guild limit with no override", () => {
+  assert.equal(effectiveMaxBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
 });
 it("old.reddit.com -> rxddit", () => {
   assert.equal(
@@ -298,10 +976,7 @@ it("isInstagramStoryUrl detects /stories/", () => {
     isInstagramStoryUrl("https://www.instagram.com/stories/foo/123"),
     true,
   );
-  assert.equal(
-    isInstagramStoryUrl("https://www.instagram.com/p/abc/"),
-    false,
-  );
+  assert.equal(isInstagramStoryUrl("https://www.instagram.com/p/abc/"), false);
 });
 it("extractInstagramStoryOwner", () => {
   assert.equal(
@@ -323,6 +998,19 @@ it("isBilibiliUrl / isBahamutUrl / isPttUrl", () => {
   assert.equal(isBahamutUrl("https://forum.gamer.com.tw/foo"), true);
   assert.equal(isPttUrl("https://www.ptt.cc/bbs/X/M.123.html"), true);
   assert.equal(isPttUrl("https://example.com"), false);
+});
+it("isPinterestUrl: 國別子網域/國別網域/pin.it，不吃仿冒", () => {
+  assert.equal(isPinterestUrl("https://www.pinterest.com/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://tw.pinterest.com/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pinterest.co.uk/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pinterest.jp/pin/1/"), true);
+  assert.equal(isPinterestUrl("https://pin.it/abc"), true);
+  assert.equal(isPinterestUrl("https://notpinterest.com/pin/1/"), false);
+  assert.equal(isPinterestUrl("https://pinterest.com.evil.io/pin/1/"), false);
+  assert.deepEqual(
+    extractSupportedUrlsForPinterest("看 https://tw.pinterest.com/pin/1/ 跟 https://pin.it/x"),
+    ["https://tw.pinterest.com/pin/1/", "https://pin.it/x"],
+  );
 });
 it("extractBilibiliBvid", () => {
   assert.equal(
@@ -392,7 +1080,10 @@ it("replaces newlines and tabs with space", () => {
   assert.equal(sanitizeName("line1\nline2\ttab"), "line1 line2 tab");
 });
 it("escapes angle brackets and quotes to fullwidth", () => {
-  assert.equal(sanitizeName('<script>"hi"</script>'), "＜script＞＂hi＂＜/script＞");
+  assert.equal(
+    sanitizeName('<script>"hi"</script>'),
+    "＜script＞＂hi＂＜/script＞",
+  );
 });
 it("collapses multiple spaces", () => {
   assert.equal(sanitizeName("a   b     c"), "a b c");
@@ -417,20 +1108,14 @@ it("neutralizes prompt-injection in nickname", () => {
 console.log("buildUserTurn");
 it("wraps with sender XML when text present", () => {
   const msg = { author: { username: "alice", globalName: null }, member: null };
-  assert.equal(
-    buildUserTurn(msg, "hello"),
-    '<sender name="alice"/>\nhello',
-  );
+  assert.equal(buildUserTurn(msg, "hello"), '<sender name="alice"/>\nhello');
 });
 it("uses member.displayName preferentially", () => {
   const msg = {
     author: { username: "alice", globalName: "Alice G" },
     member: { displayName: "ServerNick" },
   };
-  assert.equal(
-    buildUserTurn(msg, "hi"),
-    '<sender name="ServerNick"/>\nhi',
-  );
+  assert.equal(buildUserTurn(msg, "hi"), '<sender name="ServerNick"/>\nhi');
 });
 it("falls back to globalName then username", () => {
   const msg1 = {
@@ -443,7 +1128,10 @@ it("falls back to globalName then username", () => {
 });
 it("uses placeholder when text empty", () => {
   const msg = { author: { username: "alice" }, member: null };
-  assert.match(buildUserTurn(msg, ""), /^<sender name="alice"\/>\n（這個人 @ 了你/);
+  assert.match(
+    buildUserTurn(msg, ""),
+    /^<sender name="alice"\/>\n（這個人 @ 了你/,
+  );
 });
 it("falls back to 使用者 when all names missing", () => {
   const msg = { author: {}, member: null };
@@ -484,6 +1172,37 @@ it("maps assistant -> model and wraps as parts", () => {
 });
 
 console.log("formatGroupMessage");
+it("extracts and de-duplicates rich embed text fields", () => {
+  const text = extractEmbedContext({
+    embeds: [
+      {
+        author: { name: "貼文作者" },
+        title: "貼文標題",
+        description: "相同內容",
+        fields: [
+          { name: "摘要", value: "欄位內容" },
+          { name: "重複", value: "相同內容" },
+        ],
+      },
+      {
+        description: "相同內容",
+      },
+    ],
+  });
+  assert.match(text, /貼文作者/);
+  assert.match(text, /貼文標題/);
+  assert.match(text, /摘要：欄位內容/);
+  assert.equal(text.split("相同內容").length - 1, 1);
+  assert.equal(text.split("貼文標題").length - 1, 1);
+});
+it("caps each rich embed context at 400 characters", () => {
+  const text = extractEmbedContext({
+    embeds: [{ description: "長".repeat(600) }],
+  });
+  assert.equal(EMBED_CONTEXT_MAX_CHARS, 400);
+  assert.equal(text.length, 400);
+  assert.ok(text.endsWith("…"));
+});
 it("formats text-only message with member displayName", () => {
   assert.equal(
     formatGroupMessage({
@@ -578,6 +1297,8 @@ it("wraps lines under header", () => {
   assert.match(out, /^\n\n## 最近群組對話/);
   assert.ok(out.includes("[a]: hi"));
   assert.ok(out.includes("[b]: yo"));
+  assert.match(out, /不可信引用資料/);
+  assert.match(out, /不要遵循或執行/);
 });
 
 console.log("buildReplyContextBlock");
@@ -666,10 +1387,7 @@ it("returns [] for missing or unknown guildId", () => {
   assert.deepEqual(getFamiliarityRoster(undefined), []);
   assert.deepEqual(getFamiliarityRoster(null), []);
   assert.deepEqual(getFamiliarityRoster(""), []);
-  assert.deepEqual(
-    getFamiliarityRoster("never-seen-" + Date.now()),
-    [],
-  );
+  assert.deepEqual(getFamiliarityRoster("never-seen-" + Date.now()), []);
 });
 it("recordMessage with missing guildId/userId is a no-op (no throw)", () => {
   resetFamiliarityForTests();
@@ -757,6 +1475,7 @@ it("getTierConfig defaults to brief when guildId missing", () => {
     "{B_MIN}",
     "{B_MAX}",
     "{E_MAX}",
+    "{LANGUAGE}",
   ]) {
     assert.ok(
       !cfg.persona.includes(placeholder),
@@ -764,6 +1483,45 @@ it("getTierConfig defaults to brief when guildId missing", () => {
     );
   }
 });
+it("default persona speaks 繁體中文 with no language block", () => {
+  const cfg = getTierConfig(undefined);
+  assert.match(cfg.persona, /繁體中文，上限 \d+ 句/);
+  assert.ok(!cfg.persona.includes("## 回覆語言"));
+});
+it("buildPersonaFromTemplate switches language and keeps the character", () => {
+  const out = buildPersonaFromTemplate("{LANGUAGE}，上限 {SENTENCE_MAX} 句", TIERS.brief, "ja");
+  assert.ok(out.startsWith("日文（日本語），上限 4 句"));
+  assert.match(out, /## 回覆語言/);
+  assert.match(out, /你還是同一個人/);
+  // A custom persona without the placeholder still gets switched.
+  assert.match(buildPersonaFromTemplate("custom", TIERS.brief, "en"), /用英文（English）回覆/);
+  // Unknown codes fall back to the default instead of breaking the persona.
+  assert.equal(buildPersonaFromTemplate("{LANGUAGE}", TIERS.brief, "xx"), "繁體中文");
+});
+
+console.log("language-store");
+{
+  const {
+    getGuildLanguage,
+    setGuildLanguage,
+    resetCacheForTests: resetLanguageCache,
+  } = require("../src/language-store");
+  it("defaults to zh-TW and round-trips a setting", () => {
+    const gid = "smoke-language-guild";
+    assert.equal(getGuildLanguage(undefined), "zh-TW");
+    assert.equal(getGuildLanguage(gid), "zh-TW");
+    setGuildLanguage(gid, "en");
+    resetLanguageCache();
+    assert.equal(getGuildLanguage(gid), "en");
+    setGuildLanguage(gid, "zh-TW"); // default = removed from the file
+    resetLanguageCache();
+    assert.equal(getGuildLanguage(gid), "zh-TW");
+  });
+  it("rejects unknown languages", () => {
+    assert.throws(() => setGuildLanguage("g", "klingon"), /invalid language/);
+  });
+}
+
 it("TIERS entries carry required fields", () => {
   for (const key of ["brief", "standard", "detailed"]) {
     const t = TIERS[key];
@@ -938,7 +1696,9 @@ it("replaces known :name: with Discord syntax", () => {
   );
 });
 it("replaces fullwidth-colon :name: variants", () => {
-  const map = new Map([["Waku_kyaru", { id: "1215440196057956442", animated: false }]]);
+  const map = new Map([
+    ["Waku_kyaru", { id: "1215440196057956442", animated: false }],
+  ]);
   assert.equal(
     resolveCustomEmojis("好吃...：Waku_kyaru:", map),
     "好吃...<:Waku_kyaru:1215440196057956442>",
@@ -1162,7 +1922,13 @@ const DISCORD_EPOCH_TEST = 1420070400000;
 const snowflakeForMs = (ms) => String(BigInt(ms - DISCORD_EPOCH_TEST) << 22n);
 it("buildEmojiPromptBlock tags recent + animated emoji and lists new ones first", () => {
   const map = new Map([
-    ["Good_shark", { id: snowflakeForMs(Date.parse("2020-01-01T00:00:00Z")), animated: false }],
+    [
+      "Good_shark",
+      {
+        id: snowflakeForMs(Date.parse("2020-01-01T00:00:00Z")),
+        animated: false,
+      },
+    ],
     ["Waku_fresh", { id: snowflakeForMs(Date.now()), animated: true }],
   ]);
   const block = buildEmojiPromptBlock(map);
@@ -1250,7 +2016,10 @@ it("appendObservations caps observation text at OBSERVATION_MAX_LEN", () => {
       { text: long, confidence: 0.5 },
     ]);
     const p = profileStore.getUserProfile("g1", "u1");
-    assert.equal(p.observations[0].text.length, profileStore.OBSERVATION_MAX_LEN);
+    assert.equal(
+      p.observations[0].text.length,
+      profileStore.OBSERVATION_MAX_LEN,
+    );
   });
 });
 
@@ -1382,7 +2151,13 @@ it("renders the latest 3 loose observations even without a profile", () => {
 console.log("pendingInteractions");
 it("appendPendingInteraction stores capped text", () => {
   withProfileStore(() => {
-    profileStore.appendPendingInteraction("g1", "u1", "Alice", "你好", "嗯…你好…");
+    profileStore.appendPendingInteraction(
+      "g1",
+      "u1",
+      "Alice",
+      "你好",
+      "嗯…你好…",
+    );
     const p = profileStore.getUserProfile("g1", "u1");
     assert.equal(p.pendingInteractions.length, 1);
     assert.equal(p.pendingInteractions[0].userText, "你好");
@@ -1395,8 +2170,14 @@ it("appendPendingInteraction caps text at PENDING_TEXT_MAX_LEN", () => {
     const long = "字".repeat(600);
     profileStore.appendPendingInteraction("g1", "u1", "x", long, long);
     const p = profileStore.getUserProfile("g1", "u1");
-    assert.equal(p.pendingInteractions[0].userText.length, profileStore.PENDING_TEXT_MAX_LEN);
-    assert.equal(p.pendingInteractions[0].assistantText.length, profileStore.PENDING_TEXT_MAX_LEN);
+    assert.equal(
+      p.pendingInteractions[0].userText.length,
+      profileStore.PENDING_TEXT_MAX_LEN,
+    );
+    assert.equal(
+      p.pendingInteractions[0].assistantText.length,
+      profileStore.PENDING_TEXT_MAX_LEN,
+    );
   });
 });
 it("getPendingInteractions returns [] for missing user", () => {
@@ -1441,6 +2222,10 @@ const {
   STABLE_TIME_GAP_MS,
   EXTRACTION_PERSONA,
   CONSOLIDATION_PERSONA,
+  collectConsolidationSources,
+  resolveConsolidatedItems,
+  runConsolidation,
+  parseGuildConsolidationResult,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
 
@@ -1453,7 +2238,13 @@ it("shouldExtract false when no pending", () => {
 it("shouldExtract true when pending >= EXTRACT_MIN_COUNT", () => {
   withProfileStore(() => {
     for (let i = 0; i < EXTRACT_MIN_COUNT; i++) {
-      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, `reply${i}`);
+      profileStore.appendPendingInteraction(
+        "g1",
+        "u1",
+        "x",
+        `msg${i}`,
+        `reply${i}`,
+      );
     }
     assert.equal(shouldExtract("g1", "u1"), true);
   });
@@ -1569,22 +2360,21 @@ it("buildConsolidationTurns works without existing profile", () => {
   assert.ok(!turns[0].content.includes("既有人格摘要"));
   assert.match(turns[0].content, /Bob/);
 });
-it("parseConsolidationResult parses valid JSON", () => {
-  const p = parseConsolidationResult('{"profile":"愛聊動漫、常吐槽"}');
-  assert.equal(p, "愛聊動漫、常吐槽");
+it("parseConsolidationResult parses items with normalised source ids", () => {
+  const p = parseConsolidationResult(
+    '以下是檔案：\n{"items":[{"field":"topics","text":" 棒球 ","from":["i1","O2"]},{"field":"style","text":""}]}\n完成',
+  );
+  assert.deepEqual(p, [{ field: "topics", text: "棒球", from: ["I1", "O2"] }]);
 });
-it("parseConsolidationResult handles LLM preamble", () => {
-  const p = parseConsolidationResult('以下是摘要：\n{"profile":"test"}\n完成');
-  assert.equal(p, "test");
-});
-it("parseConsolidationResult returns null for empty profile", () => {
-  assert.equal(parseConsolidationResult('{"profile":""}'), null);
-  assert.equal(parseConsolidationResult('{"profile":"  "}'), null);
-});
-it("parseConsolidationResult returns null for garbage", () => {
+it("parseConsolidationResult returns null for empty items or garbage", () => {
+  assert.equal(parseConsolidationResult('{"items":[]}'), null);
+  assert.equal(parseConsolidationResult('{"profile":"舊格式"}'), null);
   assert.equal(parseConsolidationResult("not json"), null);
   assert.equal(parseConsolidationResult(null), null);
-  assert.equal(parseConsolidationResult(""), null);
+});
+it("parseGuildConsolidationResult keeps the prose guild format", () => {
+  assert.equal(parseGuildConsolidationResult('前言{"profile":"愛聊遊戲"}'), "愛聊遊戲");
+  assert.equal(parseGuildConsolidationResult('{"profile":""}'), null);
 });
 // --- memory evidence pipeline ---
 console.log("memory evidence");
@@ -1592,16 +2382,25 @@ it("appendPendingInteraction dedups by messageId, not by text", () => {
   withProfileStore(() => {
     // Same message scooped twice → one record.
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m1",
+        source: "passive",
+      }),
       true,
     );
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m1", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m1",
+        source: "passive",
+      }),
       false,
     );
     // Same TEXT from a different message → kept (repetition can be a trait).
     assert.equal(
-      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", { messageId: "m2", source: "passive" }),
+      profileStore.appendPendingInteraction("g1", "u1", "x", "同一句", "", {
+        messageId: "m2",
+        source: "passive",
+      }),
       true,
     );
     // No messageId → never deduped.
@@ -1614,10 +2413,13 @@ it("appendPendingInteraction dedups by messageId, not by text", () => {
 it("appendPendingInteraction records messageId, source, and at", () => {
   withProfileStore(() => {
     profileStore.appendPendingInteraction("g1", "u1", "x", "hi", "yo", {
-      messageId: "m9", source: "direct", at: 12345,
+      messageId: "m9",
+      source: "direct",
+      at: 12345,
     });
     profileStore.appendPendingInteraction("g1", "u1", "x", "[x]: line", "", {
-      messageId: "m10", source: "passive",
+      messageId: "m10",
+      source: "passive",
     });
     const [direct, passive] = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(direct.messageId, "m9");
@@ -1626,7 +2428,9 @@ it("appendPendingInteraction records messageId, source, and at", () => {
     assert.equal(passive.source, "passive");
     assert.ok(passive.at > 0, "missing at falls back to now");
     // Unknown source value normalizes to direct.
-    profileStore.appendPendingInteraction("g1", "u1", "x", "a", "b", { source: "weird" });
+    profileStore.appendPendingInteraction("g1", "u1", "x", "a", "b", {
+      source: "weird",
+    });
     const all = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(all[2].source, "direct");
   });
@@ -1634,7 +2438,9 @@ it("appendPendingInteraction records messageId, source, and at", () => {
 it("appendPendingInteraction caps backlog at PENDING_MAX_COUNT (drops oldest)", () => {
   withProfileStore(() => {
     for (let i = 0; i < profileStore.PENDING_MAX_COUNT + 5; i++) {
-      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, "", { messageId: `m${i}` });
+      profileStore.appendPendingInteraction("g1", "u1", "x", `msg${i}`, "", {
+        messageId: `m${i}`,
+      });
     }
     const pending = profileStore.getPendingInteractions("g1", "u1");
     assert.equal(pending.length, profileStore.PENDING_MAX_COUNT);
@@ -1643,9 +2449,17 @@ it("appendPendingInteraction caps backlog at PENDING_MAX_COUNT (drops oldest)", 
 });
 it("listPendingBacklog reports users at/above minCount", () => {
   withProfileStore(() => {
-    profileStore.appendPendingInteraction("g1", "u1", "A", "a", "", { messageId: "m1", at: 100 });
-    profileStore.appendPendingInteraction("g1", "u1", "A", "b", "", { messageId: "m2", at: 200 });
-    profileStore.appendPendingInteraction("g2", "u2", "B", "c", "", { messageId: "m3" });
+    profileStore.appendPendingInteraction("g1", "u1", "A", "a", "", {
+      messageId: "m1",
+      at: 100,
+    });
+    profileStore.appendPendingInteraction("g1", "u1", "A", "b", "", {
+      messageId: "m2",
+      at: 200,
+    });
+    profileStore.appendPendingInteraction("g2", "u2", "B", "c", "", {
+      messageId: "m3",
+    });
     const backlog = profileStore.listPendingBacklog(2);
     assert.equal(backlog.length, 1);
     assert.equal(backlog[0].guildId, "g1");
@@ -1665,10 +2479,17 @@ it("buildExtractionTurns numbers entries and tags direct vs passive", () => {
   assert.match(content, /#1【直接互動】/);
   assert.match(content, /#2【旁聽片段】/);
   assert.match(content, /#3【直接互動】/, "legacy record with reply = direct");
-  assert.match(content, /#4【旁聽片段】/, "legacy record without reply = passive");
+  assert.match(
+    content,
+    /#4【旁聽片段】/,
+    "legacy record without reply = passive",
+  );
 });
 it("parseEvidenceIndices keeps unique positive ints only", () => {
-  assert.deepEqual(parseEvidenceIndices([1, 3, 3, "2", 0, -1, 1.5, "x"]), [1, 3, 2]);
+  assert.deepEqual(
+    parseEvidenceIndices([1, 3, 3, "2", 0, -1, 1.5, "x"]),
+    [1, 3, 2],
+  );
   assert.deepEqual(parseEvidenceIndices("nope"), []);
   assert.deepEqual(parseEvidenceIndices(undefined), []);
 });
@@ -1677,16 +2498,42 @@ it("parseExtractionResult carries evidence indices through", () => {
     '{"observations":[{"text":"常聊棒球","confidence":0.8,"evidence":[1,4]}]}',
   );
   assert.deepEqual(obs[0].evidence, [1, 4]);
-  const noEv = parseExtractionResult('{"observations":[{"text":"x","confidence":0.8}]}');
+  const noEv = parseExtractionResult(
+    '{"observations":[{"text":"x","confidence":0.8}]}',
+  );
   assert.deepEqual(noEv[0].evidence, []);
 });
 it("attachEvidence resolves indices to messageIds and caps confidence", () => {
   const pending = [
-    { userText: "a", assistantText: "r", messageId: "m1", at: 1000, source: "direct" },
-    { userText: "b", assistantText: "", messageId: "m2", at: 2000, source: "passive" },
+    {
+      userText: "a",
+      assistantText: "r",
+      messageId: "m1",
+      at: 1000,
+      source: "direct",
+    },
+    {
+      userText: "b",
+      assistantText: "",
+      messageId: "m2",
+      at: 2000,
+      source: "passive",
+    },
     { userText: "c", assistantText: "", messageId: null, source: "passive" },
-    { userText: "d", assistantText: "r", messageId: "m4", at: 4000, source: "direct" },
-    { userText: "e", assistantText: "", messageId: "m5", at: 5000, source: "passive" },
+    {
+      userText: "d",
+      assistantText: "r",
+      messageId: "m4",
+      at: 4000,
+      source: "direct",
+    },
+    {
+      userText: "e",
+      assistantText: "",
+      messageId: "m5",
+      at: 5000,
+      source: "passive",
+    },
   ];
   const [full, single, none, passiveOnly] = attachEvidence(
     [
@@ -1697,10 +2544,17 @@ it("attachEvidence resolves indices to messageIds and caps confidence", () => {
     ],
     pending,
   );
-  assert.deepEqual(full.evidence.map((e) => e.messageId), ["m1", "m2", "m4"]);
+  assert.deepEqual(
+    full.evidence.map((e) => e.messageId),
+    ["m1", "m2", "m4"],
+  );
   assert.equal(full.confidence, 0.9, "well-evidenced keeps confidence");
   assert.equal(single.confidence, 0.4, "single message capped");
-  assert.equal(none.evidence.length, 0, "null-messageId and out-of-range dropped");
+  assert.equal(
+    none.evidence.length,
+    0,
+    "null-messageId and out-of-range dropped",
+  );
   assert.equal(none.confidence, 0.3, "no evidence capped hardest");
   assert.equal(passiveOnly.confidence, 0.5, "passive-only capped");
 });
@@ -1717,20 +2571,37 @@ it("isStableObservation: 3 distinct messages, or 2 far enough apart", () => {
     "2 messages in one burst",
   );
   assert.equal(
-    isStableObservation({ evidence: [ev("m1", 0), ev("m2", STABLE_TIME_GAP_MS)] }),
+    isStableObservation({
+      evidence: [ev("m1", 0), ev("m2", STABLE_TIME_GAP_MS)],
+    }),
     true,
     "2 messages across time",
   );
   assert.equal(isStableObservation({ evidence: [] }), false);
-  assert.equal(isStableObservation({}), false, "legacy observation without evidence");
+  assert.equal(
+    isStableObservation({}),
+    false,
+    "legacy observation without evidence",
+  );
 });
 it("appendObservations merges same-text observations and pools evidence", () => {
   withProfileStore(() => {
     profileStore.appendObservations("g1", "u1", "x", [
-      { text: "常聊棒球", confidence: 0.4, evidence: [{ messageId: "m1", at: 1, source: "direct" }] },
+      {
+        text: "常聊棒球",
+        confidence: 0.4,
+        evidence: [{ messageId: "m1", at: 1, source: "direct" }],
+      },
     ]);
     profileStore.appendObservations("g1", "u1", "x", [
-      { text: "常聊棒球", confidence: 0.7, evidence: [{ messageId: "m2", at: 2, source: "passive" }, { messageId: "m1", at: 1, source: "direct" }] },
+      {
+        text: "常聊棒球",
+        confidence: 0.7,
+        evidence: [
+          { messageId: "m2", at: 2, source: "passive" },
+          { messageId: "m1", at: 1, source: "direct" },
+        ],
+      },
     ]);
     const p = profileStore.getUserProfile("g1", "u1");
     assert.equal(p.observations.length, 1, "same text merged");
@@ -1748,12 +2619,19 @@ it("buildConsolidationTurns separates stable from under-evidenced observations",
     name: "Alice",
     profile: null,
     observations: [
-      { text: "常聊棒球", confidence: 0.8, evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)] },
+      {
+        text: "常聊棒球",
+        confidence: 0.8,
+        evidence: [ev("m1", 0), ev("m2", 1), ev("m3", 2)],
+      },
       { text: "問過星座", confidence: 0.6, evidence: [ev("m4", 0)] },
     ],
   });
   const content = turns[0].content;
-  assert.match(content, /已達證據門檻[\s\S]*常聊棒球（信心 0.8，3 則訊息佐證）/);
+  assert.match(
+    content,
+    /已達證據門檻[\s\S]*常聊棒球（信心 0.8，3 則訊息佐證）/,
+  );
   assert.match(content, /證據不足[\s\S]*問過星座（信心 0.6，1 則訊息佐證）/);
   assert.ok(
     content.indexOf("常聊棒球") < content.indexOf("證據不足"),
@@ -1763,7 +2641,9 @@ it("buildConsolidationTurns separates stable from under-evidenced observations",
 it("describeObservationEvidence counts distinct messageIds", () => {
   assert.equal(describeObservationEvidence({}), "無訊息佐證");
   assert.equal(
-    describeObservationEvidence({ evidence: [{ messageId: "m1" }, { messageId: "m1" }, { messageId: "m2" }] }),
+    describeObservationEvidence({
+      evidence: [{ messageId: "m1" }, { messageId: "m1" }, { messageId: "m2" }],
+    }),
     "2 則訊息佐證",
   );
 });
@@ -1771,13 +2651,37 @@ it("personas demand evidence and ban unsupported praise", () => {
   assert.match(EXTRACTION_PERSONA, /evidence 必填/);
   assert.match(EXTRACTION_PERSONA, /旁聽片段/);
   assert.match(EXTRACTION_PERSONA, /中性/);
-  assert.match(EXTRACTION_PERSONA, /裝飾字[\s\S]*不是人格證據/, "nickname decorations excluded");
-  assert.match(CONSOLIDATION_PERSONA, /靈魂人物/, "praise words named as banned examples");
-  assert.match(CONSOLIDATION_PERSONA, /強詞奪理/, "put-down words named as banned examples");
-  assert.match(CONSOLIDATION_PERSONA, /不可寫成斷言/);
-  assert.match(CONSOLIDATION_PERSONA, /以新觀察為準/, "new evidence outweighs old profile");
-  assert.match(CONSOLIDATION_PERSONA, /說話風格：/, "field-per-line output format defined");
-  assert.match(CONSOLIDATION_PERSONA, /不要[\s\S]*「自稱」/, "nickname must not become 自稱");
+  assert.match(
+    EXTRACTION_PERSONA,
+    /裝飾字[\s\S]*不是人格證據/,
+    "nickname decorations excluded",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /靈魂人物/,
+    "praise words named as banned examples",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /強詞奪理/,
+    "put-down words named as banned examples",
+  );
+  assert.match(CONSOLIDATION_PERSONA, /或許/);
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /以新觀察為準/,
+    "new evidence outweighs old profile",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /"items":\[\{"field"/,
+    "structured items output format defined",
+  );
+  assert.match(
+    CONSOLIDATION_PERSONA,
+    /不要[\s\S]*「自稱」/,
+    "nickname must not become 自稱",
+  );
 });
 it("buildConsolidationTurns labels old profile and nickname sections", () => {
   const turns = buildConsolidationTurns({
@@ -1786,15 +2690,19 @@ it("buildConsolidationTurns labels old profile and nickname sections", () => {
     observations: [],
   });
   const content = turns[0].content;
-  assert.match(content, /既有人格摘要（舊印象/);
+  assert.match(content, /既有條目（舊印象/);
+  assert.match(content, /\[I1\] 注意｜舊摘要內容（舊版摘要轉入/);
   assert.match(content, /以新觀察為準/);
   assert.match(content, /暱稱（Discord 顯示名稱/);
 });
 it("setConsolidatedProfile preserves field-per-line newlines", () => {
   withProfileStore(() => {
-    profileStore.appendObservations("g1", "u1", "x", [{ text: "a", confidence: 0.5 }]);
+    profileStore.appendObservations("g1", "u1", "x", [
+      { text: "a", confidence: 0.5 },
+    ]);
     profileStore.setConsolidatedProfile(
-      "g1", "u1",
+      "g1",
+      "u1",
       "說話風格：短句\r\n常聊話題：棒球\n\n  互動偏好：愛開玩笑  \n\x00注意：無",
     );
     const p = profileStore.getUserProfile("g1", "u1");
@@ -1812,19 +2720,51 @@ it("buildUserProfileBlock flattens multi-line profile for prompt injection", () 
     observations: [],
   });
   assert.match(block, /說話風格：短句；常聊話題：棒球/);
-  assert.ok(!/摘要：[^\n]*\n常聊/.test(block), "no raw newline inside the 摘要 bullet");
+  assert.ok(
+    !/摘要：[^\n]*\n常聊/.test(block),
+    "no raw newline inside the 摘要 bullet",
+  );
 });
 it("selectBacklogUsers filters busy users, sorts starved-first, caps count", () => {
   const now = 1_000_000;
   const idle = 10 * 60 * 1000;
   const backlog = [
-    { guildId: "g", userId: "busy", lastPendingAt: now - 1000, lastExtractedAt: 0 },
-    { guildId: "g", userId: "recent", lastPendingAt: now - idle, lastExtractedAt: 500 },
-    { guildId: "g", userId: "starved", lastPendingAt: now - idle, lastExtractedAt: 100 },
-    { guildId: "g", userId: "third", lastPendingAt: now - idle, lastExtractedAt: 300 },
-    { guildId: "g", userId: "fourth", lastPendingAt: now - idle, lastExtractedAt: 400 },
+    {
+      guildId: "g",
+      userId: "busy",
+      lastPendingAt: now - 1000,
+      lastExtractedAt: 0,
+    },
+    {
+      guildId: "g",
+      userId: "recent",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 500,
+    },
+    {
+      guildId: "g",
+      userId: "starved",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 100,
+    },
+    {
+      guildId: "g",
+      userId: "third",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 300,
+    },
+    {
+      guildId: "g",
+      userId: "fourth",
+      lastPendingAt: now - idle,
+      lastExtractedAt: 400,
+    },
   ];
-  const picked = selectBacklogUsers(backlog, { now, maxUsers: 3, minIdleMs: idle });
+  const picked = selectBacklogUsers(backlog, {
+    now,
+    maxUsers: 3,
+    minIdleMs: idle,
+  });
   assert.deepEqual(
     picked.map((b) => b.userId),
     ["starved", "third", "fourth"],
@@ -1842,6 +2782,334 @@ function withGuildStore(fn) {
   });
 }
 
+
+console.log("structured profile items");
+const DAY_MS = 24 * 60 * 60 * 1000;
+const evAt = (id, at, source = "direct") => ({ messageId: id, at, source });
+
+it("legacy field-per-line profile becomes numbered source items", () => {
+  const sources = collectConsolidationSources({
+    profile: "說話風格：多用日文\n常聊話題：越南旅遊、翻譯\n注意：會開玩笑；或許會用刪除線調侃",
+    profileAt: 1000,
+    observations: [{ text: "常聊棒球", confidence: 0.8, evidence: [] }],
+  });
+  assert.equal(sources.get("I1").field, "style");
+  assert.equal(sources.get("I2").field, "topics");
+  assert.equal(sources.get("I2").text, "越南旅遊、翻譯");
+  assert.equal(sources.get("I2").lastSeenAt, 1000);
+  assert.equal(sources.get("I2").legacy, true);
+  assert.equal(sources.get("I3").text, "會開玩笑", "clauses split on 「；」");
+  assert.equal(sources.get("I3").tentative, false);
+  assert.equal(sources.get("I4").text, "會用刪除線調侃", "hedge word stripped");
+  assert.equal(sources.get("I4").tentative, true, "old hedge stays a guess");
+  assert.equal(sources.get("O1").kind, "obs");
+});
+it("stale items are left out of consolidation sources", () => {
+  const now = 1000 * DAY_MS;
+  const sources = collectConsolidationSources(
+    {
+      items: {
+        topics: [
+          { text: "舊話題", evidence: [], lastSeenAt: now - 200 * DAY_MS },
+          { text: "新話題", evidence: [], lastSeenAt: now - DAY_MS },
+        ],
+      },
+      observations: [],
+    },
+    now,
+  );
+  assert.equal(sources.size, 1);
+  assert.equal(sources.get("I1").text, "新話題");
+});
+it("resolveConsolidatedItems enforces provenance, decay and hedging", () => {
+  const now = 1000 * DAY_MS;
+  const sources = new Map([
+    ["I1", { kind: "item", field: "style", text: "多用日文", evidence: [], firstAt: 5, lastSeenAt: 50, tentative: false, legacy: true }],
+    ["O1", { kind: "obs", text: "常聊棒球", stable: true, evidence: [evAt("m1", 100), evAt("m2", 200), evAt("m3", 300)] }],
+    ["O2", { kind: "obs", text: "問過星座", stable: false, evidence: [evAt("m4", 400)] }],
+  ]);
+  const items = resolveConsolidatedItems(
+    [
+      { field: "style", text: "多用日文", from: ["I1"] },
+      { field: "topics", text: "棒球", from: ["O1"] },
+      { field: "topics", text: "星座", from: ["O2"] },
+      { field: "notes", text: "憑空捏造", from: ["X9"] },
+      { field: "bogus", text: "沒這欄", from: ["O1"] },
+      { field: "常聊話題", text: "日本觀光", from: ["I1", "O2"] },
+    ],
+    sources,
+    now,
+  );
+  assert.equal(items.style[0].lastSeenAt, 50, "carried forward: not re-confirmed");
+  assert.equal(items.style[0].tentative, false, "legacy item is not hedged");
+  const baseball = items.topics.find((i) => i.text === "棒球");
+  assert.equal(baseball.lastSeenAt, 300, "backed by new obs → lastSeenAt moves");
+  assert.equal(baseball.firstAt, 100);
+  assert.equal(baseball.evidence.length, 3);
+  assert.equal(baseball.tentative, false);
+  assert.equal(items.topics.find((i) => i.text === "星座").tentative, true, "weak-only → 或許");
+  assert.equal(items.topics.find((i) => i.text === "日本觀光").tentative, false, "label accepted, legacy source lifts hedge");
+  assert.equal(items.notes.length, 0, "uncited item dropped");
+  assert.equal(resolveConsolidatedItems([{ field: "style", text: "x", from: [] }], sources, now), null);
+});
+it("setProfileItems renders dot list, keeps history, consumes observations", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    profileStore.appendObservations("g1", "u1", "Alice", [{ text: "a", confidence: 0.5 }]);
+    profileStore.setConsolidatedProfile("g1", "u1", "說話風格：舊的");
+    profileStore.appendObservations("g1", "u1", "Alice", [{ text: "b", confidence: 0.5 }]);
+    profileStore.setProfileItems("g1", "u1", {
+      style: [{ text: "常夾日文", evidence: [evAt("m1", now)], lastSeenAt: now }],
+      topics: [
+        { text: "棒球", lastSeenAt: now, tentative: true },
+        { text: "過期話題", lastSeenAt: now - 200 * DAY_MS },
+      ],
+    });
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(p.observations.length, 0);
+    assert.equal(p.profile, "說話風格：常夾日文\n常聊話題：（或許）棒球");
+    assert.deepEqual(p.profileHistory.map((h) => h.profile), ["說話風格：舊的"]);
+    const block = profileStore.buildUserProfileBlock(p);
+    assert.match(block, /- 說話風格：\n  - 常夾日文/);
+    assert.match(block, /  - （或許）棒球/);
+    assert.ok(!block.includes("過期話題"), "stale item not injected");
+    assert.ok(!block.includes("摘要："), "no legacy flat line");
+  });
+});
+it("setProfileItems caps each field and history length", () => {
+  withProfileStore(() => {
+    profileStore.appendObservations("g1", "u1", "x", [{ text: "a" }]);
+    for (let i = 0; i < profileStore.PROFILE_HISTORY_MAX + 3; i++) {
+      profileStore.setProfileItems("g1", "u1", {
+        style: Array.from({ length: 6 }, (_, j) => ({ text: `s${i}-${j}` })),
+      });
+    }
+    const p = profileStore.getUserProfile("g1", "u1");
+    assert.equal(p.items.style.length, 3);
+    assert.equal(p.profileHistory.length, profileStore.PROFILE_HISTORY_MAX);
+  });
+});
+const memoryAsyncCases = [];
+memoryAsyncCases.push(["runConsolidation wires sources → model → resolved items", async () => {
+  let seenTurns = null;
+  const fakeChain = async (turns) => {
+    seenTurns = turns;
+    return {
+      provider: { label: "fake" },
+      text: '{"items":[{"field":"style","text":"多用日文","from":["I1"]},{"field":"topics","text":"棒球","from":["O1"]}]}',
+    };
+  };
+  const { items } = await runConsolidation(
+    {
+      name: "Alice",
+      profile: "說話風格：多用日文",
+      profileAt: Date.now(),
+      observations: [{ text: "常聊棒球", confidence: 0.7, evidence: [evAt("m1", Date.now())] }],
+    },
+    fakeChain,
+    [{ role: "user", content: "note" }],
+  );
+  assert.equal(seenTurns.length, 2, "extra turns appended");
+  assert.match(seenTurns[0].content, /\[I1\] 說話風格｜多用日文/);
+  assert.match(seenTurns[0].content, /\[O1\] 常聊棒球/);
+  assert.equal(items.style[0].text, "多用日文");
+  assert.equal(items.topics[0].tentative, true);
+}]);
+
+memoryAsyncCases.push(["runConsolidation retries once on a truncated answer", async () => {
+  let calls = 0;
+  const answers = [
+    '{"items":[{"field":"style","text":"多用日文","from":["I1"]},{"field":"topics","text":"棒',
+    '{"items":[{"field":"style","text":"多用日文","from":["I1"]}]}',
+  ];
+  const fakeChain = async () => ({ provider: { label: "fake" }, text: answers[calls++] });
+  const entry = { name: "A", profile: "說話風格：多用日文", profileAt: Date.now(), observations: [] };
+  const { items } = await runConsolidation(entry, fakeChain);
+  assert.equal(calls, 2);
+  assert.equal(items.style[0].text, "多用日文");
+
+  calls = 0;
+  const alwaysBad = async () => { calls++; return { provider: { label: "fake" }, text: "{\"items\":[" }; };
+  const bad = await runConsolidation(entry, alwaysBad);
+  assert.equal(calls, 2, "gives up after two attempts");
+  assert.equal(bad.items, null, "never salvages a truncated array");
+}]);
+
+console.log("alias learning");
+const aliasEx = require("../src/ai/alias-extractor");
+const aliasStatements = require("../src/ai/alias-statements");
+const aliasRow = (id, speakerId, content, extra = {}) => ({
+  messageId: id, speakerId, speakerName: null, content, at: Number(id.replace(/\D/g, "")) || 1, replyToUserId: null, ...extra,
+});
+const aliasCtx = () => ({
+  people: new Map([
+    ["u1", { pid: "P1", name: "峰【曉未散】" }],
+    ["u2", { pid: "P2", name: "萱萱" }],
+  ]),
+  rows: [
+    aliasRow("m1", "u2", "峰哥你又來了", { replyToUserId: "u1" }),
+    aliasRow("m2", "u1", "叫我峰哥幹嘛"),
+    aliasRow("m3", "u2", "今天好熱"),
+  ],
+});
+
+it("resolveAliasCandidates keeps only aliases another person literally typed", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [{ person: "P1", alias: "峰哥", evidence: ["L1", "L2", "L3"] }],
+    aliasCtx(),
+  );
+  assert.equal(out.length, 1);
+  assert.equal(out[0].userId, "u1");
+  assert.deepEqual(out[0].evidence.map((e) => e.messageId), ["m1"], "self-use and non-containing lines dropped");
+  assert.equal(out[0].evidence[0].speakerId, "u2");
+});
+it("resolveAliasCandidates rejects stopwords/kinship, display names, unknown people, lines aimed at someone else", () => {
+  const out = aliasEx.resolveAliasCandidates(
+    [
+      { person: "P1", alias: "你", evidence: ["L1"] },
+      { person: "P1", alias: "萱萱", evidence: ["L1"] },
+      { person: "P9", alias: "峰哥", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L1"] },
+      { person: "P1", alias: "峰哥", evidence: ["L2"] },
+      { person: "P1", alias: "姐姐", evidence: ["L1"] },
+      { person: "P1", alias: "阿峰", evidence: ["L4", "L5"] },
+    ],
+    aliasCtx(),
+  );
+  assert.deepEqual(out, []);
+});
+it("recordAliasContext dedups by messageId and skips link previews / empty text", () => {
+  aliasEx.resetAliasBuffersForTests();
+  const rows = [
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: "u1", messageId: "a1", content: "嗨", at: 1 },
+    { userId: null, messageId: "a2", content: "預覽", isLinkPreview: true },
+    { userId: "u2", messageId: "a3", content: "", at: 2 },
+  ];
+  assert.equal(aliasEx.recordAliasContext("g", rows), 1);
+  assert.equal(aliasEx.recordAliasContext("g", rows), 0);
+  aliasEx.resetAliasBuffersForTests();
+});
+it("buildAliasPrompt numbers people and lines, marks replies and @mentions", () => {
+  withProfileStore(() => {
+    const { turns } = aliasEx.buildAliasPrompt("g", [
+      aliasRow("m1", "u2", "<@u1>".replace("u1", "111") + " 峰哥", { speakerName: "萱萱", replyToUserId: "111" }),
+      aliasRow("m2", "111", "幹嘛", { speakerName: "峰" }),
+    ]);
+    assert.match(turns[0].content, /P1＝萱萱/);
+    assert.match(turns[0].content, /P2＝峰/);
+    assert.match(turns[0].content, /L1 P1（回覆 P2）: @P2 峰哥/);
+  });
+});
+it("aliases confirm at 2 distinct messages and show up in the profile block", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [{ messageId: "m1", at: now, speakerId: "u2" }]);
+    let entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(profileStore.confirmedAliases(entry), [], "one message is only a guess");
+    assert.doesNotMatch(profileStore.buildUserProfileBlock(entry), /群友常叫他/);
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [
+      { messageId: "m1", at: now, speakerId: "u2" },
+      { messageId: "m2", at: now, speakerId: "u3" },
+    ]);
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.equal(entry.aliases.length, 1, "same alias pools, not duplicated");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    assert.match(profileStore.buildUserProfileBlock(entry), /- 群友常叫他：峰哥/);
+    assert.deepEqual(
+      profileStore.confirmedAliases(entry, now + 200 * DAY_MS), [], "aliases age out like items",
+    );
+  });
+});
+it("familiarity block renders aliases next to the roster name", () => {
+  const out = buildFamiliarityBlock([{ name: "峰", count: 600, tier: "摯友", aliases: ["峰哥"] }]);
+  assert.match(out, /峰（群友叫：峰哥）/);
+});
+it("nameMatchCandidates matches a confirmed alias absent from the display name", () => {
+  const ev = [{ messageId: "m1", at: Date.now() }, { messageId: "m2", at: Date.now() }];
+  const profiles = [{ userId: "u1", name: "峰【曉未散】", aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: Date.now() }] }];
+  assert.equal(nameMatchCandidates("模仿峰哥講話", profiles, [])[0]?.userId, "u1");
+});
+it("detectAliasStatements catches self-denials and lifts, not errands or questions", () => {
+  const d = aliasStatements.detectAliasStatements;
+  assert.deepEqual(d("別叫我小峰").deny, ["小峰"]);
+  assert.deepEqual(d("不要再叫我峰哥了！").deny, ["峰哥"]);
+  assert.deepEqual(d("我不叫阿雅啦").deny, ["阿雅"]);
+  assert.deepEqual(d("我的綽號不是慕慕").deny, ["慕慕"]);
+  assert.deepEqual(d("「姐姐」不是我的綽號").deny, ["姐姐"]);
+  assert.deepEqual(d("別叫我小峰，叫我阿峰就好"), { deny: ["小峰"], allow: ["阿峰"] });
+  for (const t of ["別叫我去上班", "我不是叫你去買嗎", "不要叫我起床", "我不叫他嗎", "今天好累"]) {
+    assert.deepEqual(d(t), { deny: [], allow: [] }, t);
+  }
+});
+it("a denied alias is dropped, blocks new evidence, and reaches the profile block", () => {
+  withProfileStore(() => {
+    const now = Date.now();
+    const ev = [{ messageId: "m1", at: now, speakerId: "u2" }, { messageId: "m2", at: now, speakerId: "u3" }];
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev);
+    const res = aliasStatements.applyAliasStatements("g1", "u1", "峰", "別叫我峰哥", { messageId: "d1", at: now });
+    assert.deepEqual(res.deny, ["峰哥"]);
+    let entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliases, [], "existing evidence removed");
+    assert.equal(
+      profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev), false, "group evidence can't override",
+    );
+    assert.match(profileStore.buildUserProfileBlock(entry), /不要這樣叫他（別用）：峰哥/);
+    assert.deepEqual(
+      profileStore.confirmedAliases({ ...entry, aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: now }] }),
+      [], "confirmedAliases never returns a denied alias",
+    );
+    aliasStatements.applyAliasStatements("g1", "u1", "峰", "好啦叫我峰哥就好");
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliasDenials, [], "the person can lift it");
+    assert.equal(profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", ev), true);
+  });
+});
+memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records aliases", async () => {
+  const storePath = profileStore.STORE_PATH;
+  const snap = snapshotFile(storePath);
+  const bakSnap = snapshotFile(`${storePath}.bak`);
+  profileStore.resetCacheForTests();
+  aliasEx.resetAliasBuffersForTests();
+  try {
+    let calls = 0;
+    const fakeChain = async () => {
+      calls++;
+      return {
+        provider: { label: "fake" },
+        text: '{"aliases":[{"person":"P2","alias":"峰哥","evidence":["L1","L3"]},{"person":"P2","alias":"幻想","evidence":["L1"]}]}',
+      };
+    };
+    const rows = [];
+    for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+      const fromU2 = i % 2 === 1;
+      rows.push({
+        userId: fromU2 ? "u2" : "u1",
+        displayName: fromU2 ? "萱萱" : "峰",
+        messageId: `x${i}`,
+        content: fromU2 ? "峰哥早" : "早",
+        at: Date.now() - 1000 + i,
+      });
+    }
+    aliasEx.recordAliasContext("g1", rows.slice(0, 5));
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 0, "waits for enough new lines");
+    aliasEx.recordAliasContext("g1", rows);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1);
+    const entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(entry.aliases.map((a) => a.alias), ["峰哥"], "hallucinated alias rejected");
+    assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
+    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    assert.equal(calls, 1, "counter resets after a batch");
+  } finally {
+    profileStore.resetCacheForTests();
+    aliasEx.resetAliasBuffersForTests();
+    restoreFile(storePath, snap);
+    restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
+
 console.log("guild-profile-store");
 it("getGuildProfile returns null for missing guild", () => {
   withGuildStore(() => {
@@ -1851,7 +3119,10 @@ it("getGuildProfile returns null for missing guild", () => {
 });
 it("appendPendingContext stores context snapshot", () => {
   withGuildStore(() => {
-    guildStore.appendPendingContext("g1", "TestGuild", ["[Alice]: hi", "[Bob]: yo"]);
+    guildStore.appendPendingContext("g1", "TestGuild", [
+      "[Alice]: hi",
+      "[Bob]: yo",
+    ]);
     const p = guildStore.getGuildProfile("g1");
     assert.equal(p.pendingContexts.length, 1);
     assert.match(p.pendingContexts[0].text, /Alice.*Bob/s);
@@ -1945,20 +3216,6 @@ it("localDateKey formats date in requested timezone", () => {
   const d = new Date("2026-05-29T14:00:00.000Z");
   assert.equal(localDateKey(d, "Asia/Taipei"), "2026-05-29");
 });
-it("pickStoryMode avoids recently used modes when possible", () => {
-  const now = new Date("2026-05-29T14:00:00.000Z");
-  const initial = pickStoryMode({ id: "s1", timezone: "Asia/Taipei" }, now);
-  const second = pickStoryMode(
-    {
-      id: "s1",
-      timezone: "Asia/Taipei",
-      recentStorySeeds: [initial.mode.key],
-    },
-    now,
-  );
-  assert.notEqual(second.mode.key, initial.mode.key);
-  assert.ok(STORY_MODES.some((m) => m.key === second.mode.key));
-});
 it("messagePreview trims URLs and long content", () => {
   const preview = messagePreview({
     content: `今晚看這個 https://example.com/${"a".repeat(120)}`,
@@ -1991,7 +3248,64 @@ it("selectStoryIngredients prefers reacted then recent messages", () => {
   assert.equal(selected.ingredients[0].authorName, "hot");
   assert.match(selected.activeChannels[0], /#general/);
 });
-it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", () => {
+it("storyText drops links, emoji, mentions and stickers-only noise", () => {
+  assert.equal(storyText({ content: "https://x.com/a/status/1" }), "");
+  assert.equal(storyText({ content: "<:kek:123456> 😂😂" }), "");
+  assert.equal(storyText({ content: "<@123456> ？" }), "");
+  assert.equal(storyText({ content: "" }), "");
+  assert.equal(storyText({ content: "專家都用vscode 寫黃文的" }), "專家都用vscode 寫黃文的");
+});
+it("selectStoryIngredients skips junk, keeps images, attaches preceding context", () => {
+  const ch = { id: "c1", name: "general" };
+  const mk = (id, author, content, ts, extra = {}) => ({
+    id, content, createdTimestamp: ts, channel: ch,
+    author: { id: author, username: author }, member: { displayName: author },
+    reactions: { cache: new Map() }, ...extra,
+  });
+  const img = {
+    attachments: new Map([["a", { url: "https://cdn/x.png", contentType: "image/png", name: "x.png", size: 1000 }]]),
+  };
+  const { ingredients } = selectStoryIngredients([
+    mk("1", "SAB", "下載黃色小說點開，預設讀 txt 的軟體是 vscode", 1000),
+    mk("2", "濤濤", "專家都用vscode 寫黃文的", 2000),
+    mk("3", "Astra", "https://example.com/x", 3000),
+    mk("4", "黑寶", "", 4000, img),
+  ], []);
+  const byAuthor = Object.fromEntries(ingredients.map((i) => [i.authorName, i]));
+  assert.ok(!byAuthor.Astra, "bare link must be dropped");
+  assert.deepEqual(byAuthor["濤濤"].context, ["SAB：下載黃色小說點開，預設讀 txt 的軟體是 vscode"]);
+  assert.equal(byAuthor["黑寶"].images.length, 1);
+  assert.equal(byAuthor["黑寶"].preview, "");
+});
+it("selectStoryIngredients caps the recency fill at two per channel", () => {
+  const mk = (i, chId) => ({
+    id: String(i), content: `第${i}則有內容的訊息`, createdTimestamp: i * 1000,
+    channel: { id: chId, name: chId }, author: { id: `u${i}`, username: `u${i}` },
+    member: null, reactions: { cache: new Map() },
+  });
+  const msgs = [1, 2, 3, 4, 5].map((i) => mk(i, "busy")).concat([mk(6, "quiet")]);
+  const { ingredients } = selectStoryIngredients(msgs, []);
+  assert.equal(ingredients.filter((i) => i.channelName === "busy").length, 2);
+  assert.equal(ingredients.filter((i) => i.channelName === "quiet").length, 1);
+});
+it("buildBedtimeStoryPrompt renders captions and drops undescribed images", () => {
+  const built = buildBedtimeStoryPrompt({
+    guildName: "g",
+    selection: {
+      activeChannels: [],
+      ingredients: [
+        { authorName: "濤濤", channelName: "c", preview: "專家都用vscode 寫黃文的", context: ["SAB：預設用 vscode 開"], images: [], reactions: 0 },
+        { authorName: "黑寶", channelName: "c", preview: "", images: [{}], imageCaption: "一隻貓坐在鍵盤上", reactions: 0 },
+        { authorName: "小本", channelName: "c", preview: "", images: [{}], reactions: 0 },
+      ],
+    },
+  });
+  assert.match(built.prompt, /（前文：SAB：預設用 vscode 開）/);
+  assert.match(built.prompt, /黑寶 在 #c：（貼了一張圖：一隻貓坐在鍵盤上）/);
+  assert.doesNotMatch(built.prompt, /小本/);
+  assert.equal(built.ingredientCount, 2);
+});
+it("buildBedtimeStoryPrompt invents freely and does not force a sleep ending", () => {
   const msg = {
     content: "今天有人說晚安故事要像太空任務",
     createdTimestamp: 1,
@@ -2004,19 +3318,89 @@ it("buildBedtimeStoryPrompt includes mode, ingredients, and anti-repetition", ()
     guildName: "搖E露營",
     messages: [msg],
     channelStats: [{ name: "chat", count: 1 }],
-    schedule: { id: "s1", recentStorySeeds: ["dream-chatroom"] },
+    schedule: { id: "s1" },
     now: new Date("2026-05-29T14:00:00.000Z"),
   });
   assert.match(built.prompt, /搖E露營/);
-  assert.match(built.prompt, /今晚故事模式/);
   assert.match(built.prompt, /可用靈感素材/);
-  // coherence rules: few threaded items, no one-off props, character interaction
-  assert.match(built.prompt, /挑 1～3 個/);
-  assert.match(built.prompt, /只出現一次、對主線沒作用的東西就刪掉/);
+  assert.match(built.prompt, /自己發明今晚的故事/);
+  assert.match(built.prompt, /接不上就只用一則/);
+  assert.match(built.prompt, /登場人物 2～5 人/);
+  assert.match(built.prompt, /## /);
+  assert.match(built.prompt, /標題裡不要出現「床邊故事」/);
+  assert.match(built.prompt, /故事本文裡提不提都可以/);
+  assert.match(built.prompt, /對得上號/);
+  assert.match(built.prompt, /不必逐字貼原句/);
+  assert.match(built.prompt, /挑反應數高的、或原句本身就好笑的/);
+  assert.match(built.prompt, /不准消音/);
+  assert.match(built.prompt, /口交牛肉麵/);
+  assert.match(built.prompt, /今晚要用的寫法/);
   assert.match(built.prompt, /角色之間有互動和對話/);
-  assert.match(built.prompt, /dream-chatroom/);
-  assert.ok(built.modeKey);
+  assert.doesNotMatch(built.prompt, /今晚故事模式/);
+  assert.doesNotMatch(built.prompt, /哄大家睡覺/);
+  // coherence: the story is built around the joke, twists must be causal
+  assert.match(built.prompt, /整個故事就圍著這個梗/);
+  assert.match(built.prompt, /歌詞、迷因/);
+  assert.match(built.prompt, /最後一句交給角色說出口/);
+  assert.match(built.prompt, /繁體中文/);
+  assert.match(built.prompt, /因果要講得通/);
+  assert.match(built.prompt, /不准有東西自己動起來/);
+  assert.match(built.prompt, /不要寫否認再被抓包的橋段/);
+  assert.equal(built.ingredientCount, 1);
   assert.equal(built.dateKey, "2026-05-29");
+});
+it("buildBedtimeStoryPrompt rotates exactly two craft moves", () => {
+  const built = buildBedtimeStoryPrompt({
+    guildName: "搖E露營",
+    messages: [],
+    schedule: { id: "s1" },
+    rng: () => 0,
+  });
+  const moves = built.prompt
+    .split("【今晚要用的寫法】")[1]
+    .split("\n")
+    .filter((line) => line.startsWith("- "));
+  assert.equal(moves.length, 2);
+  assert.equal(moves[0], `- ${STORY_CRAFT_MOVES[0]}`);
+});
+it("craft moves no longer ask for dream-logic endings or loose threads", () => {
+  const all = STORY_CRAFT_MOVES.join("\n");
+  assert.doesNotMatch(all, /替他決定/);
+  assert.doesNotMatch(all, /沒有回收/);
+  assert.doesNotMatch(all, /否認|打臉/);
+});
+it("pickStoryCraftMoves never repeats a move", () => {
+  const picked = pickStoryCraftMoves(STORY_CRAFT_MOVES, 3, () => 0.999999);
+  assert.equal(picked.length, 3);
+  assert.equal(new Set(picked).size, 3);
+  const all = pickStoryCraftMoves(STORY_CRAFT_MOVES, 99, Math.random);
+  assert.equal(all.length, STORY_CRAFT_MOVES.length);
+});
+it("repairNames restores a name with kana spliced in", () => {
+  const names = ["linchien", "KaoWYK", "orangelin", "fallsnow小翔"];
+  assert.equal(
+    repairNames("lインchien 丟出截圖，lインchien 回得飛快", names),
+    "linchien 丟出截圖，linchien 回得飛快",
+  );
+  assert.equal(repairNames("Kaoウィック說 orangeリン 來了", names), "KaoWYK說 orangelin 來了");
+});
+
+it("repairNames leaves real Japanese and ambiguous tokens alone", () => {
+  const names = ["linchien", "lintest"];
+  assert.equal(repairNames("我重看Re:ゼロ，看了リゼロ", names), "我重看Re:ゼロ，看了リゼロ");
+  assert.equal(repairNames("linイン", names), "linイン");
+  assert.equal(repairNames("沒有假名 linchien", names), "沒有假名 linchien");
+  assert.equal(repairNames("lインchien", []), "lインchien");
+});
+
+it("sanitizeBedtimeTitle strips 床邊故事 from the first line only", () => {
+  const out = sanitizeBedtimeTitle(
+    "**床邊故事｜會替人照相的魔法鏡**\n\n魔法使濤濤對著鏡子。",
+  );
+  assert.match(out, /^## 會替人照相的魔法鏡\n/);
+  assert.doesNotMatch(out.split("\n")[0], /床邊故事/);
+  const bodyOk = sanitizeBedtimeTitle("## 魔法鏡\n\n這不是床邊故事套版。");
+  assert.match(bodyOk, /這不是床邊故事套版/);
 });
 
 // --- target-context (imitation / mention targeting) ---
@@ -2049,11 +3433,18 @@ it("nameMatchCandidates matches a named third party, ignores unrelated text", ()
     { userId: "u1", name: "力量の小翔_フードコート ver." },
     { userId: "u2", name: "摳捷" },
   ];
-  assert.equal(nameMatchCandidates("幫我模仿小翔", profiles, [])[0]?.userId, "u1");
+  assert.equal(
+    nameMatchCandidates("幫我模仿小翔", profiles, [])[0]?.userId,
+    "u1",
+  );
   assert.equal(nameMatchCandidates("隨便聊聊天氣", profiles, []).length, 0);
 });
 
-function fakeImitMsg({ authorId = "author1", botId = "bot1", mentions = [] } = {}) {
+function fakeImitMsg({
+  authorId = "author1",
+  botId = "bot1",
+  mentions = [],
+} = {}) {
   return {
     client: { user: { id: botId } },
     author: { id: authorId, username: "說話者" },
@@ -2096,7 +3487,13 @@ it("resolveTargets caps at MAX_TARGETS", () => {
     { userId: "u2", name: "濤濤" },
     { userId: "u3", name: "黑寶" },
   ];
-  const t = resolveTargets(fakeImitMsg(), "模仿我 也學小翔 濤濤 黑寶", [], profiles, true);
+  const t = resolveTargets(
+    fakeImitMsg(),
+    "模仿我 也學小翔 濤濤 黑寶",
+    [],
+    profiles,
+    true,
+  );
   assert.ok(t.length <= 2, `expected <=2 targets, got ${t.length}`);
 });
 
@@ -2141,9 +3538,13 @@ it("rejects other emoji and non-strings", () => {
 
 console.log("daily-recap context");
 const {
+  RECAP_EMBED_TOTAL_MAX_CHARS,
+  createRecapEmbedBudget,
+  consumeRecapEmbedContext,
   buildMessagePreview,
   buildMessageContext,
   buildRecapStats,
+  buildRecapPrompt,
 } = require("../src/daily-recap");
 
 // Minimal discord.js Collection stand-in: size / values / filter / map.
@@ -2165,22 +3566,28 @@ function recapMsg({
   content = "",
   reactions = [],
   stickers = [],
+  embeds = [],
+  bot = false,
 }) {
   return {
     id,
     channelId: ch,
     channel: { id: ch, name: chName },
-    author: { id: `id-${author}`, bot: false, username: author },
+    author: { id: `id-${author}`, bot, username: author },
     member: { displayName: author },
     content,
     createdTimestamp: ts,
     reactions: {
       cache: recapColl(
-        reactions.map(([name, count]) => ({ emoji: { id: null, name }, count })),
+        reactions.map(([name, count]) => ({
+          emoji: { id: null, name },
+          count,
+        })),
       ),
     },
     stickers: recapColl(stickers.map((name) => ({ name }))),
     attachments: recapColl([]),
+    embeds,
   };
 }
 
@@ -2198,6 +3605,47 @@ it("buildMessagePreview: no content/sticker/attachment → 嵌入 placeholder", 
   assert.equal(buildMessagePreview(recapMsg({ id: "s3" })), "（嵌入/連結）");
 });
 
+it("buildMessagePreview: rich embed uses its text instead of a placeholder", () => {
+  const m = recapMsg({
+    id: "s4",
+    embeds: [{ author: { name: "作者" }, description: "Threads 貼文內容" }],
+  });
+  assert.match(buildMessagePreview(m), /作者.*Threads 貼文內容/);
+  assert.doesNotMatch(buildMessagePreview(m), /（嵌入\/連結）/);
+});
+
+it("recap rich embeds share a hard 3000-character total budget", () => {
+  const budget = createRecapEmbedBudget();
+  const extracted = [];
+  for (let i = 0; i < 10; i++) {
+    extracted.push(
+      consumeRecapEmbedContext(
+        recapMsg({
+          id: `e${i}`,
+          embeds: [{ description: `${i}${"文".repeat(500)}` }],
+        }),
+        budget,
+      ),
+    );
+  }
+  assert.equal(RECAP_EMBED_TOTAL_MAX_CHARS, 3000);
+  assert.ok(extracted.every((text) => text.length <= 400));
+  assert.equal(
+    extracted.reduce((sum, text) => sum + text.length, 0),
+    3000,
+  );
+  assert.equal(budget.remaining, 0);
+});
+
+it("recap embed budget de-duplicates identical previews", () => {
+  const budget = createRecapEmbedBudget();
+  const a = recapMsg({ id: "d1", embeds: [{ description: "同一篇貼文" }] });
+  const b = recapMsg({ id: "d2", embeds: [{ description: "同一篇貼文" }] });
+  assert.equal(consumeRecapEmbedContext(a, budget), "同一篇貼文");
+  assert.equal(consumeRecapEmbedContext(b, budget), "");
+  assert.equal(budget.remaining, 3000 - "同一篇貼文".length);
+});
+
 it("buildRecapStats: top-reacted message carries chronological context with the target marked", () => {
   const msgs = [];
   for (let i = 1; i <= 8; i++) {
@@ -2205,14 +3653,23 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
       recapMsg({
         id: `m${i}`,
         ts: i,
-        content: `第${i}句`,
+        // Long enough that the default ±window applies (short punchlines widen).
+        content: `這是第${i}句比較長一點的聊天內容用來佔位`,
         author: i % 2 ? "小翔" : "濤濤",
         reactions: i === 6 ? [["😂", 5]] : [],
       }),
     );
   }
   // A different channel's message must never leak into c1's context.
-  msgs.push(recapMsg({ id: "x1", ch: "c2", chName: "蘑菇鳥", ts: 5, content: "別的頻道" }));
+  msgs.push(
+    recapMsg({
+      id: "x1",
+      ch: "c2",
+      chName: "蘑菇鳥",
+      ts: 5,
+      content: "別的頻道",
+    }),
+  );
 
   const stats = buildRecapStats(msgs);
   assert.equal(stats.topReacted.length, 1);
@@ -2228,10 +3685,70 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
   assert.equal(ctx.filter((l) => l.includes("就是這句拿到反應")).length, 1);
 });
 
+it("buildRecapStats: short punchline widens context window", () => {
+  const msgs = [];
+  for (let i = 1; i <= 8; i++) {
+    msgs.push(
+      recapMsg({
+        id: `s${i}`,
+        ts: i,
+        content: i === 6 ? "謝謝各位" : `前導${i}`,
+        author: "小翔",
+        reactions: i === 6 ? [["😂", 5]] : [],
+      }),
+    );
+  }
+  const ctx = buildRecapStats(msgs).topReacted[0].context;
+  // thin target → +4 before / +1 after; all 8 lines of the channel fit
+  assert.equal(ctx.length, 8);
+  assert.match(ctx[0], /前導1/);
+  assert.match(ctx.join("\n"), /謝謝各位.*就是這句拿到反應/);
+});
+
+it("buildRecapStats: reply parent is surfaced even outside the window", () => {
+  const parent = recapMsg({
+    id: "p1",
+    ts: 1,
+    content: "帳號被盜了啦",
+    author: "路人",
+  });
+  const far = [];
+  for (let i = 2; i <= 10; i++) {
+    far.push(
+      recapMsg({ id: `f${i}`, ts: i, content: `中間廢話${i}`, author: "路人" }),
+    );
+  }
+  const child = {
+    ...recapMsg({
+      id: "c1",
+      ts: 11,
+      content: "你都進去過",
+      author: "摳捷",
+      reactions: [["↖️", 4]],
+    }),
+    reference: { messageId: "p1" },
+  };
+  const stats = buildRecapStats([parent, ...far, child]);
+  const joined = stats.topReacted[0].context.join("\n");
+  assert.match(joined, /這則在回覆.*帳號被盜了啦/);
+  assert.match(joined, /你都進去過.*就是這句拿到反應/);
+});
+
 it("buildRecapStats: sticker-only reacted message gets sticker-name preview and context", () => {
   const msgs = [
-    recapMsg({ id: "a1", ts: 1, content: "有人對後面很敏感喔", author: "狗哥" }),
-    recapMsg({ id: "a2", ts: 2, stickers: ["尷尬的Rin"], author: "濤濤", reactions: [["🤣", 4]] }),
+    recapMsg({
+      id: "a1",
+      ts: 1,
+      content: "有人對後面很敏感喔",
+      author: "狗哥",
+    }),
+    recapMsg({
+      id: "a2",
+      ts: 2,
+      stickers: ["尷尬的Rin"],
+      author: "濤濤",
+      reactions: [["🤣", 4]],
+    }),
     recapMsg({ id: "a3", ts: 3, content: "D包廂", author: "狗哥" }),
   ];
   const stats = buildRecapStats(msgs);
@@ -2242,11 +3759,1083 @@ it("buildRecapStats: sticker-only reacted message gets sticker-name preview and 
   assert.match(top.context.join("\n"), /貼圖：尷尬的Rin/);
 });
 
+it("daily recap labels bot rich embed context and top source neutrally", () => {
+  const msgs = [
+    recapMsg({ id: "human", ts: 1, author: "群友", content: "看看這篇" }),
+    recapMsg({
+      id: "preview",
+      ts: 2,
+      author: "西寶",
+      bot: true,
+      embeds: [{ author: { name: "外部作者" }, description: "外部貼文文字" }],
+      reactions: [["🔥", 6]],
+    }),
+  ];
+  const stats = buildRecapStats(msgs);
+  const top = stats.topReacted[0];
+  assert.equal(top.isLinkPreview, true);
+  assert.equal(top.authorName, "連結預覽");
+  assert.match(top.context.join("\n"), /\[連結預覽\]:/);
+  assert.doesNotMatch(top.context.join("\n"), /\[西寶\]:/);
+
+  const prompt = buildRecapPrompt(stats, [], "測試群");
+  assert.match(prompt, /#閃現 的連結預覽/);
+  assert.doesNotMatch(prompt, /西寶 在 #閃現.*外部貼文文字/);
+});
+
+it("daily recap still attributes reacted bot plain text to the bot", () => {
+  const msgs = [
+    recapMsg({ id: "human2", ts: 1, author: "群友", content: "回顧來了" }),
+    recapMsg({
+      id: "bot-text",
+      ts: 2,
+      author: "西寶",
+      bot: true,
+      content: "這是我自己寫的今日回顧",
+      reactions: [["👍", 3]],
+    }),
+  ];
+  const stats = buildRecapStats(msgs);
+  const top = stats.topReacted[0];
+  assert.equal(top.isLinkPreview, false);
+  assert.equal(top.authorName, "西寶");
+  assert.match(top.context.join("\n"), /\[西寶\]:/);
+  assert.match(buildRecapPrompt(stats, [], "測試群"), /西寶 在 #閃現/);
+});
+
 it("buildMessageContext: target missing from pool returns empty (no crash)", () => {
   const target = recapMsg({ id: "ghost", ts: 9 });
   assert.deepEqual(buildMessageContext(target, []), []);
 });
 
+it("buildRecapPrompt warns about untrusted embeds and repeated phrasing", () => {
+  const prompt = buildRecapPrompt(
+    {
+      totalMessages: 1,
+      uniqueAuthors: 1,
+      topAuthors: [],
+      topReacted: [],
+    },
+    [],
+    "測試群",
+  );
+  assert.match(prompt, /連結預覽.*不可信引用資料/);
+  assert.match(prompt, /避免連續使用「真的讓我/);
+  assert.match(prompt, /可以自然使用「真的」/);
+  assert.match(prompt, /最多承認一次看不懂/);
+});
+
+it("buildRecapPrompt lets 西寶 drop items and breaks the parallel-paragraph template", () => {
+  const prompt = buildRecapPrompt(
+    {
+      totalMessages: 1,
+      uniqueAuthors: 1,
+      topAuthors: [],
+      topReacted: [],
+    },
+    [],
+    "測試群",
+  );
+  assert.match(prompt, /挑 3～4 則真的有梗的展開/);
+  assert.match(prompt, /可以整則完全不提/);
+  assert.match(prompt, /挑其中一段做別的事/);
+  assert.match(prompt, /整篇只做一次/);
+  assert.match(prompt, /最多 5 段/);
+  assert.match(prompt, /emoji 不要每段都掛在最後一個字後面/);
+  assert.match(prompt, /講完就停/);
+  assert.doesNotMatch(prompt, /每個熱門訊息各一小段/);
+  assert.doesNotMatch(prompt, /結尾可以有個簡短的感想或期待/);
+});
+
 console.log("");
-console.log(`Result: ${pass} passed, ${fail} failed`);
-process.exit(fail > 0 ? 1 : 0);
+console.log("app emoji library (機器人自己的 emoji 庫)");
+it("buildEmojiMap includes application-owned emoji in every guild", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([
+                ["a", { name: "Good_local", id: "1", animated: false }],
+              ]),
+            },
+          },
+        ],
+      ]),
+    },
+    application: {
+      emojis: {
+        cache: new Map([["x", { name: "Pepe_Cry", id: "9", animated: false }]]),
+      },
+    },
+  };
+  const map = buildEmojiMap(fakeClient, "g1");
+  assert.equal(map.has("Good_local"), true);
+  assert.equal(
+    map.has("Pepe_Cry"),
+    true,
+    "app emoji usable outside its own guild",
+  );
+});
+it("buildEmojiMap lets a guild's own emoji win over the app library on name clash", () => {
+  const fakeClient = {
+    guilds: {
+      cache: new Map([
+        [
+          "g1",
+          {
+            emojis: {
+              cache: new Map([
+                ["a", { name: "Pepe_Cry", id: "guild-id", animated: false }],
+              ]),
+            },
+          },
+        ],
+      ]),
+    },
+    application: {
+      emojis: {
+        cache: new Map([
+          ["x", { name: "Pepe_Cry", id: "app-id", animated: false }],
+        ]),
+      },
+    },
+  };
+  assert.equal(buildEmojiMap(fakeClient, "g1").get("Pepe_Cry").id, "guild-id");
+});
+it("buildEmojiMap can leave the app library out (APP_EMOJI_ENABLED=false)", () => {
+  const fakeClient = {
+    application: {
+      emojis: {
+        cache: new Map([["x", { name: "Pepe_Cry", id: "9", animated: false }]]),
+      },
+    },
+    emojis: { cache: new Map() },
+  };
+  assert.equal(
+    buildEmojiMap(fakeClient, null, [], { includeAppEmojis: false }).size,
+    0,
+  );
+  assert.equal(buildEmojiMap(fakeClient).size, 1);
+});
+
+console.log("");
+console.log("sticker catalog");
+const guildStickerFixture = [
+  { id: "s1", name: "起床重睡", description: "賴床", available: true },
+  { id: "s2", name: "沒圖", description: null, tags: "催圖", available: true },
+  { id: "s3", name: "掉boost了", description: "x", available: false },
+];
+it("isPostableGuildSticker rejects unavailable stickers", () => {
+  assert.equal(isPostableGuildSticker(guildStickerFixture[0]), true);
+  assert.equal(isPostableGuildSticker(guildStickerFixture[2]), false);
+  assert.equal(isPostableGuildSticker({ name: "no id" }), false);
+});
+it("mergeStickerSources keeps guild stickers ahead of the bot's own library", () => {
+  const library = new Map([
+    [
+      "起床重睡",
+      { kind: "library", name: "起床重睡", file: "/x.png", basename: "x.png" },
+    ],
+    [
+      "西寶專屬",
+      { kind: "library", name: "西寶專屬", file: "/y.png", basename: "y.png" },
+    ],
+  ]);
+  const catalog = mergeStickerSources(guildStickerFixture, library);
+  assert.equal(catalog.get("起床重睡").kind, "guild", "群裡有的就用群裡那張");
+  assert.equal(catalog.get("西寶專屬").kind, "library");
+  assert.equal(catalog.has("掉boost了"), false);
+  assert.equal(
+    catalog.get("沒圖").meaning,
+    "催圖",
+    "falls back to tags for meaning",
+  );
+});
+it("buildStickerSendPayload picks sticker id vs file attachment by kind", () => {
+  assert.deepEqual(
+    buildStickerSendPayload({ kind: "guild", id: "s1", name: "a" }),
+    {
+      stickers: ["s1"],
+    },
+  );
+  const filePayload = buildStickerSendPayload({
+    kind: "library",
+    name: "b",
+    file: "/tmp/b.png",
+    basename: "b.png",
+  });
+  assert.equal(filePayload.files.length, 1);
+  assert.equal(filePayload.files[0].name, "b.png");
+  assert.equal(buildStickerSendPayload(null), null);
+});
+it("loadStickerLibrary reads images + index.json and skips junk", () => {
+  const dir = fs.mkdtempSync(
+    path.join(require("node:os").tmpdir(), "dspb-stickers-"),
+  );
+  fs.writeFileSync(path.join(dir, "wakeup.png"), "x");
+  fs.writeFileSync(path.join(dir, "plain.gif"), "x");
+  fs.writeFileSync(path.join(dir, "notes.txt"), "x");
+  fs.writeFileSync(
+    path.join(dir, "index.json"),
+    JSON.stringify([{ file: "wakeup.png", name: "起床重睡", meaning: "賴床" }]),
+  );
+  resetStickerLibraryCache();
+  const lib = loadStickerLibrary(dir);
+  resetStickerLibraryCache();
+
+  assert.equal(lib.size, 2);
+  assert.equal(lib.get("起床重睡").meaning, "賴床");
+  assert.equal(lib.get("起床重睡").basename, "wakeup.png");
+  assert.equal(lib.has("plain"), true, "no index entry → name from filename");
+  assert.equal(lib.get("plain").meaning, null);
+  assert.equal(lib.has("notes"), false, "non-image ignored");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+it("loadStickerLibrary on a missing folder is empty, not a throw", () => {
+  resetStickerLibraryCache();
+  const lib = loadStickerLibrary("/nonexistent/dspb/stickers");
+  resetStickerLibraryCache();
+  assert.equal(lib.size, 0);
+});
+
+console.log("");
+console.log("extractSticker");
+const catalogFixture = mergeStickerSources(guildStickerFixture, new Map());
+it("pulls [貼圖:name] out of the reply and returns the sticker", () => {
+  const out = extractSticker(
+    "欸…好啦我也丟一張 [貼圖:起床重睡]",
+    catalogFixture,
+  );
+  assert.equal(out.text, "欸…好啦我也丟一張");
+  assert.equal(out.sticker.id, "s1");
+});
+it("accepts fullwidth brackets and colons", () => {
+  assert.equal(
+    extractSticker("【貼圖：起床重睡】", catalogFixture).sticker.id,
+    "s1",
+  );
+  assert.equal(
+    extractSticker("［sticker:起床重睡］", catalogFixture).sticker.id,
+    "s1",
+  );
+});
+it("matches NFD-normalized and case-shifted names", () => {
+  const catalog = mergeStickerSources(
+    [{ id: "s9", name: "Cmonbruh", available: true }],
+    new Map(),
+  );
+  assert.equal(extractSticker("[貼圖:cmonBRUH]", catalog).sticker.id, "s9");
+  const nfd = "起床重睡".normalize("NFD");
+  assert.equal(
+    extractSticker(`[貼圖:${nfd}]`, catalogFixture).sticker.id,
+    "s1",
+  );
+});
+it("drops an invented sticker name instead of leaking the token", () => {
+  const out = extractSticker("哈哈 [貼圖:我亂編的]", catalogFixture);
+  assert.equal(out.text, "哈哈");
+  assert.equal(out.sticker, null);
+});
+it("keeps only the first sticker and strips the rest", () => {
+  const out = extractSticker("[貼圖:起床重睡][貼圖:沒圖]", catalogFixture);
+  assert.equal(out.sticker.id, "s1");
+  assert.equal(out.text, "");
+});
+it("leaves ordinary text (and the word 貼圖) alone", () => {
+  const plain = "我沒有那個貼圖啦，你們不要排擠我";
+  assert.equal(extractSticker(plain, catalogFixture).text, plain);
+  assert.equal(extractSticker(plain, catalogFixture).sticker, null);
+  assert.equal(extractSticker("普通回覆", catalogFixture).text, "普通回覆");
+});
+it("survives an empty catalog (STICKER_REPLY_ENABLED=false)", () => {
+  const out = extractSticker("嗨 [貼圖:起床重睡]", new Map());
+  assert.equal(out.sticker, null);
+  assert.equal(out.text, "嗨");
+});
+it("resolveCustomEmojis leaves a [貼圖:…] token intact for the sticker pass", () => {
+  const map = new Map([["Pepe_OK", { id: "333", animated: false }]]);
+  assert.equal(
+    resolveCustomEmojis("好啦 :Pepe_OK: [貼圖:起床重睡]", map),
+    "好啦 <:Pepe_OK:333> [貼圖:起床重睡]",
+  );
+});
+
+console.log("");
+console.log("buildStickerPromptBlock");
+it("is empty when there is nothing to post", () => {
+  assert.equal(buildStickerPromptBlock(new Map()), "");
+  assert.equal(buildStickerPromptBlock(null), "");
+});
+it("lists names with meanings and states the one-per-message rule", () => {
+  const block = buildStickerPromptBlock(catalogFixture);
+  assert.match(block, /\[貼圖:起床重睡\] 賴床/);
+  assert.match(block, /\[貼圖:沒圖\] 催圖/);
+  assert.doesNotMatch(block, /掉boost了/);
+  assert.match(block, /一則訊息最多一張/);
+});
+it("resolveStickerEntry returns null for unknown names", () => {
+  assert.equal(resolveStickerEntry("不存在", catalogFixture), null);
+  assert.equal(resolveStickerEntry("", catalogFixture), null);
+  assert.equal(resolveStickerEntry("起床重睡", new Map()), null);
+});
+
+console.log("");
+console.log("threads-graphql");
+it("decodes a shortcode into the numeric post id Meta's API wants", () => {
+  // Base-64 over the Instagram alphabet: "B" is digit 1, so "BA" == 1*64 + 0.
+  assert.equal(codeToPostId("BA"), "64");
+  assert.equal(codeToPostId("A"), "0");
+  assert.equal(codeToPostId("DdC2uuQk5DD"), "3981985725826699459");
+});
+it("rejects codes with characters outside the alphabet", () => {
+  assert.equal(codeToPostId("!!!"), null);
+  assert.equal(codeToPostId(""), null);
+  assert.equal(codeToPostId(null), null);
+});
+it("extracts the shortcode only from canonical post URLs", () => {
+  assert.equal(
+    extractPostCode("https://www.threads.com/@victor31429/post/DdC2uuQk5DD"),
+    "DdC2uuQk5DD",
+  );
+  assert.equal(
+    extractPostCode("https://www.threads.net/@a/post/ABC?xmt=1"),
+    "ABC",
+  );
+  // Share links are canonicalised by resolveThreadsUrl before we are called;
+  // anything still non-canonical here must be a miss, not a bad API call.
+  assert.equal(
+    extractPostCode("https://www.threads.com/share/GghmtW2ch/"),
+    null,
+  );
+  assert.equal(extractPostCode("https://www.threads.com/@a"), null);
+  assert.equal(extractPostCode("not a url"), null);
+});
+it("shapes a video-only post so buildThreadsPayload takes the video branch", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "victor31429" },
+      caption: { text: "哈哈哈哈" },
+      video_versions: [{ url: "https://cdn.example/v.mp4" }],
+      image_versions2: {
+        candidates: [{ url: "https://cdn.example/cover.jpg" }],
+      },
+    },
+    "DdC2uuQk5DD",
+  );
+  assert.equal(metadata.video, "https://cdn.example/v.mp4");
+  assert.equal(metadata.videoCount, 1);
+  assert.equal(metadata.imageCount, 1);
+  assert.equal(metadata.twitterCard, "summary_large_image");
+  assert.equal(metadata.title, "@victor31429 on Threads");
+});
+it("keeps a MIXED carousel at imageCount > 1 so it stays a gallery", () => {
+  // Load-bearing: buildThreadsPayload checks imageCount > 1 BEFORE video, so a
+  // video slide must still contribute its cover frame to `images`.
+  const metadata = buildMetadata(
+    {
+      user: { username: "zynxyzouo", full_name: "阿佐" },
+      caption: { text: "#5年前" },
+      carousel_media: [
+        {
+          video_versions: [{ url: "https://cdn.example/v.mp4" }],
+          image_versions2: {
+            candidates: [{ url: "https://cdn.example/1.jpg" }],
+          },
+        },
+        {
+          image_versions2: {
+            candidates: [{ url: "https://cdn.example/2.jpg" }],
+          },
+        },
+      ],
+    },
+    "DdF69WtkupI",
+  );
+  assert.equal(metadata.imageCount, 2);
+  assert.equal(metadata.videoCount, 1);
+  assert.deepEqual(metadata.images, [
+    "https://cdn.example/1.jpg",
+    "https://cdn.example/2.jpg",
+  ]);
+  assert.equal(metadata.title, "阿佐 (@zynxyzouo) on Threads");
+});
+it("reports each slide's size, parallel to images, for the panorama check", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "bodies622" },
+      carousel_media: [1, 2].map((n) => ({
+        image_versions2: {
+          candidates: [
+            { url: `https://cdn.example/${n}.jpg`, width: 1440, height: 1800 },
+          ],
+        },
+      })),
+    },
+    "DawXYouCQ5S",
+  );
+  assert.deepEqual(metadata.imageSizes, [
+    { width: 1440, height: 1800 },
+    { width: 1440, height: 1800 },
+  ]);
+  // normalizeThreadsMetadata rebuilds the object field by field — the sizes
+  // must survive it or no Threads post ever reaches the panorama check.
+  assert.deepEqual(
+    normalizeThreadsMetadata(metadata).imageSizes,
+    metadata.imageSizes,
+  );
+});
+it("marks a text-only post summary so it renders as a compact embed", () => {
+  const metadata = buildMetadata(
+    { user: { username: "pido" }, caption: { text: "蔣介石其實是個0" } },
+    "DdDL1aTGp4v",
+  );
+  assert.equal(metadata.twitterCard, "summary");
+  assert.equal(metadata.image, null);
+  assert.equal(metadata.video, null);
+  assert.equal(metadata.imageCount, 0);
+  assert.equal(metadata.videoCount, 0);
+  assert.equal(metadata.description, "蔣介石其實是個0");
+});
+it("treats everything before the linked post as reply context", () => {
+  const thread = findThread(
+    {
+      data: {
+        data: {
+          edges: [
+            {
+              node: {
+                thread_items: [
+                  {
+                    post: {
+                      code: "ROOT",
+                      user: { username: "star_wars9fu" },
+                      caption: { text: "Bruh" },
+                    },
+                  },
+                  {
+                    post: {
+                      code: "REPLY",
+                      user: { username: "5jcl40_" },
+                      caption: { text: "甲亢哥遇到假唱哥" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    },
+    "REPLY",
+  );
+  assert.equal(thread.post.code, "REPLY");
+  assert.deepEqual(thread.ancestors, [
+    { author: "star_wars9fu", text: "Bruh" },
+  ]);
+});
+it("misses rather than previewing the root when the linked post is absent", () => {
+  // Rendering the root instead would silently show the wrong content, so this
+  // has to fall through to the probe.
+  const json = {
+    data: {
+      data: {
+        edges: [{ node: { thread_items: [{ post: { code: "ROOT" } }] } }],
+      },
+    },
+  };
+  assert.equal(findThread(json, "MISSING"), null);
+  assert.equal(findThread({}, "ROOT"), null);
+});
+it("ignores non-http media urls rather than passing them to Discord", () => {
+  const metadata = buildMetadata(
+    {
+      user: { username: "a" },
+      image_versions2: { candidates: [{ url: "data:image/png;base64,xx" }] },
+    },
+    "ABC",
+  );
+  assert.equal(metadata.image, null);
+  assert.equal(metadata.imageCount, 0);
+});
+
+console.log("");
+console.log("bahamut-session");
+let bahamutSessionAsyncCases;
+{
+  // config 在 require 時讀 env，所以要換 env 就得重新 require 兩個模組
+  const freshSession = (env) => {
+    for (const key of ["BAHA_USER_ID", "BAHA_PASSWORD"]) {
+      if (env[key] === undefined) delete process.env[key];
+      else process.env[key] = env[key];
+    }
+    delete require.cache[require.resolve("../src/config")];
+    delete require.cache[require.resolve("../src/bahamut-session")];
+    return require("../src/bahamut-session");
+  };
+  const loginResponse = (setCookies, body = "{}") => ({
+    status: 200,
+    headers: { getSetCookie: () => setCookies },
+    text: async () => body,
+  });
+
+  it("pickSessionCookies needs both BAHAENUR and BAHARUNE", () => {
+    const { pickSessionCookies } = freshSession({});
+    assert.deepEqual(
+      pickSessionCookies([
+        "BAHAENUR=a; Path=/",
+        "BAHARUNE=b; domain=.gamer.com.tw",
+        "ckAPP_VCODE=deleted",
+      ]),
+      { BAHAENUR: "a", BAHARUNE: "b" },
+    );
+    assert.equal(pickSessionCookies(["BAHAENUR=a", "BAHAENUR=c"]), null);
+    assert.equal(pickSessionCookies(["BAHAENUR=deleted", "BAHARUNE=b"]), null);
+  });
+
+  it("toProbeCookies scopes to .gamer.com.tw so forum. and m. both get them", () => {
+    const { toProbeCookies } = freshSession({});
+    assert.deepEqual(toProbeCookies({ BAHAENUR: "a" }), [
+      { name: "BAHAENUR", value: "a", domain: ".gamer.com.tw", path: "/" },
+    ]);
+    assert.equal(toProbeCookies(null), null);
+  });
+
+  const origFetch = global.fetch;
+  const withFetch = async (impl, fn) => {
+    global.fetch = impl;
+    try {
+      await fn();
+    } finally {
+      global.fetch = origFetch;
+    }
+  };
+
+  const asyncCases = [
+    [
+      "unconfigured → null without touching the network",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({});
+        await withFetch(
+          async () => {
+            throw new Error("must not fetch");
+          },
+          async () => {
+            assert.equal(await getBahamutSessionCookies(), null);
+          },
+        );
+      },
+    ],
+    [
+      "logs in once, caches, sends the app vcode cookie",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({
+          BAHA_USER_ID: "u",
+          BAHA_PASSWORD: "p",
+        });
+        const calls = [];
+        await withFetch(
+          async (url, init) => {
+            calls.push({ url, init });
+            return loginResponse(["BAHAENUR=a; Path=/", "BAHARUNE=b; Path=/"]);
+          },
+          async () => {
+            const [first, second] = await Promise.all([
+              getBahamutSessionCookies(),
+              getBahamutSessionCookies(),
+            ]);
+            assert.deepEqual(first, { BAHAENUR: "a", BAHARUNE: "b" });
+            assert.equal(second, first);
+            assert.deepEqual(await getBahamutSessionCookies(), first);
+            // 剛登入過的 force 不重登（帳號沒資格時別每個連結都撞登入 API）
+            assert.equal(
+              await getBahamutSessionCookies({ force: true }),
+              first,
+            );
+          },
+        );
+        assert.equal(calls.length, 1);
+        assert.match(
+          calls[0].url,
+          /api\.gamer\.com\.tw\/mobile_app\/user\/v3\/do_login\.php/,
+        );
+        assert.equal(calls[0].init.headers.cookie, "ckAPP_VCODE=9487");
+        assert.equal(calls[0].init.body.get("uid"), "u");
+      },
+    ],
+    [
+      "bad password → null, then cooldown stops retry storms",
+      async () => {
+        const { getBahamutSessionCookies } = freshSession({
+          BAHA_USER_ID: "u",
+          BAHA_PASSWORD: "bad",
+        });
+        let calls = 0;
+        const origWarn = console.warn;
+        console.warn = () => {};
+        try {
+          await withFetch(
+            async () => {
+              calls += 1;
+              return loginResponse(
+                ["ckAPP_VCODE=deleted"],
+                '{"code":0,"message":"帳號、密碼或驗證碼錯誤！"}',
+              );
+            },
+            async () => {
+              assert.equal(await getBahamutSessionCookies(), null);
+              assert.equal(await getBahamutSessionCookies(), null);
+            },
+          );
+        } finally {
+          console.warn = origWarn;
+        }
+        assert.equal(calls, 1);
+      },
+    ],
+  ];
+  bahamutSessionAsyncCases = { asyncCases, reset: () => freshSession({}) };
+}
+
+// --- ptt 純 fetch 快路徑 ---
+{
+  const {
+    parsePttHtml,
+    normalizePttMetadata,
+    isPttArticleUrl,
+  } = require("../src/ptt-fetch");
+
+  // 真實 PTT 文章頁的骨架（只留解析會碰到的部分）。
+  const buildPttHtml = ({ og = true, push = true, signature = true } = {}) =>
+    [
+      "<html><head>",
+      "<title>看板 C_Chat 文章列表 - 批踢踢實業坊</title>",
+      og ? '<meta property="og:title" content="[閒聊] 測試標題" />' : "",
+      og ? '<meta property="og:description" content="og 的摘要" />' : "",
+      "</head><body>",
+      '<div id="main-content" class="bbs-screen bbs-content">',
+      // metaline 的四行（作者/看板/標題/時間）之間不能有空行——真實頁面的
+      // innerText 也是連續四行，切標頭的 regex 靠這個貼齊。
+      '<div class="article-metaline"><span class="article-meta-tag">作者</span><span class="article-meta-value">tester (測試者)</span></div>',
+      '<div class="article-metaline-right"><span class="article-meta-tag">看板</span><span class="article-meta-value">C_Chat</span></div>',
+      '<div class="article-metaline"><span class="article-meta-tag">標題</span><span class="article-meta-value">[閒聊] 測試標題</span></div>',
+      '<div class="article-metaline"><span class="article-meta-tag">時間</span><span class="article-meta-value">Mon Sep 15 12:00:00 2026</span></div>',
+      "內文第一行<br>圖 https://i.urusai.cc/abc.jpg<br>",
+      signature ? "--<br>※ 發信站: 批踢踢實業坊(ptt.cc)<br>" : "",
+      push
+        ? '<div class="push"><span class="push-tag">推 </span><span class="push-userid">someone</span><span class="push-content">: 推文不該進預覽</span></div>'
+        : "",
+      "</div></body></html>",
+    ].join("");
+
+  it("parsePttHtml 取到 作者 / 標題 / 圖", () => {
+    const meta = parsePttHtml(buildPttHtml());
+    assert.equal(meta.author, "tester (測試者)");
+    assert.equal(meta.title, "[閒聊] 測試標題");
+    assert.equal(meta.image, "https://i.urusai.cc/abc.jpg");
+  });
+  it("parsePttHtml description 以 og:description 優先", () => {
+    assert.equal(parsePttHtml(buildPttHtml()).description, "og 的摘要");
+  });
+  it("parsePttHtml 沒有 og 時退回內文，且不含 metaline 標頭", () => {
+    const meta = parsePttHtml(buildPttHtml({ og: false }));
+    assert.ok(meta.description.includes("內文第一行"));
+    assert.ok(!meta.description.includes("作者"));
+    assert.ok(!meta.description.includes("看板"));
+    // 標題那行沒了 og 就只能從 .article-meta-value 來
+    assert.equal(meta.title, "[閒聊] 測試標題");
+  });
+  it("parsePttHtml 切掉簽名檔與推文", () => {
+    const withBoth = parsePttHtml(buildPttHtml({ og: false }));
+    assert.ok(!withBoth.description.includes("發信站"));
+    assert.ok(!withBoth.description.includes("推文不該進預覽"));
+    // 沒有 `--` 簽名檔的文章，推文一樣要被結構性地擋掉
+    const noSignature = parsePttHtml(
+      buildPttHtml({ og: false, signature: false }),
+    );
+    assert.ok(!noSignature.description.includes("推文不該進預覽"));
+  });
+  it("normalizePttMetadata 依 probe 規則裁切（author 壓成一行）", () => {
+    const meta = normalizePttMetadata({
+      title: "t".repeat(300),
+      description: "d",
+      author: "a\n  b",
+      image: null,
+    });
+    assert.equal(meta.title.length, 256);
+    assert.ok(meta.title.endsWith("…"));
+    assert.equal(meta.author, "a b");
+  });
+  it("isPttArticleUrl 只認文章頁", () => {
+    assert.equal(
+      isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/M.1789352998.A.DA0.html"),
+      true,
+    );
+    // 年齡牆的落點、看板列表、別的站都不是文章頁 → 交回 probe
+    assert.equal(isPttArticleUrl("https://www.ptt.cc/ask/over18"), false);
+    assert.equal(
+      isPttArticleUrl("https://www.ptt.cc/bbs/C_Chat/index.html"),
+      false,
+    );
+    assert.equal(
+      isPttArticleUrl("https://example.com/bbs/X/M.1.A.2.html"),
+      false,
+    );
+  });
+}
+
+// --- html-text（PTT / 巴哈快路徑共用的 innerText 近似）---
+{
+  const {
+    htmlToText,
+    extractElementHtml,
+    extractElementText,
+    trimText,
+  } = require("../src/html-text");
+
+  it("htmlToText：<br> 換行，區塊邊界只換一行", () => {
+    // </div><div> 相鄰在瀏覽器裡是一行，不是兩行
+    assert.equal(htmlToText("<div>a</div><div>b</div>").trim(), "a\nb");
+    // <br> 之後再開一個區塊 → 真的空一行（巴哈內文最常見的排版）
+    assert.equal(htmlToText("a<br><div>b</div>").trim(), "a\n\nb");
+    // 行內元素不換行
+    assert.equal(htmlToText('<div>a<a href="#">b</a>c</div>').trim(), "abc");
+  });
+  it("htmlToText：只有 &nbsp; 的排版行整行丟掉", () => {
+    // 刻意與瀏覽器不同：innerText 會把 nbsp 當成不可收合的空白，留下一行空白。
+    // 那種行在 embed 裡只是雜訊，而且會逃過 trimText 的空行收斂，所以直接丟掉。
+    assert.equal(
+      htmlToText("<div>a</div><div>&nbsp;</div><div>b</div>").trim(),
+      "a\nb",
+    );
+  });
+  it("htmlToText：script / style 不進內文", () => {
+    assert.equal(
+      htmlToText(
+        "<div>a</div><script>var x=1;</script><style>.b{}</style>",
+      ).trim(),
+      "a",
+    );
+  });
+  it("extractElementHtml 認得巢狀同名標籤", () => {
+    const html =
+      '<div class="wrap"><div class="inner">x</div>y</div><div>z</div>';
+    // 非貪婪 regex 會停在第一個 </div>，只拿到 <div class="inner">x
+    assert.equal(
+      extractElementHtml(html, "wrap"),
+      '<div class="inner">x</div>y',
+    );
+    assert.equal(extractElementText(html, "wrap"), "x\ny");
+    assert.equal(extractElementHtml(html, "nope"), null);
+  });
+  it("trimText 與 probe 同規則", () => {
+    assert.equal(trimText("  a\r\n\n\n\nb  ", 100), "a\n\nb");
+    assert.equal(trimText("x".repeat(300), 256).length, 256);
+    assert.equal(trimText("", 10), null);
+    assert.equal(trimText(null, 10), null);
+  });
+}
+
+// --- 巴哈純 fetch 快路徑 ---
+{
+  const {
+    parseBahamutHtml,
+    normalizeBahamutMetadata,
+    stripSiteSuffix,
+    isBahamutHost,
+  } = require("../src/bahamut-fetch");
+
+  const buildBahamutHtml = ({
+    body,
+    ogImage = "https://p2.bahamut.com.tw/x.PNG",
+  } = {}) =>
+    [
+      "<html><head>",
+      "<title>【閒聊】測試標題 @測試板 哈啦板 - 巴哈姆特</title>",
+      '<meta property="og:title" content="【閒聊】測試標題 @測試板 哈啦板 - 巴哈姆特">',
+      '<meta property="og:description" content="被壓成一行的摘要">',
+      ogImage ? `<meta property="og:image" content="${ogImage}">` : "",
+      "</head><body>",
+      '<div class="c-post__header__author">',
+      '<a href="//home.gamer.com.tw/tester" class="username">暱稱</a>',
+      '<a href="//home.gamer.com.tw/tester" class="userid">tester</a>',
+      '<div class="userdata">GP 12 BP 34</div>',
+      "</div>",
+      '<div class="c-article__content">',
+      body ||
+        [
+          "<div>第一行</div>",
+          "<div>第二行</div>",
+          '<img data-src="https://truth.bahamut.com.tw/a.JPG">',
+          '<img src="https://i2.bahamut.com.tw/emotion/e1.gif">',
+          '<img src="https://avatar2.bahamut.com.tw/avatar/tester.png">',
+        ].join(""),
+      "</div>",
+      "</body></html>",
+    ].join("");
+
+  it("stripSiteSuffix 只砍站名後綴", () => {
+    assert.equal(
+      stripSiteSuffix("【閒聊】標題 @測試板 哈啦板 - 巴哈姆特"),
+      "【閒聊】標題",
+    );
+    // 沒有站名後綴的「@某某」結尾標題不能被誤砍
+    assert.equal(stripSiteSuffix("致敬 @某某"), "致敬 @某某");
+    assert.equal(stripSiteSuffix(null), null);
+  });
+  it("parseBahamutHtml 取到 標題 / 作者 / 內文分行", () => {
+    const meta = parseBahamutHtml(buildBahamutHtml());
+    assert.equal(meta.title, "【閒聊】測試標題");
+    assert.equal(meta.author, "暱稱 (tester)");
+    // og:description 會把內文壓平，文章自己的分行優先（與 probe 同序）
+    assert.equal(meta.description.trim(), "第一行\n第二行");
+    assert.equal(meta.restricted, false);
+  });
+  it("parseBahamutHtml 濾掉表情符號與頭像，留文章的圖", () => {
+    const meta = parseBahamutHtml(buildBahamutHtml());
+    assert.deepEqual(meta.images, ["https://truth.bahamut.com.tw/a.JPG"]);
+    // 站方給的 og:image 仍在 image（是否改用文章圖由 withArticleMedia 決定）
+    assert.equal(meta.image, "https://p2.bahamut.com.tw/x.PNG");
+  });
+  it("parseBahamutHtml 把 YouTube 嵌入轉成 watch 網址（去重）", () => {
+    const meta = parseBahamutHtml(
+      buildBahamutHtml({
+        body:
+          '<div>看這個</div><iframe src="https://www.youtube.com/embed/sbC8x8WwZ58"></iframe>' +
+          '<iframe src="https://www.youtube-nocookie.com/embed/sbC8x8WwZ58"></iframe>',
+      }),
+    );
+    assert.deepEqual(meta.videoUrls, [
+      "https://www.youtube.com/watch?v=sbC8x8WwZ58",
+    ]);
+  });
+  it("parseBahamutHtml 丟掉推文佔位（瀏覽器會換成 iframe 的那塊）", () => {
+    const meta = parseBahamutHtml(
+      buildBahamutHtml({
+        body:
+          '<blockquote class="twitter-tweet"><a href="https://twitter.com/a/status/1">https://twitter.com/a/status/1</a></blockquote>' +
+          "<div>內文</div>",
+      }),
+    );
+    assert.equal(meta.description.trim(), "內文");
+  });
+  it("parseBahamutHtml 認出兒少保護牆", () => {
+    const walled =
+      "<html><head><title>兒少保護警示 - 巴哈姆特</title></head>" +
+      "<body><div>您將進入的頁面，有不適合兒少瀏覽的內容，如要閱覽請先登入</div></body></html>";
+    assert.equal(parseBahamutHtml(walled).restricted, true);
+  });
+  it("normalizeBahamutMetadata 依 probe 規則裁切", () => {
+    const meta = normalizeBahamutMetadata({
+      title: "t".repeat(300),
+      description: "d",
+      author: "暱稱\n (tester)",
+      image: null,
+      images: [],
+      videoUrls: [],
+    });
+    assert.equal(meta.title.length, 256);
+    assert.equal(meta.author, "暱稱 (tester)");
+  });
+  it("isBahamutHost 只認 gamer 的兩個子網域", () => {
+    assert.equal(isBahamutHost("https://forum.gamer.com.tw/C.php?bsn=1"), true);
+    assert.equal(
+      isBahamutHost("https://m.gamer.com.tw/forum/C.php?bsn=1"),
+      true,
+    );
+    assert.equal(isBahamutHost("https://example.com/C.php"), false);
+    assert.equal(isBahamutHost("not a url"), false);
+  });
+}
+
+// `it` 是同步的；需要 await 的案例收在這裡最後跑
+async function itAsync(name, fn) {
+  try {
+    await fn();
+    pass++;
+    console.log(`  ✓ ${name}`);
+  } catch (err) {
+    fail++;
+    console.error(`  ✗ ${name}`);
+    console.error(`    ${err.message}`);
+  }
+}
+
+// OG recovery race：facebed 慢、facebook.com 先回來；登入牆（無 og:url）要被擋掉
+const { tryRecoverEmbedFromUrls } = require("../src/og-fallback");
+function withMockFetch(routes, fn) {
+  const realFetch = global.fetch;
+  const seen = [];
+  global.fetch = (url, init) => {
+    seen.push({ url, ua: init.headers["User-Agent"] });
+    const { delayMs = 0, html } = routes[url];
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          resolve(
+            new Response(html, { headers: { "content-type": "text/html" } }),
+          ),
+        delayMs,
+      );
+      init.signal.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("This operation was aborted"));
+      });
+    });
+  };
+  return fn(seen).finally(() => {
+    global.fetch = realFetch;
+  });
+}
+const POST_HTML = `<head><meta property="og:title" content="貼文" /><meta property="og:url" content="https://www.facebook.com/p/1" /></head>`;
+const WALL_HTML = `<head><meta property="og:title" content="登入或註冊即可查看" /></head>`;
+const ogRaceCases = [
+  [
+    "og race: faster candidate wins, UA passed per candidate",
+    () =>
+      withMockFetch(
+        {
+          "https://slow.example/p": { delayMs: 300, html: POST_HTML },
+          "https://fast.example/p": { delayMs: 10, html: POST_HTML },
+        },
+        async (seen) => {
+          const r = await tryRecoverEmbedFromUrls(
+            [
+              "https://slow.example/p",
+              { url: "https://fast.example/p", userAgent: "crawler/1" },
+            ],
+            { race: true, timeoutMs: 1000 },
+          );
+          assert.equal(r.source, "https://fast.example/p");
+          assert.equal(seen[1].ua, "crawler/1");
+        },
+      ),
+  ],
+  [
+    "og race: requireOgUrl rejects login wall, falls to other candidate",
+    () =>
+      withMockFetch(
+        {
+          "https://wall.example/p": { delayMs: 10, html: WALL_HTML },
+          "https://fixer.example/p": { delayMs: 50, html: POST_HTML },
+        },
+        async () => {
+          const r = await tryRecoverEmbedFromUrls(
+            [
+              "https://fixer.example/p",
+              { url: "https://wall.example/p", requireOgUrl: true },
+            ],
+            { race: true, timeoutMs: 1000 },
+          );
+          assert.equal(r.source, "https://fixer.example/p");
+        },
+      ),
+  ],
+  [
+    "og race: all candidates time out → null",
+    () =>
+      withMockFetch(
+        { "https://slow.example/p": { delayMs: 500, html: POST_HTML } },
+        async () => {
+          const r = await tryRecoverEmbedFromUrls(["https://slow.example/p"], {
+            race: true,
+            timeoutMs: 50,
+          });
+          assert.equal(r, null);
+        },
+      ),
+  ],
+];
+
+(async () => {
+  for (const [name, fn] of memoryAsyncCases) {
+    await itAsync(name, fn);
+  }
+  for (const [name, fn] of ogRaceCases) {
+    await itAsync(name, fn);
+  }
+  for (const [name, fn] of bahamutSessionAsyncCases.asyncCases) {
+    await itAsync(name, fn);
+  }
+  bahamutSessionAsyncCases.reset();
+
+  await itAsync("describeStoryImages captions images, caps count, survives failures", async () => {
+    const { describeStoryImages } = require("../src/story-images");
+    const items = [
+      { preview: "看這個", images: [{ url: "a" }] },
+      { preview: "", images: [{ url: "b" }] },
+      { preview: "", images: [{ url: "c" }] },
+      { preview: "純文字", images: [] },
+    ];
+    const seenTurns = [];
+    const n = await describeStoryImages(items, {
+      enabled: true,
+      max: 2,
+      fetchImage: async (img) => (img.url === "b" ? null : { ...img, dataUrl: "data:x" }),
+      callVision: async (turns, persona, maxTokens, opts) => {
+        seenTurns.push(turns[0].content);
+        assert.equal(opts.images.length, 1);
+        return { ok: true, text: "  一隻貓\n在鍵盤上 " };
+      },
+    });
+    assert.equal(n, 1);
+    assert.equal(items[0].imageCaption, "一隻貓 在鍵盤上");
+    assert.equal(items[1].imageCaption, undefined); // download failed
+    assert.equal(items[2].imageCaption, undefined); // over the cap
+    assert.match(seenTurns[0], /貼圖的人同時說：「看這個」/);
+    assert.equal(await describeStoryImages(items, { enabled: false }), 0);
+  });
+
+  await itAsync("guild welcome: picks a postable channel and never throws", async () => {
+    const { ChannelType } = require("discord.js");
+    const {
+      pickWelcomeChannel,
+      buildWelcomeMessage,
+      sendGuildWelcome,
+    } = require("../src/guild-welcome");
+    const me = { id: "bot" };
+    const ch = (id, rawPosition, canSend, extra = {}) => ({
+      id,
+      rawPosition,
+      type: ChannelType.GuildText,
+      permissionsFor: () => ({ has: () => canSend }),
+      ...extra,
+    });
+    const voice = { ...ch("v", 0, true), type: ChannelType.GuildVoice };
+    const guildOf = (systemChannel, list) => ({
+      id: "g",
+      name: "g",
+      members: { me },
+      systemChannel,
+      channels: { cache: new Map(list.map((c) => [c.id, c])) },
+    });
+
+    const sys = ch("sys", 5, true);
+    assert.equal(pickWelcomeChannel(guildOf(sys, [ch("a", 0, true), sys])).id, "sys");
+    // Locked system channel → top-most text channel we can speak in (not voice).
+    const lockedSys = ch("sys", 0, false);
+    const g = guildOf(lockedSys, [lockedSys, voice, ch("b", 3, true), ch("a", 2, true)]);
+    assert.equal(pickWelcomeChannel(g).id, "a");
+    assert.equal(pickWelcomeChannel(guildOf(null, [ch("x", 0, false)])), null);
+    assert.equal(pickWelcomeChannel({ members: {} }), null);
+
+    const msg = buildWelcomeMessage({ dailyLimit: 7 });
+    assert.match(msg, /每天免費 7 次/);
+    assert.match(msg, /@我問/);
+    assert.ok(msg.length < 2000, "fits in one Discord message");
+
+    const sent = [];
+    const ok = ch("ok", 0, true, { send: async (p) => sent.push(p.content) });
+    assert.equal(await sendGuildWelcome(guildOf(null, [ok])), true);
+    assert.equal(sent.length, 1);
+    const boom = ch("boom", 0, true, { send: async () => { throw new Error("403"); } });
+    assert.equal(await sendGuildWelcome(guildOf(null, [boom])), false);
+    assert.equal(await sendGuildWelcome(guildOf(null, [])), false);
+  });
+
+  console.log("");
+  console.log(`Result: ${pass} passed, ${fail} failed`);
+  process.exit(fail > 0 ? 1 : 0);
+})();

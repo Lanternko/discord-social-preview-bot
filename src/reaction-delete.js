@@ -1,4 +1,5 @@
 const { PermissionsBitField } = require("discord.js");
+const { BOT_OWNER_IDS } = require("./config");
 const { describeMessageLocation } = require("./discord-io");
 
 // 在西寶自己發的訊息上按 🗑️ 反應即可請它刪掉那則（連結傳錯時清掉誤發的預覽）。
@@ -26,9 +27,12 @@ async function getTriggerAuthorId(botMessage) {
 }
 
 // 允許刪除的條件（預設保守，避免路人亂刪）：
+//   0. bot owner（BOT_OWNER_IDS）——跨伺服器最高權限，原訊息刪了也能清孤兒預覽
 //   1. 貼連結的本人（用 reply reference 認出）
 //   2. 該頻道有「管理訊息」權限的管理員（清理誤發／別人觸發的預覽）
 async function isAuthorizedToDelete(botMessage, user) {
+  if (BOT_OWNER_IDS.includes(user.id)) return true;
+
   const triggerAuthorId = await getTriggerAuthorId(botMessage);
   if (triggerAuthorId && triggerAuthorId === user.id) return true;
 

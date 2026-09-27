@@ -1,5 +1,12 @@
 const { pickRandom } = require("./utils");
-const { generateAIReply } = require("./ai/chain");
+const { generateAIReply, isQuotaReply } = require("./ai/chain");
+const { detectSkill, buildSkillContext } = require("./ai/skills");
+const { extractSticker } = require("./ai/sticker-resolver");
+const { withTyping } = require("./typing");
+const {
+  buildStickerCatalog,
+  buildStickerSendPayload,
+} = require("./stickers");
 
 const FORTUNE_RESULTS = [
   { label: "大大吉", weight: 1 },
@@ -41,12 +48,59 @@ function drawFortune() {
   return FORTUNE_RESULTS.at(-1).label;
 }
 
+// Said when 西寶 reached for a sticker that isn't in her catalog — she picked a
+// name the model invented, so there's nothing to post and nothing left to say.
+const STICKER_MISS_REPLIES = [
+  "欸…我剛剛想丟一張貼圖，結果找不到…",
+  "啊…那張貼圖我沒有啦…",
+  "我本來想貼圖的…算了…",
+];
+
 const FALLBACK_GREETINGS = [
   "哎呀…突然叫我幹嘛…",
   "有、有什麼事嗎…？///",
   "嗯…？叫我了嗎…",
   "…在的在的…怎麼了嗎？",
 ];
+
+// Send 西寶's AI reply, attaching the sticker she asked for (if any).
+//
+// The sticker is best-effort: a guild sticker can be deleted between catalog
+// build and send, and a library file can go missing on disk — both 400 the
+// whole message. Losing the sticker is fine, losing the reply is not, so a
+// failed send is retried once as text-only.
+async function sendAIReply(message, aiReply, stickerCatalog) {
+  const { text, sticker } = extractSticker(aiReply, stickerCatalog);
+  const base = { allowedMentions: { repliedUser: false } };
+  // Used when there's no sticker to send, and again when sending one failed.
+  // A reply that was ONLY a sticker token leaves no text behind — say a line
+  // rather than posting silence or leaking the raw "[貼圖:…]" token.
+  const textOnly = text
+    ? { ...base, content: text }
+    : { ...base, content: pickRandom(STICKER_MISS_REPLIES) };
+
+  const stickerPayload = buildStickerSendPayload(sticker);
+  if (!stickerPayload) {
+    await message.reply(textOnly);
+    return;
+  }
+
+  console.log(`[sticker] send kind=${sticker.kind} name=${sticker.name}`);
+  try {
+    // A sticker-only reply carries no content — that's the "一張圖代替一句話"
+    // case, and Discord accepts a message with stickers/files but no text.
+    await message.reply({
+      ...base,
+      ...(text ? { content: text } : {}),
+      ...stickerPayload,
+    });
+  } catch (err) {
+    console.warn(
+      `[sticker] send failed kind=${sticker.kind} name=${sticker.name}: ${err.message}`,
+    );
+    await message.reply(textOnly);
+  }
+}
 
 async function handleMention(message, client) {
   const text = message.content
@@ -73,13 +127,42 @@ async function handleMention(message, client) {
     return;
   }
 
-  const aiReply = await generateAIReply(message, text);
+  const stickerCatalog = await buildStickerCatalog(message.guild);
+
+  // Skill routing: a request shaped like one of the tuned prompt packs (講故事,
+  // …) gets that pack folded into THIS call — no extra round trip. On any miss
+  // the skill resolves to null and she answers as usual.
+  const skill = detectSkill(text);
+  const skillCtx = await buildSkillContext(skill, { message, text });
+  if (skillCtx) {
+    console.log(`[skill] hit id=${skill.id} user=${message.author.id}`);
+  }
+
+  const aiReply = await withTyping(message.channel, () => generateAIReply(message, text, {
+    stickerCatalog,
+    ...(skillCtx
+      ? {
+          personaSuffix: skillCtx.personaSuffix,
+          minTokens: skillCtx.minTokens,
+          minReplyChars: skillCtx.minReplyChars,
+          extraUserContext: skillCtx.extraUserContext || "",
+          providerOptions: skillCtx.providerOptions || {},
+        }
+      : {}),
+  }));
   if (aiReply) {
-    console.log(`[ai] reply len=${aiReply.length} user=${message.author.id}`);
-    await message.reply({
-      content: aiReply,
-      allowedMentions: { repliedUser: false },
-    });
+    // A skill may normalise its own output format (the story pack forces the
+    // first line into a `## ` heading). Never let that throw away the reply.
+    let finalReply = aiReply;
+    if (skillCtx?.postProcess && !isQuotaReply(aiReply)) {
+      try {
+        finalReply = skillCtx.postProcess(aiReply) || aiReply;
+      } catch (err) {
+        console.warn(`[skill] postProcess failed id=${skill.id}: ${err.message}`);
+      }
+    }
+    console.log(`[ai] reply len=${finalReply.length} user=${message.author.id}`);
+    await sendAIReply(message, finalReply, stickerCatalog);
     return;
   }
 
@@ -102,6 +185,8 @@ function isMentioningBot(message, client) {
 }
 
 module.exports = {
+  sendAIReply,
+  STICKER_MISS_REPLIES,
   FORTUNE_RESULTS,
   FORTUNE_COMMENTS,
   FALLBACK_GREETINGS,

@@ -15,7 +15,9 @@ let intervalTimer = null;
 
 function buildRunChainForGuild(guildId) {
   const tierConfig = getTierConfig(guildId);
-  const { chain } = buildGuildChain(guildId, tierConfig);
+  const { chain } = buildGuildChain(guildId, tierConfig, {}, new Date(), [], {
+    metered: false,
+  });
   if (chain.length === 0) return null;
   return (turns, persona, maxTokens) =>
     runProviderChain(chain, turns, persona, maxTokens);
