@@ -42,6 +42,7 @@
 | `PLAYWRIGHT_GOTO_TIMEOUT_MS` | `8000` | Inside threads-probe |
 | `PLAYWRIGHT_META_WAIT_TIMEOUT_MS` | `1500` | Inside threads-probe |
 | `PLAYWRIGHT_MEDIA_WAIT_TIMEOUT_MS` | `2500` | 第一次讀不到媒體時，最多再輪詢多久等 `<video>` 掛上。Threads 的 video 元素比 DOMContentLoaded 晚 ~0.3–1.5s，且**不吐 og:video**，DOM 是唯一來源。純圖貼文最多多花這麼久 |
+| `NATIVE_EMBED_WAIT_MS` | `4000` | X 純文字／單圖貼文先等 Discord 原生 embed 這麼久（每秒重抓），到齊就不發西寶的預覽。`0` 關閉（一律發） |
 | `R18_SPOILER_ENABLED` | `true` | R18 貼文（X `possibly_sensitive`、pixiv `xRestrict`）改用西寶自製卡＋`SPOILER_` 打碼附件。設 `false` 全部走 fixer 連結（圖不打碼） |
 | `PIXIV_MAX_IMAGES` | `4` | 一則 pixiv 作品最多顯示幾頁（上限 10）。被截掉的以「還有 N 張」提示 |
 | `TWEET_MAX_IMAGES` | `4` | 一則 X 貼文最多顯示幾張（Twitter 單則上限就是 4），打碼卡與多圖輪播共用。被截掉的以「還有 N 張」提示 |

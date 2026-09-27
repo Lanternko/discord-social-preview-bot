@@ -37,6 +37,7 @@ async function lookupTweet(statusId) {
     if (!tweet) return null;
     const media = tweet.media?.all || [];
     return {
+      statusId,
       hasMedia: media.length > 0,
       sensitive: tweet.possibly_sensitive === true,
       // Photos only: a spoilered video would have to be downloaded whole to

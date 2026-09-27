@@ -91,11 +91,22 @@ async function buildTwitterPayload(url) {
   const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
   return {
     ...payload,
+    nativeEmbedCheck: buildTwitterNativeCheck(meta),
     fallbackContents: [secondaryUrl],
     viewerValidation: "twitter",
     viewerRequiresMedia: meta ? meta.hasMedia : null,
     recoverUrls: [secondaryUrl, ...payload.recoverUrls],
   };
+}
+
+// Text-only and single-image posts unfurl fine natively (full text, full-size
+// image), so the bot only steps in when Discord's own embed doesn't show up.
+// Video stays with the fixer: the native card is a still cover, never a player.
+// An unknown post (lookup miss) keeps the old always-post behaviour.
+function buildTwitterNativeCheck(meta) {
+  if (!meta || meta.sensitive || meta.hasNonPhotoMedia) return null;
+  if (meta.photoCount > 1) return null;
+  return { statusId: meta.statusId, requireImage: meta.photoCount === 1 };
 }
 
 // A sensitive post never goes out as a fixer link: the viewers unfurl the

@@ -10,6 +10,7 @@ const {
 } = require("./config");
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
 const { buildPreviewPayloads } = require("./preview");
+const { nativeEmbedsCover } = require("./native-embed");
 const {
   inFlightReplies,
   recentReplies,
@@ -218,6 +219,10 @@ client.on("messageCreate", async (message) => {
 
   try {
     const payloads = await buildPreviewPayloads(urls);
+    if (await nativeEmbedsCover(message, payloads)) {
+      console.log(`[native] discord embed ok, skip ${urls.join(" ")}`);
+      return;
+    }
     const sent = await sendPreviews(message, payloads);
     if (!sent) return;
 
