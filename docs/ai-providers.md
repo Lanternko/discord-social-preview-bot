@@ -118,6 +118,10 @@ DeepSeek 2026-08-21 開的那個實驗性 endpoint `deepseek-v4-flash-vision-exp
 
 **`empty` is intentional non-cooldown.** Safety blocks and empty model output are about *what was asked*, not about *the provider being unhealthy*. Cooling on `empty` would punish the next innocent caller and mask provider availability. Asserted by `scripts/smoke-ai-circuit.js` — see [scripts.md](scripts.md).
 
+**單次 `timeout` 只記一次 strike，不冷卻**（2026-09-27）。聊天的逾時幾乎都是「這一則想太久」（flash 在故事／說明題上燒 2000～4000+ reasoning tokens），不是 endpoint 掛了；但 owner flash 的 label 是全 guild 共用，一次逾時冷卻 60 s = 下一分鐘所有伺服器都被送去 fallback。現在同一個 key **連續兩次**逾時（中間沒有成功、相隔 ≤ `TIMEOUT_STRIKE_WINDOW_MS` 5 分鐘）才冷卻 60 s；log 上第一次會是 `kind=timeout cooldownMs=0`。
+
+**等待時的「正在輸入」**：[src/typing.js](../src/typing.js) `withTyping` 在 `generateAIReply` 期間每 8 s 重送一次 `sendTyping`（Discord 的提示一次只撐 ~10 s）。失敗不影響回覆。技能可以回傳 `providerOptions`（mention.js 原樣傳給 `generateAIReply`）：故事拉長 DeepSeek 逾時到 60 s、說明題用 `reasoningEffort: "low"`。
+
 ## Observability
 
 Log prefix: `[ai]`.

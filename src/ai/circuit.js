@@ -19,6 +19,21 @@ function getCooldownMs(failure) {
   }
 }
 
+// One timeout is not an outage. Chat providers time out because a single
+// request overthought (flash can spend 4000+ reasoning tokens on a story at
+// ~190 tok/s), not because the endpoint is down — yet a 60 s cooldown on the
+// owner's flash label benched it for EVERY guild and shipped the next minute of
+// replies to the fallback. So the first timeout is only a strike; a second one
+// in a row (no success in between, within TIMEOUT_STRIKE_WINDOW_MS) cools down.
+const TIMEOUT_STRIKE_WINDOW_MS = 5 * 60_000;
+
+function isTimeoutStrikeOnly(prev, failure, now) {
+  if (failure.kind !== "timeout") return false;
+  const lastWasTimeout = prev?.lastFailureKind === "timeout"
+    && now - prev.lastFailureAt <= TIMEOUT_STRIKE_WINDOW_MS;
+  return !lastWasTimeout;
+}
+
 function isProviderAvailable(label, now = Date.now()) {
   const state = providerCircuitState.get(label);
   if (!state) return true;
@@ -35,13 +50,14 @@ function recordProviderFailure(label, failure, now = Date.now()) {
     return cooldownMs;
   }
   const prev = providerCircuitState.get(label);
+  const strikeOnly = isTimeoutStrikeOnly(prev, failure, now);
   providerCircuitState.set(label, {
-    cooldownUntil: now + cooldownMs,
+    cooldownUntil: strikeOnly ? now : now + cooldownMs,
     lastFailureKind: failure.kind,
     lastFailureAt: now,
     failCount: (prev?.failCount ?? 0) + 1,
   });
-  return cooldownMs;
+  return strikeOnly ? 0 : cooldownMs;
 }
 
 function getCircuitSnapshot(now = Date.now()) {
@@ -60,6 +76,7 @@ function resetCircuitState() {
 
 module.exports = {
   providerCircuitState,
+  TIMEOUT_STRIKE_WINDOW_MS,
   getCooldownMs,
   isProviderAvailable,
   recordProviderSuccess,

@@ -20,6 +20,11 @@ const { buildStoryMaterial } = require("../story-ingredients");
 // 300-char budget — she would be cut off mid-sentence. These are FLOORS, not
 // overrides: a tier already allowing more keeps its own limit.
 const STORY_MIN_TOKENS = 900;
+// A story is the one chat reply that legitimately thinks long: flash spends
+// 2000-4000 reasoning tokens on it (~190 tok/s), so the chat timeout cut it off
+// mid-thought and the fallback wrote a worse story after the user had already
+// waited. The typing indicator covers the wait.
+const STORY_CHAT_DEEPSEEK_TIMEOUT_MS = 60000;
 const STORY_MIN_REPLY_CHARS = 1200;
 
 // Detection is deliberately LOOSE: the mechanical layer only decides whether
@@ -78,10 +83,12 @@ module.exports = {
       minTokens: STORY_MIN_TOKENS,
       minReplyChars: STORY_MIN_REPLY_CHARS,
       postProcess: normalizeStoryOutput,
+      providerOptions: { deepSeek: { timeoutMs: STORY_CHAT_DEEPSEEK_TIMEOUT_MS } },
     };
   },
   STORY_MIN_TOKENS,
   STORY_MIN_REPLY_CHARS,
+  STORY_CHAT_DEEPSEEK_TIMEOUT_MS,
   looksLikeStory,
   normalizeStoryOutput,
 };

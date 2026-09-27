@@ -34,6 +34,10 @@ const CHANGELOG_ENTRIES = 8;
 // Listing commands does not fit 入門's 180-token / 300-char budget. Floors,
 // not overrides — a tier that already allows more keeps its own limit.
 const HELP_MIN_TOKENS = 600;
+// Help answers are looked up, not reasoned out — the facts are all in the
+// block. At default effort flash still spent thousands of reasoning tokens on
+// them and timed out; `low` cut reasoning ~2-3x in testing.
+const HELP_REASONING_EFFORT = "low";
 const HELP_MIN_REPLY_CHARS = 900;
 
 const HELP_KEYWORD_RE = new RegExp(
@@ -161,10 +165,12 @@ module.exports = {
       }),
       minTokens: HELP_MIN_TOKENS,
       minReplyChars: HELP_MIN_REPLY_CHARS,
+      providerOptions: { deepSeek: { reasoningEffort: HELP_REASONING_EFFORT } },
     };
   },
   HELP_MIN_TOKENS,
   HELP_MIN_REPLY_CHARS,
+  HELP_REASONING_EFFORT,
   buildHelpBlock,
   buildGuildStatusBlock,
   readChangelog,

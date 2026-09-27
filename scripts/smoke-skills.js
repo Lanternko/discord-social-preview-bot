@@ -214,6 +214,8 @@ asyncChecks.push([
     assert.ok(ctx.minReplyChars >= 1200, "story needs a reply-char floor");
     assert.equal(typeof ctx.postProcess, "function");
     assert.equal(typeof ctx.extraUserContext, "string");
+    // Stories think long; the chat timeout cut them off mid-thought.
+    assert.ok(ctx.providerOptions.deepSeek.timeoutMs >= 60000, "story needs a longer DeepSeek timeout");
   },
 ]);
 
@@ -482,6 +484,8 @@ asyncChecks.push([
     assert.ok(ctx.personaSuffix.includes("<說明書>"));
     assert.ok(ctx.personaSuffix.includes("/ai-tier"));
     assert.ok(ctx.minTokens >= 600 && ctx.minReplyChars >= 900);
+    // buildSkillContext must hand providerOptions through to mention.js.
+    assert.equal(ctx.providerOptions?.deepSeek?.reasoningEffort, "low");
   },
 ]);
 
