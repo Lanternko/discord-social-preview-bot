@@ -594,6 +594,28 @@ async function main() {
     assert.deepEqual(calls, ["b"]);
   });
 
+  await itAsync("circuitKey isolates entries that share a label (one dead guild key doesn't cool the others)", async () => {
+    resetCircuitState();
+    const deadGuild = {
+      label: "deepseek:m:guild",
+      circuitKey: "deepseek:m:guild:111",
+      call: async () => fail("auth", { status: 401 }),
+    };
+    await runProviderChain([deadGuild], []);
+    assert.equal(isProviderAvailable("deepseek:m:guild:111"), false);
+
+    const calls = [];
+    const liveGuild = {
+      label: "deepseek:m:guild",
+      circuitKey: "deepseek:m:guild:222",
+      call: async () => { calls.push("222"); return ok("from 222"); },
+    };
+    const result = await runProviderChain([liveGuild], []);
+    assert.equal(result.text, "from 222");
+    assert.deepEqual(calls, ["222"]);
+    assert.equal(isProviderAvailable("deepseek:m:guild"), true);
+  });
+
   await itAsync("failure on one provider cascades to next, then returns result", async () => {
     resetCircuitState();
     const chain = [
