@@ -5038,6 +5038,7 @@ const ogRaceCases = [
     const msg = buildWelcomeMessage({ dailyLimit: 7 });
     assert.match(msg, /每天免費 7 次/);
     assert.match(msg, /@我問/);
+    assert.match(msg, /\/ai-chat/);
     assert.ok(msg.length < 2000, "fits in one Discord message");
 
     const sent = [];

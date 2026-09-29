@@ -24,6 +24,7 @@ const { AI_FREE_DAILY_LIMIT, DEEPSEEK_PREMIUM_GUILD_IDS } = require("../../confi
 const { getGuildTier } = require("../../tier-store");
 const { TIER_UI_LABELS } = require("../../tier-config");
 const { getGuildLanguage } = require("../../language-store");
+const { getGuildAiChatMode } = require("../../ai-chat-store");
 const { languageSpec } = require("../../reply-language");
 const { hasGuildApiKey, isGuildKeyUsable } = require("../guild-key-store");
 const { getUsage } = require("../rate-limiter");
@@ -66,6 +67,16 @@ const HELP_KEYWORD_RE = new RegExp(
     "排程",
     "權限",
     "/ai-",
+    // 「怎麼讓你閉嘴」— the answer is /ai-chat, which she can't guess.
+    "閉嘴",
+    "(叫|讓)(你|妳)(安靜|別吵|不要吵)",
+    "關(掉|閉)(你|妳|西寶|聊天|ai)",
+    "(不要|別)(一直|再)?(回|吵|插話|跳出來)",
+    "不想(跟|和|被)(你|妳)",
+    "回覆(你|妳)的?訊息",
+    "(可以|能|怎麼)關(掉|閉)?(嗎|嘛)",
+    "自我介紹",
+    "介紹(一下)?(你|妳)自己",
     "\\bhelp\\b",
     "\\bcommands?\\b",
   ].join("|"),
@@ -123,6 +134,9 @@ function buildGuildStatusBlock(guild) {
     `伺服器：${guild.name}`,
     `AI 方案：${TIER_UI_LABELS[getGuildTier(guild.id)] || "入門"}`,
     `回覆語言：${languageSpec(getGuildLanguage(guild.id)).label}`,
+    getGuildAiChatMode(guild.id) === "direct"
+      ? "聊天觸發（/ai-chat）：關閉——只有直接 @西寶 才會回，回覆西寶的訊息、@everyone 不會"
+      : "聊天觸發（/ai-chat）：開啟——直接 @西寶、回覆西寶的訊息、@everyone 都會叫出西寶",
     describeQuota(guild.id),
     describeSchedules(guild.id, TASK_TYPES),
   ].join("\n");
@@ -131,7 +145,7 @@ function buildGuildStatusBlock(guild) {
 function buildHelpBlock({ knowledge, status, changelog }) {
   return [
     "【說明書模式】",
-    "先自己判斷：他是不是在問「你」——你的功能、指令、額度、金鑰、方案、排程、最近更新了什麼？如果只是聊天裡碰巧講到這些字（「這遊戲的新功能好爛」「我手機更新了」「你能幹嘛啦笨蛋」這種吐槽），就把下面整段當作不存在，照平常聊天回。",
+    "先自己判斷：他是不是在問「你」——你的功能、指令、額度、金鑰、方案、排程、怎麼讓你少插話、最近更新了什麼？或是叫你自我介紹？如果只是聊天裡碰巧講到這些字（「這遊戲的新功能好爛」「我手機更新了」「你能幹嘛啦笨蛋」「閉嘴啦」這種吐槽），就把下面整段當作不存在，照平常聊天回。",
     "",
     "確定是在問你的話：",
     "- 只根據下面的說明書、這個伺服器的現況、最近更新回答。上面沒寫的就老實說不確定，叫他打 `/help` 或問管理員。不准自己編指令、數字、網址或還沒做的功能。",
