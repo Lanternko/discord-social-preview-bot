@@ -23,7 +23,7 @@ const {
   suppressOriginalEmbeds,
   checkAndHandleEmptyEmbeds,
 } = require("./discord-io");
-const { isMentioningBot, handleMention } = require("./mention");
+const { shouldHandleMention, handleMention } = require("./mention");
 const { handleReactionDelete } = require("./reaction-delete");
 const { sendGuildWelcome } = require("./guild-welcome");
 const { loadStickerLibrary } = require("./stickers");
@@ -184,7 +184,7 @@ async function onMessageCreate(message) {
 
   if (shouldIgnoreMessage(message)) return;
 
-  if (isMentioningBot(message, client)) {
+  if (shouldHandleMention(message, client)) {
     // Dedup: messageCreate can fire twice for the same message (Discord
     // gateway reconnects). Without this, two parallel generateAIReply calls
     // race — one may fall through to the hardcoded fallback while the other

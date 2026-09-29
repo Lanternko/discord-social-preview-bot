@@ -1522,6 +1522,66 @@ console.log("language-store");
   });
 }
 
+console.log("ai-chat mode");
+{
+  const {
+    getGuildAiChatMode,
+    setGuildAiChatMode,
+    resetCacheForTests: resetAiChatCache,
+  } = require("../src/ai-chat-store");
+  const { shouldHandleMention, isDirectMention } = require("../src/mention");
+  const BOT = "111";
+  const ROLE = "222";
+  const client = { user: { id: BOT } };
+  // Minimal stand-in for a discord.js Message: `pinged` is what
+  // message.mentions.has(bot) reports (direct, reply ping or @everyone).
+  const fakeMessage = (guildId, content, { pinged = true, roles = [] } = {}) => ({
+    guildId,
+    content,
+    mentions: {
+      has: () => pinged,
+      roles: new Set(roles),
+    },
+    guild: { members: { me: { roles: { botRole: { id: ROLE } } } } },
+  });
+
+  it("defaults to all and round-trips a setting", () => {
+    const gid = "smoke-ai-chat-guild";
+    assert.equal(getGuildAiChatMode(undefined), "all");
+    assert.equal(getGuildAiChatMode(gid), "all");
+    setGuildAiChatMode(gid, "direct");
+    resetAiChatCache();
+    assert.equal(getGuildAiChatMode(gid), "direct");
+    setGuildAiChatMode(gid, "all"); // default = removed from the file
+    resetAiChatCache();
+    assert.equal(getGuildAiChatMode(gid), "all");
+  });
+  it("rejects unknown modes", () => {
+    assert.throws(() => setGuildAiChatMode("g", "mute"), /invalid ai chat mode/);
+  });
+  it("isDirectMention: typed <@bot>, <@!bot> or the bot role only", () => {
+    assert.equal(isDirectMention(fakeMessage("g", `<@${BOT}> 嗨`), client), true);
+    assert.equal(isDirectMention(fakeMessage("g", `hi <@!${BOT}>`), client), true);
+    assert.equal(isDirectMention(fakeMessage("g", `<@&${ROLE}> 嗨`, { roles: [ROLE] }), client), true);
+    // reply ping / @everyone: Discord says "mentioned", the text has no <@bot>
+    assert.equal(isDirectMention(fakeMessage("g", "這篇好好笑"), client), false);
+    assert.equal(isDirectMention(fakeMessage("g", "@everyone 開會"), client), false);
+    assert.equal(isDirectMention(fakeMessage("g", "<@999> 你看"), client), false);
+  });
+  it("shouldHandleMention: all mode takes any ping, direct mode only typed ones", () => {
+    const gid = "smoke-ai-chat-direct";
+    assert.equal(shouldHandleMention(fakeMessage(gid, "回覆預覽"), client), true);
+    setGuildAiChatMode(gid, "direct");
+    assert.equal(shouldHandleMention(fakeMessage(gid, "回覆預覽"), client), false);
+    assert.equal(shouldHandleMention(fakeMessage(gid, `<@${BOT}> 聊天`), client), true);
+    assert.equal(
+      shouldHandleMention(fakeMessage(gid, "沒提到", { pinged: false }), client),
+      false,
+    );
+    setGuildAiChatMode(gid, "all");
+  });
+}
+
 it("TIERS entries carry required fields", () => {
   for (const key of ["brief", "standard", "detailed"]) {
     const t = TIERS[key];
