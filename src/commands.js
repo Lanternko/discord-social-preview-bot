@@ -4,6 +4,11 @@ const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
 const { getGuildLanguage, setGuildLanguage } = require("./language-store");
 const {
+  getGuildAiChatMode,
+  setGuildAiChatMode,
+  isValidAiChatMode,
+} = require("./ai-chat-store");
+const {
   LANGUAGES,
   VALID_LANGUAGES,
   isValidLanguage,
@@ -101,6 +106,28 @@ const LANGUAGE_COMMAND = {
       choices: VALID_LANGUAGES.map((code) => ({
         name: LANGUAGES[code].label,
         value: code,
+      })),
+    },
+  ],
+};
+
+const AI_CHAT_MODE_LABELS = {
+  all: "開啟 — 回覆西寶的訊息、@everyone 也會叫她聊天",
+  direct: "關閉 — 只有直接 @西寶 才會回",
+};
+
+const AI_CHAT_COMMAND = {
+  name: "ai-chat",
+  description: "查看或切換什麼情況會叫出西寶聊天（切換需管理伺服器權限）",
+  options: [
+    {
+      name: "mode",
+      description: "要切換的模式（不填則顯示目前設定）",
+      type: 3, // STRING
+      required: false,
+      choices: Object.entries(AI_CHAT_MODE_LABELS).map(([value, name]) => ({
+        name,
+        value,
       })),
     },
   ],
@@ -281,6 +308,7 @@ async function ensureApplicationCommands(client) {
     DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
     LANGUAGE_COMMAND,
+    AI_CHAT_COMMAND,
     SCHEDULE_COMMAND,
     MEMORY_COMMAND,
     AI_KEY_COMMAND,
@@ -328,6 +356,7 @@ function buildHelpMessage() {
     "- `/memory show`、`forget-me`、`guild`：查看或管理記憶；管理員可用 `forget-user` 刪除指定使用者的記憶",
     "- `/ai-tier`：查看 AI 方案；管理員可切換方案",
     "- `/language`：查看西寶回覆用的語言；管理員可切換（繁體／简体／日本語／English）",
+    "- `/ai-chat`：查看聊天觸發方式；管理員可關閉，關閉後只有直接 `@西寶` 才會回（回覆我的訊息、@everyone 不算）",
     "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
     "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
     "- `/debug-perms`：檢查目前頻道的機器人權限",
@@ -574,6 +603,68 @@ async function handleLanguageCommand(interaction) {
     });
   } catch (err) {
     console.warn(`[language] setGuildLanguage failed: ${err.message}`);
+    await interaction.reply({
+      content: "切換失敗，請稍後再試。",
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+}
+
+// ── /ai-chat handler ──────────────────────────────────────────────────
+async function handleAiChatCommand(interaction) {
+  if (!interaction.inGuild()) {
+    await interaction.reply({
+      content: "這個指令只能在伺服器裡使用。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const mode = interaction.options.getString("mode");
+  const guildId = interaction.guildId;
+
+  if (!mode) {
+    const current = getGuildAiChatMode(guildId);
+    await interaction.reply({
+      content: [
+        `**目前聊天設定：${AI_CHAT_MODE_LABELS[current]}**`,
+        "",
+        "關閉時連結預覽照常運作；直接 `@西寶` 還是會回（聊天、抽籤都算）。",
+        "所有成員都能查看；切換需要「管理伺服器」權限。",
+      ].join("\n"),
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  if (!isValidAiChatMode(mode)) {
+    await interaction.reply({
+      content: `未知的模式：${mode}`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const canManageGuild = interaction.member?.permissions?.has?.(
+    PermissionsBitField.Flags.ManageGuild,
+  );
+  if (!canManageGuild) {
+    await interaction.reply({
+      content: "需要「管理伺服器」權限才能切換聊天設定。",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  try {
+    setGuildAiChatMode(guildId, mode);
+    console.log(`[ai-chat] guild=${guildId} set mode=${mode} by user=${interaction.user.id}`);
+    await interaction.reply({
+      content: `已切換為 **${AI_CHAT_MODE_LABELS[mode]}**。這個設定已儲存，重啟後仍會保留。`,
+      flags: MessageFlags.Ephemeral,
+    });
+  } catch (err) {
+    console.warn(`[ai-chat] setGuildAiChatMode failed: ${err.message}`);
     await interaction.reply({
       content: "切換失敗，請稍後再試。",
       flags: MessageFlags.Ephemeral,
@@ -1096,6 +1187,11 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
+  if (interaction.commandName === AI_CHAT_COMMAND.name) {
+    await handleAiChatCommand(interaction);
+    return;
+  }
+
   if (interaction.commandName === SCHEDULE_COMMAND.name) {
     await handleScheduleCommand(interaction, client);
     return;
@@ -1122,6 +1218,7 @@ module.exports = {
   DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
   LANGUAGE_COMMAND,
+  AI_CHAT_COMMAND,
   SCHEDULE_COMMAND,
   MEMORY_COMMAND,
   AI_KEY_COMMAND,

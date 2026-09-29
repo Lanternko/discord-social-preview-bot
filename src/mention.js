@@ -8,6 +8,7 @@ const {
   buildStickerSendPayload,
 } = require("./stickers");
 const { t, fortuneLabel, fortuneComments } = require("./system-text");
+const { getGuildAiChatMode } = require("./ai-chat-store");
 
 const FORTUNE_RESULTS = [
   { label: "大大吉", weight: 1 },
@@ -153,10 +154,32 @@ function isMentioningBot(message, client) {
   return message.mentions.has(client.user);
 }
 
+// A mention the user actually typed: <@bot> in the text, or the bot's own
+// managed role (Discord's autocomplete offers both). Unlike isMentioningBot,
+// a reply ping and @everyone / @here don't count.
+function isDirectMention(message, client) {
+  const botId = client.user?.id;
+  if (!botId) return false;
+  if (new RegExp(`<@!?${botId}>`).test(message.content || "")) return true;
+  const botRoleId = message.guild?.members?.me?.roles?.botRole?.id;
+  return Boolean(botRoleId && message.mentions.roles?.has?.(botRoleId));
+}
+
+// Whether this message should reach handleMention, per the guild's /ai-chat
+// mode. In "direct" mode a non-direct mention falls through to the normal
+// preview path, so a reply to 西寶 that carries a link still gets previewed.
+function shouldHandleMention(message, client) {
+  if (!isMentioningBot(message, client)) return false;
+  if (getGuildAiChatMode(message.guildId) === "all") return true;
+  return isDirectMention(message, client);
+}
+
 module.exports = {
   sendAIReply,
   FORTUNE_RESULTS,
   drawFortune,
   handleMention,
   isMentioningBot,
+  isDirectMention,
+  shouldHandleMention,
 };

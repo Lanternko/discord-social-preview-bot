@@ -69,6 +69,14 @@ Same permission model as `/ai-tier`: anyone can view, `ManageGuild` switches. Ch
 - **Fixed bot text follows it too** — preview failure / IG story replies, embed labels (預覽降級, 還有 N 張, Threads titles), 抽籤/道歉/greetings, quota notices, the story quiz header. Table in [src/system-text.js](../src/system-text.js); `index.js` opens a per-event AsyncLocalStorage context (`runInGuildLanguage`) and the scheduler does the same per task, so builders deep in `platforms/` call `t(key)` without a language arg. Outside a context → 繁中. New fixed user-visible string → add it to that table, not inline.
 - Out of scope: slash-command UI text (registered globally, not per guild), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
 
+## `/ai-chat` (which mentions wake her, per guild)
+
+Same permission model as `/language`. `all` (default) = anything `message.mentions.has(bot)` reports — which includes **reply pings** (replying to any 西寶 message, previews included) and `@everyone`/`@here`. `direct` = only `<@bot>`/`<@!bot>` typed in the text or the bot's managed role (`isDirectMention` in [src/mention.js](../src/mention.js)). Gate is `shouldHandleMention`, called from `index.js`.
+
+- **Why not a full mute:** the user wanted preview-only guilds left alone, but an explicit @西寶 is an explicit ask — she still answers (AI, 抽籤, 道歉 all ride the same path). Scheduled tasks are untouched: an admin set those up on purpose.
+- In `direct` mode a non-direct ping falls through to the preview path, so replying to 西寶 with a link gets that link previewed instead of swallowed by the mention branch.
+- Storage `data/ai-chat-settings.json` (default stored as absence) via [src/ai-chat-store.js](../src/ai-chat-store.js). Grep `[ai-chat]`.
+
 ## `/ai-tier` (AI plan per guild)
 
 Slash command — anyone can run `/ai-tier` (no arg) to view the current plan, model, and remaining free quota; only members with `ManageGuild` permission can pass a `level` to switch it. Rationale: admin 太嚴（小伺服器裡邀 bot 的朋友未必是 admin），一般成員太鬆；`ManageGuild` 對齊「誰能邀 bot、誰就能調 AI 方案」。檢視則對所有人開放，方便群友確認目前設定。Internal keys are English; Discord UI labels are Chinese.
