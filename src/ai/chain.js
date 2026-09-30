@@ -42,6 +42,7 @@ const {
   RECAP_GEMINI_TIMEOUT_MS,
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
+const { screenPersonaReply } = require("./meta-leak");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
 const { isDeepSeekPeak } = require("./peak-hours");
 const { buildUserTurn } = require("./persona");
@@ -603,7 +604,19 @@ function circuitKeyOf(provider) {
   return provider.circuitKey || provider.label;
 }
 
-async function runProviderChain(chain, turns, persona, maxTokens) {
+// `screen` (persona-voiced callers only — never the JSON extractors) vets an
+// ok reply; a rejected one counts as an `empty` failure so the next layer runs.
+function applyScreen(screen, key, result) {
+  if (!screen || !result?.ok) return result;
+  const { verdict, text } = screen(result.text);
+  if (verdict === "clean") return result;
+  console.warn(
+    `[ai] meta-leak ${verdict} label=${key} head=${JSON.stringify(result.text.slice(0, 80))}`,
+  );
+  return text ? { ...result, text } : { ok: false, kind: "empty", detail: "meta-leak" };
+}
+
+async function runProviderChain(chain, turns, persona, maxTokens, { screen } = {}) {
   for (const provider of chain) {
     const key = circuitKeyOf(provider);
     if (!isProviderAvailable(key)) {
@@ -611,7 +624,7 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
       continue;
     }
 
-    const result = await provider.call(turns, persona, maxTokens);
+    const result = applyScreen(screen, key, await provider.call(turns, persona, maxTokens));
 
     if (result && result.ok) {
       recordProviderSuccess(key);
@@ -856,6 +869,7 @@ async function generateAIReply(message, userText, options = {}) {
     turns,
     persona,
     Math.max(tierConfig.maxTokens, minTokens),
+    { screen: screenPersonaReply },
   );
   if (result) {
     const capped = trimDescription(

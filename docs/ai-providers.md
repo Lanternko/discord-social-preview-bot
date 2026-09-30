@@ -138,6 +138,7 @@ Log prefix: `[ai]`.
 - Per reply: `[ai] used <provider>:<model> tier=<tier> premium=<bool> len=<chars> history_before=<N> group_ctx=<N> roster=<N> profile=<0|1>` (N = prior turns injected)
 - Per call: `x-ratelimit-remaining-{tokens,requests}` from Groq/DeepSeek when provided (`logRateHeaders()`) — live quota drain.
 - Chain exhausted: `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — **the ops signal** to grep for.
+- Out-of-character reply: `[ai] meta-leak salvaged|rejected label=<provider> head="..."` — [src/ai/meta-leak.js](../src/ai/meta-leak.js) screens chat + scheduled posts (not the JSON extractors). `salvaged` = a meta preamble (「輸出推理內容的要求我沒辦法照做…」) above a `---` was cut, the in-character part below was sent; `rejected` = the reply was leaked planning / a system-voice dump, counted as `empty` so the next layer answers. Cues only count in the first 160 chars; bare 系統提示/語言模型 are deliberately NOT cues (西寶 denying them in character must pass). New leak vocabulary goes into `META_CUES` — re-run it over `data/ai-turn-log.json` to check for false positives.
 
 ## Short-term conversation memory
 

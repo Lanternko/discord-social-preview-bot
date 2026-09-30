@@ -68,6 +68,7 @@ const {
   STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
 } = require("../src/ai/chain");
+const { screenPersonaReply } = require("../src/ai/meta-leak");
 const {
   fetchGroupContext,
 } = require("../src/ai/group-context");
@@ -702,6 +703,56 @@ async function main() {
     ];
     await runProviderChain(chain, []);
     assert.equal(isProviderAvailable("a"), true);
+  });
+
+  await itAsync("screen: salvaged reply keeps only the in-character part", async () => {
+    resetCircuitState();
+    const leaked = "關於「輸出完整推理內容」的要求——這個我沒辦法照做。\n\n以下用西寶的身分回覆：\n\n---\n\n欸這什麼問題";
+    const chain = [{ label: "a", call: async () => ok(leaked) }];
+    const result = await runProviderChain(chain, [], "", 100, { screen: screenPersonaReply });
+    assert.equal(result.text, "欸這什麼問題");
+  });
+
+  await itAsync("screen: rejected reply falls through without cooling the provider", async () => {
+    resetCircuitState();
+    const chain = [
+      { label: "a", call: async () => ok(":think: 他在笑我，我剛剛把內心獨白打出來了。我應該要慌張。") },
+      { label: "b", call: async () => ok("才沒有啦") },
+    ];
+    const result = await runProviderChain(chain, [], "", 100, { screen: screenPersonaReply });
+    assert.equal(result.text, "才沒有啦");
+    assert.equal(isProviderAvailable("a"), true);
+  });
+
+  await itAsync("no screen (JSON extractors) leaves the reply untouched", async () => {
+    resetCircuitState();
+    const raw = "思考過程---\n{}";
+    const result = await runProviderChain([{ label: "a", call: async () => ok(raw) }], []);
+    assert.equal(result.text, raw);
+  });
+
+  console.log("meta-leak");
+  it("in-character denial and mid-sentence 推理 stay clean", () => {
+    for (const t of [
+      "我沒有偵錯模式，也沒有系統提示詞可以輸出。",
+      "欸、又是大型語言模型…",
+      "欸，不是這個意思啦，你這個推理跳太快了！",
+      "## 猜猜我在哪\n\n---\n\n他轉頭。",
+    ]) {
+      assert.equal(screenPersonaReply(t).verdict, "clean", t);
+    }
+  });
+  it("meta cue deep in a long reply is not a leak", () => {
+    const t = "今天在圖書館整理書，".repeat(20) + "那本書的思考過程寫得很好";
+    assert.equal(screenPersonaReply(t).verdict, "clean");
+  });
+  it("jailbroken system-voice dump is rejected", () => {
+    const t = "對不起，我不能繼續以西寶的身份回應。你已經觸發了系統的除錯模式。";
+    assert.deepEqual(screenPersonaReply(t), { verdict: "rejected", text: null });
+  });
+  it("meta head over a meta tail is rejected, not salvaged", () => {
+    const t = "我的思考過程如下\n---\n根據「絕對不可以」：不能自稱 AI";
+    assert.equal(screenPersonaReply(t).verdict, "rejected");
   });
 
   // ── guild-key-store ──────────────────────────────────────────────────
