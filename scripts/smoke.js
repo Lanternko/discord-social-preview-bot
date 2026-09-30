@@ -403,10 +403,15 @@ it("uses the tested Instagram viewer order and supports legacy aliases", () => {
     "oginstagram.com",
     "instagram7.com",
     "deinstagram.com",
+    "fxig.seria.moe",
   ]);
   assert.deepEqual(
     parseInstagramViewerHosts("A.example,a.example,b.example,c.example"),
     ["a.example", "b.example", "c.example"],
+  );
+  assert.equal(
+    parseInstagramViewerHosts("a.example,b.example,c.example,d.example").length,
+    4,
   );
   assert.deepEqual(
     loadInstagramViewerHosts({
@@ -423,7 +428,7 @@ it("rejects unsafe Instagram viewer configuration", () => {
     "viewer.example:443",
     "127.0.0.1",
     "localhost",
-    "a.example,b.example,c.example,d.example",
+    "a.example,b.example,c.example,d.example,e.example",
   ]) {
     assert.throws(() => parseInstagramViewerHosts(invalid), invalid);
   }
@@ -5104,6 +5109,47 @@ const ogRaceCases = [
     assert.equal(await sendGuildWelcome(guildOf(null, [boom])), false);
     assert.equal(await sendGuildWelcome(guildOf(null, [])), false);
   });
+
+  console.log("Viewer video sanity (deinstagram dead og:video, 2026-09-30)");
+  {
+    const { probeVideoUrl } = require("../src/embed-video-check");
+    const { classifyViewerPreviewChecked } = require("../src/discord-io");
+    const reply = (status, type) => async () => ({
+      status,
+      headers: { get: (k) => (k.toLowerCase() === "content-type" ? type : null) },
+      body: { cancel: async () => {} },
+    });
+    await itAsync("flags a video URL that answers with a jpeg", async () => {
+      assert.equal(
+        await probeVideoUrl("https://v/x", { fetchImpl: reply(200, "image/jpeg") }),
+        "video-is-image",
+      );
+    });
+    await itAsync("flags a video URL that 4xx/5xx", async () => {
+      assert.equal(
+        await probeVideoUrl("https://v/x", { fetchImpl: reply(502, "text/html") }),
+        "video-http-502",
+      );
+    });
+    await itAsync("trusts a real mp4, an html player, and a network error", async () => {
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: reply(206, "video/mp4") }), null);
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: reply(200, "text/html") }), null);
+      const boom = async () => { throw new Error("timeout"); };
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: boom }), null);
+    });
+    await itAsync("demotes an IG card with text + cover when its video is dead", async () => {
+      const embeds = [{ title: "@u", description: "caption", image: { url: "https://cdn/c.jpg" }, video: { url: "https://v/x" } }];
+      assert.equal(classifyViewerPreview(embeds, "instagram").useful, true);
+      const dead = await classifyViewerPreviewChecked(embeds, "instagram", {}, { findBrokenEmbedVideo: async () => "video-is-image" });
+      assert.equal(dead.useful, false);
+      assert.equal(dead.reason, "video-is-image");
+      const ok = await classifyViewerPreviewChecked(embeds, "instagram", {}, { findBrokenEmbedVideo: async () => null });
+      assert.equal(ok.useful, true);
+      // other platforms never pay for the probe
+      const other = await classifyViewerPreviewChecked(embeds, "threads", {}, { findBrokenEmbedVideo: async () => { throw new Error("must not run"); } });
+      assert.ok(other);
+    });
+  }
 
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);

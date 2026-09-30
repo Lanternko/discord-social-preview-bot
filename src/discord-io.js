@@ -18,6 +18,7 @@ const {
   hasMeaningfulText,
 } = require("./viewer-cards");
 const { fetchVideoAttachment } = require("./video");
+const { findBrokenEmbedVideo } = require("./embed-video-check");
 const { fetchSpoilerImageAttachments } = require("./image-attachment");
 const { fetchPanoramaAttachment } = require("./panorama");
 const { trimDescription } = require("./utils");
@@ -238,6 +239,22 @@ function classifyViewerPreview(
     verdicts.find((verdict) => verdict.quality === "weak") ||
     verdicts[0]
   );
+}
+
+// classifyViewerPreview plus a check that an advertised video really is one.
+// Instagram only: its viewers are the ones seen serving a dead og:video.
+async function classifyViewerPreviewChecked(
+  embeds,
+  viewerValidation,
+  options,
+  deps = {},
+) {
+  const verdict = classifyViewerPreview(embeds, viewerValidation, options);
+  if (!verdict.useful || viewerValidation !== "instagram") return verdict;
+  const broken = await (deps.findBrokenEmbedVideo || findBrokenEmbedVideo)(
+    embeds,
+  );
+  return broken ? { useful: false, quality: "none", reason: broken } : verdict;
 }
 
 function isViewerPreviewUseful(
@@ -618,7 +635,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
     }
 
     const platform = viewerValidation || "generic";
-    const firstVerdict = classifyViewerPreview(
+    const firstVerdict = await classifyViewerPreviewChecked(
       fetched.embeds,
       viewerValidation,
       validationOptions,
@@ -668,7 +685,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      const verdict = classifyViewerPreview(
+      const verdict = await classifyViewerPreviewChecked(
         current?.embeds,
         viewerValidation,
         validationOptions,
@@ -775,6 +792,7 @@ module.exports = {
   isUsefulInstagramViewerEmbed,
   isUsefulTwitterViewerEmbed,
   classifyViewerPreview,
+  classifyViewerPreviewChecked,
   isViewerPreviewUseful,
   resolveOutgoing,
   sendPreviews,
