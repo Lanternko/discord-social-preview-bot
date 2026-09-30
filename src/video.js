@@ -9,15 +9,18 @@ const {
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-// Discord per-message upload limit by guild boost tier (MiB). The base was
-// bumped to 25 MiB for everyone; boost tiers 2/3 raise it. A bot uploading to a
-// guild is bound by that guild's tier — not by any Nitro the poster may have.
-const UPLOAD_LIMIT_MIB_BY_TIER = { 0: 25, 1: 25, 2: 50, 3: 100 };
+// Per-message upload cap by guild boost tier (MiB). A bot uploading to a guild
+// is bound by that guild's tier — not by any Nitro the poster may have. Tiers
+// 0/1 are nominally 25 MiB, but Discord really cuts at 20 MiB there: in the
+// 2026-09 logs 20,577,618 B went through and 20,983,967 B (20 MiB + 12 KB) got
+// 413. 19.9 leaves ~100 KB headroom. A 413 anyway is caught in sendPreviews and
+// resent without the video.
+const UPLOAD_LIMIT_MIB_BY_TIER = { 0: 19.9, 1: 19.9, 2: 50, 3: 100 };
 
 function uploadLimitBytes(guild) {
   const tier = guild?.premiumTier ?? 0;
-  const mib = UPLOAD_LIMIT_MIB_BY_TIER[tier] ?? 25;
-  return mib * 1024 * 1024;
+  const mib = UPLOAD_LIMIT_MIB_BY_TIER[tier] ?? UPLOAD_LIMIT_MIB_BY_TIER[0];
+  return Math.floor(mib * 1024 * 1024);
 }
 
 function isGuildVideoAllowed(guild) {

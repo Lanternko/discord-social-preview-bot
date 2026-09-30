@@ -917,14 +917,14 @@ it("isGuildVideoAllowed: no guild context (DM) → not allowed", () => {
   assert.equal(isGuildVideoAllowed(undefined), false);
 });
 it("uploadLimitBytes: scales with boost tier", () => {
-  assert.equal(uploadLimitBytes({ premiumTier: 0 }), 25 * 1024 * 1024);
-  assert.equal(uploadLimitBytes({ premiumTier: 1 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 0 }), Math.floor(19.9 * 1024 * 1024));
+  assert.equal(uploadLimitBytes({ premiumTier: 1 }), Math.floor(19.9 * 1024 * 1024));
   assert.equal(uploadLimitBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
   assert.equal(uploadLimitBytes({ premiumTier: 3 }), 100 * 1024 * 1024);
   assert.equal(
     uploadLimitBytes(null),
-    25 * 1024 * 1024,
-    "missing guild → base 25MB",
+    Math.floor(19.9 * 1024 * 1024),
+    "missing guild → base tier cap",
   );
 });
 it("effectiveMaxBytes: defaults to the guild limit with no override", () => {
@@ -4974,6 +4974,61 @@ const ogRaceCases = [
     await itAsync(name, fn);
   }
   bahamutSessionAsyncCases.reset();
+
+  await itAsync("sendPreviews: 413 on a video upload resends without the video", async () => {
+    const { sendPreviews } = require("../src/discord-io");
+    const posts = [];
+    const message = {
+      inGuild: () => false,
+      guild: { id: "g1", premiumTier: 1 },
+      channel: {},
+      reply: async (outgoing) => {
+        posts.push(outgoing);
+        if (outgoing.files) {
+          const err = new Error("Request entity too large");
+          err.code = 40005;
+          err.status = 413;
+          throw err;
+        }
+        return { id: "m1" };
+      },
+    };
+    const payload = {
+      content: "https://fixer.example/v/1",
+      videoAttachment: "https://cdn.example/v.mp4",
+      videoAttachmentMissContent: "https://fixer.example/v/1",
+    };
+    const sent = await sendPreviews(message, [payload], {
+      fetchVideoAttachment: async () => ({ buffer: Buffer.alloc(8), name: "video.mp4" }),
+    });
+    assert.equal(posts.length, 2, "one rejected upload + one resend");
+    assert.ok(posts[0].files, "first try carried the video");
+    assert.equal(posts[1].files, undefined, "resend has no video");
+    assert.equal(posts[1].content, "https://fixer.example/v/1");
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].isUrlOnly, true, "resent fixer link goes through empty-embed checks");
+  });
+
+  await itAsync("sendPreviews: non-413 errors and 413 without a video still throw", async () => {
+    const { sendPreviews } = require("../src/discord-io");
+    const failWith = (code, status) => ({
+      inGuild: () => false,
+      guild: { id: "g1", premiumTier: 0 },
+      channel: {},
+      reply: async () => {
+        const err = new Error("boom");
+        err.code = code;
+        err.status = status;
+        throw err;
+      },
+    });
+    await assert.rejects(
+      sendPreviews(failWith(50013, 403), [{ content: "https://x" }]),
+    );
+    await assert.rejects(
+      sendPreviews(failWith(40005, 413), [{ content: "https://x" }]),
+    );
+  });
 
   await itAsync("describeStoryImages captions images, caps count, survives failures", async () => {
     const { describeStoryImages } = require("../src/story-images");
