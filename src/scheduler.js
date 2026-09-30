@@ -17,6 +17,7 @@ const {
   runProviderChain,
 } = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
+const { screenPersonaReply } = require("./ai/meta-leak");
 const {
   buildEmojiMap,
   buildEmojiPromptBlock,
@@ -222,6 +223,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
       turns,
       persona,
       maxTokens,
+      { screen: screenPersonaReply },
     );
 
     if (!result) {
