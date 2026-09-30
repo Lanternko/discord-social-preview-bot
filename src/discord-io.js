@@ -12,6 +12,7 @@ const {
 const { tryRecoverEmbedFromUrls } = require("./og-fallback");
 const {
   matchErrorCard,
+  readEmbedValue,
   collectEmbedText,
   embedHasMedia,
   embedHasPostMedia,
@@ -160,13 +161,34 @@ function classifyThreadsViewerEmbed(embed) {
   return { useful: true, quality: "full", reason: "ok" };
 }
 
+const VIDEO_POST_PATH = /^\/(?:reels?|tv)\//i;
+
+function isVideoPostEmbed(embed) {
+  const url = readEmbedValue(embed, "url");
+  if (typeof url !== "string") return false;
+  try {
+    return VIDEO_POST_PATH.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 function classifyInstagramViewerEmbed(embed) {
   const hasMedia = embedHasPostMedia(embed);
   const errorReason = matchErrorCard(embed, { hasMedia });
   if (errorReason)
     return { useful: false, quality: "none", reason: errorReason };
 
-  if (hasMedia) return { useful: true, quality: "full", reason: "ok" };
+  if (hasMedia) {
+    // A reel / IGTV card that carries a picture but no video is a viewer that
+    // lost the mp4: deinstagram then paints a fake play button onto the cover
+    // (reel DdvF1gjTizh, 2026-09-30), which reads as a video and plays nothing.
+    // Half an answer — keep it as the floor, keep looking for a playable one.
+    if (isVideoPostEmbed(embed) && !readEmbedValue(embed, "video")) {
+      return { useful: false, quality: "weak", reason: "video-post-cover-only" };
+    }
+    return { useful: true, quality: "full", reason: "ok" };
+  }
   if (!hasMeaningfulText(embed)) {
     // No cover and nothing but the viewer's own branding: pure failure card.
     return {

@@ -472,6 +472,41 @@ it("accepts a playable Instagram viewer or meaningful caption", () => {
   assert.equal(captionOnly.quality, "weak");
 });
 
+console.log("Instagram reel cover-only (fake play button, 2026-09-30)");
+it("a reel card with a cover but no video is weak, not a success", () => {
+  // The exact embed Discord built for deinstagram: type article, thumbnail only.
+  const coverOnly = {
+    type: "article",
+    url: "https://deinstagram.com/reel/DdvF1gjTizh/",
+    thumbnail: { url: "https://deinstagram.com/media/x/0/image" },
+  };
+  const verdict = classifyViewerPreview([coverOnly], "instagram");
+  assert.equal(verdict.useful, false);
+  assert.equal(verdict.quality, "weak");
+  assert.equal(verdict.reason, "video-post-cover-only");
+  // IGTV too
+  assert.equal(
+    isViewerPreviewUseful([{ ...coverOnly, url: "https://x.example/tv/AbC/" }], "instagram"),
+    false,
+  );
+});
+it("a reel card WITH video, or a photo post with a cover, still succeeds", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ url: "https://fxig.seria.moe/reel/DdvF1gjTizh/", video: { url: "https://fxig.seria.moe/offload/x/0.mp4" } }],
+      "instagram",
+    ),
+    true,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ url: "https://oginstagram.com/p/DcA0yXWMF4E/", image: { url: "https://cdn/cover.jpg" } }],
+      "instagram",
+    ),
+    true,
+  );
+});
+
 console.log("Viewer error-card detection (the 2026-09 Instagram regression)");
 it("rejects a viewer's own 'Temporarily unavailable' card", () => {
   // The exact card OGInstagram served on 2026-09-21: well-formed, no media,
