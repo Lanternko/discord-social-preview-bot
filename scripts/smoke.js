@@ -917,13 +917,13 @@ it("isGuildVideoAllowed: no guild context (DM) → not allowed", () => {
   assert.equal(isGuildVideoAllowed(undefined), false);
 });
 it("uploadLimitBytes: scales with boost tier", () => {
-  assert.equal(uploadLimitBytes({ premiumTier: 0 }), 18 * 1024 * 1024);
-  assert.equal(uploadLimitBytes({ premiumTier: 1 }), 18 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 0 }), Math.floor(19.9 * 1024 * 1024));
+  assert.equal(uploadLimitBytes({ premiumTier: 1 }), Math.floor(19.9 * 1024 * 1024));
   assert.equal(uploadLimitBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
   assert.equal(uploadLimitBytes({ premiumTier: 3 }), 100 * 1024 * 1024);
   assert.equal(
     uploadLimitBytes(null),
-    18 * 1024 * 1024,
+    Math.floor(19.9 * 1024 * 1024),
     "missing guild → base tier cap",
   );
 });
