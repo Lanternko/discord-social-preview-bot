@@ -403,10 +403,15 @@ it("uses the tested Instagram viewer order and supports legacy aliases", () => {
     "oginstagram.com",
     "instagram7.com",
     "deinstagram.com",
+    "fxig.seria.moe",
   ]);
   assert.deepEqual(
     parseInstagramViewerHosts("A.example,a.example,b.example,c.example"),
     ["a.example", "b.example", "c.example"],
+  );
+  assert.equal(
+    parseInstagramViewerHosts("a.example,b.example,c.example,d.example").length,
+    4,
   );
   assert.deepEqual(
     loadInstagramViewerHosts({
@@ -423,7 +428,7 @@ it("rejects unsafe Instagram viewer configuration", () => {
     "viewer.example:443",
     "127.0.0.1",
     "localhost",
-    "a.example,b.example,c.example,d.example",
+    "a.example,b.example,c.example,d.example,e.example",
   ]) {
     assert.throws(() => parseInstagramViewerHosts(invalid), invalid);
   }

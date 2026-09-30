@@ -1413,6 +1413,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.deepEqual(p.fallbackContents, [
       "https://instagram7.com/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
+      "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
     ]);
     assert.equal(p.viewerValidation, "instagram");
     assert.equal(s.hasEmbedFallback, false);

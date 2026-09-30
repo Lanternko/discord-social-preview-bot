@@ -63,6 +63,10 @@ const DEFAULT_INSTAGRAM_VIEWER_HOSTS = [
   "oginstagram.com",
   "instagram7.com",
   "deinstagram.com",
+  // Last resort: 2026-09-30 it was the only viewer whose Discord unfurl played
+  // reel DdvF1gjTizh (the other three were down / served a dead og:video), but
+  // it unfurled nothing for DdvucJXS1OO — so it backs the others up, not leads.
+  "fxig.seria.moe",
 ];
 // Hosts the bot itself fetches for OG recovery once every viewer unfurl came
 // back empty. Ordered by what our host gets back: instagram7 has @user +
@@ -100,7 +104,7 @@ function isPlainDnsHostname(value) {
     );
 }
 
-function parseViewerHosts(rawValue, label) {
+function parseViewerHosts(rawValue, label, maxHosts = 3) {
   const candidates = Array.isArray(rawValue)
     ? rawValue
     : String(rawValue ?? "").split(",");
@@ -118,9 +122,9 @@ function parseViewerHosts(rawValue, label) {
     if (seen.has(host)) continue;
     seen.add(host);
     hosts.push(host);
-    if (hosts.length > 3) {
+    if (hosts.length > maxHosts) {
       throw new Error(
-        `[config] ${label.toUpperCase()}_VIEWER_HOSTS accepts at most 3 hosts`,
+        `[config] ${label.toUpperCase()}_VIEWER_HOSTS accepts at most ${maxHosts} hosts`,
       );
     }
   }
@@ -136,7 +140,7 @@ function parseThreadsViewerHosts(rawValue) {
 }
 
 function parseInstagramViewerHosts(rawValue) {
-  return parseViewerHosts(rawValue, "Instagram");
+  return parseViewerHosts(rawValue, "Instagram", 4);
 }
 
 function loadThreadsViewerHosts(env = process.env) {
