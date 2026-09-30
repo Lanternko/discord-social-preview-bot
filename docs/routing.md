@@ -47,6 +47,8 @@ Viewer 由 `THREADS_VIEWER_HOSTS` 設定，格式為最多三個逗號分隔的�
 
 **Detection (this is the load-bearing half).** A dead viewer does not return an empty unfurl — it returns a well-formed card saying "Temporarily unavailable / Couldn't load this post right now" (OGInstagram, 2026-09-21). The shared error vocabulary lives in [src/viewer-cards.js](../src/viewer-cards.js): HARD wording (只可能來自錯誤頁：temporarily unavailable / couldn't load / not found / something went wrong / rate limit / login wall) 一律否決，即使卡片有圖；SOFT wording（真 caption 也可能出現：try again / not available / private）只在沒有媒體時否決。IG 另外要求**必須有封面**（每則 IG 貼文都是照片或影片），且 viewer 自家 logo（`/rsrc.php/`、`logo.png` 之類）不算封面。判定被拒時 log 會印出實際卡片文字與理由（`reason=error:…`），新的失敗詞彙照著補進同一份清單即可。
 
+**Dead video behind a good card (2026-09-30).** deinstagram kept `og:video` (play button) while the mp4 URL answered with a cover jpeg → Discord showed 「顯示影片失敗」 yet the card had text + cover so it passed. For Instagram, [src/embed-video-check.js](../src/embed-video-check.js) now probes each embed's `video.url` (Range 0-0 GET, 4s) and demotes the card (`reason=video-is-image` / `video-http-NNN`) so the chain moves to the next viewer. Only positive evidence rejects — timeout / blocked / unknown content-type is trusted. Wired via `classifyViewerPreviewChecked` in discord-io.
+
 **Weak card（半成品卡）**: 有 caption 但沒有封面的 IG 卡不算成功，但也不丟掉——鏈條繼續找有封面的版本，全失敗時再把它貼回來（`layer=weak-viewerN`），OG recovery 成功時則把它的 caption/作者補進恢復卡。嚴格偵測因此不會讓使用者看到比原本更差的東西。
 
 Viewer config accepts at most three plain DNS hostnames and retains legacy `FIXER_INSTAGRAM` / `FIXER_INSTAGRAM_SECONDARY` compatibility.
