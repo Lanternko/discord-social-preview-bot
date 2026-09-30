@@ -8,7 +8,7 @@
 輸入:lines/epNN.lines.json(join_lines.py)
 輸出:attrib/epNN.attrib.json — lines 的每筆加 {speaker, conf, kind}
 模型:Vercel AI Gateway(OpenAI 相容),預設 anthropic/claude-sonnet-5.5,
-     金鑰讀 bot 的 .env 裡的 AI_GATEWAY_API_KEY。
+     金鑰只讀 PERSONA_GATEWAY_KEY(使用者另給的專用 key;禁止讀 bot .env)。
 跑法:python3 tools/persona/attribute.py [ep01 ...](冪等;--force 重跑)
 """
 
@@ -20,7 +20,6 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(os.environ.get("XIBAO_ROOT", "/mnt/seagate/xibao-persona"))
-ENV = Path(__file__).resolve().parents[2] / ".env"
 MODEL = os.environ.get("ATTRIB_MODEL", "anthropic/claude-sonnet-5.5")
 URL = "https://ai-gateway.vercel.sh/v1/chat/completions"
 
@@ -71,12 +70,10 @@ speaker 只能是:{"、".join(CAST)}。"""
 
 
 def load_key():
-    if os.environ.get("AI_GATEWAY_API_KEY"):
-        return os.environ["AI_GATEWAY_API_KEY"]
-    for line in ENV.read_text(encoding="utf-8").splitlines():
-        if line.startswith("AI_GATEWAY_API_KEY="):
-            return line.split("=", 1)[1].strip().strip('"')
-    sys.exit("AI_GATEWAY_API_KEY not found")
+    key = os.environ.get("PERSONA_GATEWAY_KEY")
+    if not key:
+        sys.exit("PERSONA_GATEWAY_KEY not set (bot 的 .env key 不准借用;先問使用者)")
+    return key
 
 
 def fmt_line(l):
