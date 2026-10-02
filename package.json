@@ -6,7 +6,7 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "if [ -x /opt/homebrew/opt/node@22/bin/node ]; then /opt/homebrew/opt/node@22/bin/node src/index.js; else node src/index.js; fi",
+    "start": "node src/index.js",
     "test": "npm run test:pure && npm run test:routing && npm run test:circuit && npm run test:voice && npm run test:skills",
     "test:pure": "node scripts/smoke.js",
     "test:routing": "node scripts/routing-smoke.js",
@@ -15,7 +15,7 @@
     "test:skills": "node scripts/smoke-skills.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "dependencies": {
     "discord.js": "^14.19.3",

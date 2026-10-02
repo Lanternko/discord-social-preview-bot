@@ -12,8 +12,16 @@ set -u
 REPO=/home/kojiek/side_projects/apps/discord-social-preview-bot
 WD_LOG=/tmp/bot_watchdog.log
 LOCK=/tmp/bot_watchdog.lock
+NODE_VERSION=$(tr -d '[:space:]' < "$REPO/.nvmrc")
+NODE_BIN="${NVM_DIR:-$HOME/.nvm}/versions/node/v$NODE_VERSION/bin/node"
 
 cd "$REPO" || exit 1
+
+if [ ! -x "$NODE_BIN" ]; then
+  ts=$(date "+%Y-%m-%dT%H:%M:%S%z")
+  echo "$ts watchdog: required Node $NODE_VERSION is not installed at $NODE_BIN" >> "$WD_LOG"
+  exit 1
+fi
 
 # A manual run and the cron tick can land in the same second; without a lock
 # neither sees the other's child yet and both launch a bot.
@@ -67,7 +75,7 @@ if [ "$count" -eq 1 ]; then
 fi
 
 # fd 9 (the lock) must not leak into the bot, or it would hold the lock forever
-nohup setsid node src/index.js >> "$REPO/bot.log" 2>&1 < /dev/null 9>&- &
+nohup setsid "$NODE_BIN" src/index.js >> "$REPO/bot.log" 2>&1 < /dev/null 9>&- &
 disown
 
 ts=$(date "+%Y-%m-%dT%H:%M:%S%z")
