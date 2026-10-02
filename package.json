@@ -23,5 +23,13 @@
     "node-cron": "^4.2.1",
     "playwright": "^1.59.1",
     "sharp": "^0.35.4"
+  },
+  "overrides": {
+    "@discordjs/rest": {
+      "undici": "6.28.1"
+    },
+    "discord.js": {
+      "undici": "6.28.1"
+    }
   }
 }
