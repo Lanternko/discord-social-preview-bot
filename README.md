@@ -52,7 +52,7 @@ Threads / X (Twitter) / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebo
 
 新人第一次安裝 bot，只要跑完這 5 步就會動：
 
-### Step 1：安裝 Node.js 20+
+### Step 1：安裝 Node.js 24+
 
 確認版本：
 
@@ -60,7 +60,7 @@ Threads / X (Twitter) / Instagram / Reddit / Pixiv / Bluesky / Bilibili / Facebo
 node -v
 ```
 
-沒裝的話到 [nodejs.org](https://nodejs.org/) 下載 LTS 版本（v20 以上）。
+沒裝的話到 [nodejs.org](https://nodejs.org/) 下載 LTS 版本（v24 以上）。
 
 ### Step 2：下載專案並安裝依賴
 
