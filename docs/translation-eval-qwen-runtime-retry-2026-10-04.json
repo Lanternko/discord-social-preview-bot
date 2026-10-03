@@ -1,0 +1,54 @@
+{
+  "notes": "Final policy validation retry, same Qwen provider/model, at most two actual API attempts. Only successful-attempt usage is available; failed output-validation attempts may also incur costs.",
+  "rows": [
+    {
+      "id": "1473141433188384769",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+      "originalText": "【ぶるーあーかいぶっ！】第45話 \n任務を終え、ゲヘナへと戻ってきたチナツさん。問題児集団を追う苛酷な任務を終えた直後にも関わらず、お肌はツヤツヤで調子良さそうなチナツさんを、アコさんとヒナさんは気になったようで…。\n\n🔹作:純粋な不純物(@parang9494)先生 \n\n#ブルアカ #ぶるーあーかいぶっ",
+      "attempts": 2,
+      "error": "Translation lost a protected token"
+    },
+    {
+      "id": "2032729648594116738",
+      "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+      "originalText": "あみあみ在庫復活✨\n\nアルター、『ブルーアーカイブ』の『飛鳥馬トキ』がフィギュア化！メイド服とパワードスーツ差替可能！2026年1月発売予定\nhttps://figure-times.com/?p=185830\n\n#フィギュア #アルター #ブルーアーカイブ #ブルアカ #飛鳥馬トキ #BlueArcive #碧蓝档案",
+      "attempts": 1,
+      "text": "amiAmi庫存恢復✨\n\nALTER將《蔚藍檔案》的「飛鳥馬季」立體化！可替換女僕裝與動力服！預計2026年1月發售\nhttps://figure-times.com/?p=185830\n\n#フィギュア #アルター #ブルーアーカイブ #ブルアカ #飛鳥馬トキ #BlueArcive #碧蓝档案",
+      "provider": "gateway",
+      "model": "alibaba/qwen3.7-flash",
+      "promptVersion": "3-tw-entities-bandori",
+      "latencyMs": 2052,
+      "usage": {
+        "prompt_tokens": 398,
+        "completion_tokens": 198,
+        "total_tokens": 596,
+        "cost": 0.00003768,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": null,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0
+        },
+        "cache_creation_input_tokens": 0,
+        "market_cost": 0.00003768,
+        "gateway_cost": 0.00003768
+      }
+    },
+    {
+      "id": "2024386040031752663",
+      "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+      "originalText": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+      "attempts": 2,
+      "error": "Untranslated post"
+    }
+  ]
+}

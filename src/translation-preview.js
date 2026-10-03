@@ -1,7 +1,8 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const { createHash } = require('node:crypto');
 const { fetchTweetMeta } = require('./platforms/twitter');
-const { requestTranslation } = require('./ai/translation');
+const { requestTranslationWithRetry, PROMPT_VERSION } = require('./ai/translation');
+const { translationAvailable, reserveTranslation } = require('./ai/translation-policy');
 
 const cache = new Map();
 const cooldowns = new Map();
@@ -27,9 +28,7 @@ function isForeignPost(meta) {
 }
 
 function enabled() {
-  const provider = process.env.TRANSLATION_PROVIDER || 'deepseek';
-  const key = { deepseek: 'DEEPSEEK_API_KEY', gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY', gateway: 'AI_GATEWAY_API_KEY' }[provider];
-  return process.env.X_TRANSLATION_ENABLED === 'true' && Boolean(key && process.env[key]);
+  return translationAvailable();
 }
 
 function buttons(id, action = 'translate') {
@@ -57,18 +56,23 @@ function renderPrivateCard(meta, text, translated) {
   return { content: '', embeds: [embed], components: buttons(meta.statusId, translated ? 'original' : 'translate'), allowedMentions: { parse: [] } };
 }
 
-async function translateCached(text, deps, userId) {
-  const key = createHash('sha256').update(`${process.env.TRANSLATION_PROVIDER}|${process.env.TRANSLATION_MODEL}|${text}`).digest('hex');
+async function translateCached(text, deps, userId, guildId) {
+  const policy = [process.env.TRANSLATION_PROVIDER || 'auto', process.env.TRANSLATION_MODEL || '', process.env.TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED || 'false'].join('|');
+  // Keep caches within a guild: an exhausted guild cannot borrow a premium
+  // call from another guild. Reusing its own completed result is free, even if
+  // its quota or the peak window changed after the original API call.
+  const key = createHash('sha256').update(`${guildId}|${policy}|${PROMPT_VERSION}|${text}`).digest('hex');
   const now = Date.now();
   for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
   if (cache.has(key)) return cache.get(key).promise;
   if (now - (cooldowns.get(userId) || 0) < 5000) throw new Error('Translation cooldown');
   if (active >= 4) throw new Error('Translation busy');
   if (cooldowns.size >= 1000) cooldowns.delete(cooldowns.keys().next().value);
+  const route = (deps.reserveTranslation || reserveTranslation)(guildId);
   cooldowns.set(userId, now);
   if (cache.size >= 200) cache.delete(cache.keys().next().value);
   active++;
-  const promise = (deps.requestTranslation || requestTranslation)(text);
+  const promise = Promise.resolve().then(() => (deps.requestTranslation || requestTranslationWithRetry)(text, route));
   cache.set(key, { promise, expires: now + 10 * 60 * 1000 });
   try { return await promise; }
   catch (error) { cache.delete(key); throw error; }
@@ -91,7 +95,7 @@ async function handleTranslationInteraction(interaction, client, deps = {}) {
     const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${match[2]}`);
     if (!meta?.text || meta.text.length > 12000) throw new Error('Post unavailable');
     const translated = match[1] === 'translate';
-    const result = translated ? await translateCached(meta.text, deps, interaction.user.id) : { text: meta.text };
+    const result = translated ? await translateCached(meta.text, deps, interaction.user.id, interaction.guildId) : { text: meta.text };
     await interaction.editReply(renderPrivateCard(meta, result.text, translated));
   } catch {
     await interaction.editReply({ content: '目前無法翻譯，請稍後再試或開啟原文。', embeds: [], components: [], allowedMentions: { parse: [] } });

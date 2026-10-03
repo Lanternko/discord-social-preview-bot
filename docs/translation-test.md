@@ -1,6 +1,6 @@
 # X 貼文翻譯測試（2026-10-03）
 
-2026-10-03 初輪建議使用 `deepseek-flash`，關閉 thinking。2026-10-04 補測 `gpt-6-luna` 後，價格導向的候選首選改為 Luna（`reasoning_effort=none`）：本批六筆短文估算每萬次 US$0.51，低於 DeepSeek 離峰 US$0.59，但平均延遲較高。2026-10-04 再補測 Gateway 後，`alibaba/qwen3.7-flash` 成為本批更便宜的可用候選，詳見最後一節。bot 的測試版預設仍是 DeepSeek，尚未切換或部署。這不是全市場排名，也不是大型翻譯品質評測。
+目前測試版 `auto` 路由採額度內 GPT-6 Luna、超額 Qwen；DeepSeek離峰切換已實作但預設關閉，因真實資料補測仍有意思反轉。已加入台版人物詞表與換行處理，詳見文件末節。未部署或啟用正式bot。以下按時間保留測試歷史：初輪六筆合成文曾推薦DeepSeek，再推薦Luna、Qwen；真實50篇評測推翻了直接採用Qwen的結論。這不是全市場排名或大型翻譯品質認證。
 
 ## 實際 API 比較
 
@@ -48,15 +48,16 @@ npm run test:translation
 TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
 ```
 
-正式啟用設定：
+現行測試版啟用設定（正式環境尚未設定）：
 
 ```dotenv
 X_TRANSLATION_ENABLED=true
-TRANSLATION_PROVIDER=deepseek
-TRANSLATION_MODEL=deepseek-flash
+TRANSLATION_PROVIDER=auto
+TRANSLATION_MODEL=
+TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED=false
 ```
 
-沿用該 provider 已有的 API key，不使用 Discord token 呼叫模型。翻譯獨立於 persona、聊天記憶和配額鏈；測試版使用每人五秒冷卻、全程序四個同時請求與十分快取，最多 200 筆；切換原文或已快取譯文不再花費模型費用。不做自動切換到較貴模型。
+沿用provider既有API key，不使用Discord token呼叫模型。翻譯獨立於persona／聊天記憶，現行路由與聊天共用每日配額；使用每人五秒冷卻、全程序四個同時請求與十分鐘公會內快取，最多200筆。原文切換或快取命中不再花費模型費用；驗證失敗最多同模型重試一次，不將超額公會升回較貴模型。
 
 ## 官方價格來源
 
@@ -266,3 +267,67 @@ Luna沒有重現這八個重大問題。此表只比較這八個案例，不表�
 ```sh
 TRANSLATION_EVAL_CASES_FILE=docs/translation-real-tweets-2026-10-04.json TRANSLATION_EVAL_MODELS=gpt-6-luna TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
 ```
+
+## 2026-10-04：專名策略、DeepSeek補測與公會配額路由
+
+### Kazusa名稱更正
+
+前文與先前對話的「Kazusa＝和紗」混用了不同地區用名。此應用採台版：**カズサ／Kazusa／카즈사＝千紗**；**アズサ／Azusa＝梓**，兩人不可混用。陽葵／日鞠、季／時、英美／愛咪、日步美／日富美等也有地區譯名差异，不能只按模型常見譯法宣稱台版準確。
+
+本輪從[SchaleDB遊戲資料](https://github.com/SchaleDB/SchaleDB)按student ID對齐日文、英文、韓文、台版資料。20個已核對學生名字與青輝石列入`src/ai/translation-glossary.json`，包含千紗、憂、陽葵、美禰、靜子、三森、愛麗絲、月夜、野乃美等。此repo在2025年封存，**不是官方即時更新接口**；新角色不能憑舊資料猜名字。台版公告中的千紗也見[2026/7/21更新日誌](https://forum.nexon.com/bluearchivetw/board_view?allBoard=1&board=3352&thread=3502589)。
+
+已核對名字先以占位符保護，模型輸出後由程式還原台版名字，效果是程式輔助，不宣稱模型自行學會了名稱。只有辨識到蔚藍檔案語境才套遊戲詞表，避免普通英文Mine等誤換成角色名；英文別名大小寫敏感且需完整詞，不匹配Unique／Buildings等單字内部。URL／帳號／hashtag保護優先，詞表不改寫它們。
+
+Kei／Hikari無法從該快照核對，列為原名保留；ナコトコイン、ミルヴァ、MyGO的要 楽奈也保留原文，不由模型添加譯名或第二個角色。其他未知專名由prompt要求保留原文，**目前沒有一般化、必定正確的所有專名偵測器**，仍可能有猜名、品牌變字或翻譯偏差。
+
+### 換行與驗證
+
+有真正換行的來源，模型若輸出字面反斜線n，會在token還原前轉為真正換行，保護中的URL等不受影響；來源本來含程式碼字面`\n`時保留。驗證每個保護標記均完整回傳一次；長日韓文若整段照抄原始或被遮罩的輸入，拒絕當成成功翻譯。這只能抓整段原樣照抄，不能保證抓到所有部分漏翻、新增內容或語意反轉。
+
+驗證失敗最多用同模型再試一次；不重試HTTP429等流量限制，也不將超額公會從Qwen升回Luna。重試後仍失敗，就回報暫時無法翻譯並刪除失敗快取，避免展示未翻全文或損壞標記。
+
+### 同45篇DeepSeek原策略與三模型新策略
+
+先讓DeepSeek Flash使用與前輪Luna相同45篇、相同舊prompt，完成45次實際API呼叫。平均0.90秒，依當天離峰價及usage估算US$0.004023534；同類貼文每萬次約US$0.894。原Luna同批US$0.787。這輪有四筆明顯問題：Ui被改優香、Kazusa被改佳世子且來電方向變動、Alice被改亞瑠，以及「晚上較早開始」被翻「晚一點開始」。**速度較快不表示品質較好，這批不能支持DeepSeek優於Luna。**
+
+加入人物保護／prompt／換行策略後，三個模型各重跑全部45篇，共135次；最後再以新增要樂奈與未知Kei／Hikari保護，重跑9個受影響或問題案例，共27次。全批結果與最後小批結果分開保存，不能把最後9篇說成再次完整測45篇。
+
+| 新策略完整45篇 | 通過API與輸出驗證 | 被拒絕 |
+| --- | ---: | --- |
+| DeepSeek Flash | 45 | 0；但仍把較早直播翻成較晚，最後小批也再次出錯 |
+| GPT-6 Luna | 44 | 1篇Kei漫畫保護標記遺失；最後小批該篇正常回傳 |
+| Qwen 3.7 Flash | 43 | 1篇漫畫標記遺失、NEDO整段原文未翻 |
+
+數字是驗證通過次數，**不是語意正確率**。程序保護大幅减少學生錯名，所有成功且保護標記完整的已知角色都還原到詞表。Luna仍有日文敬稱／英語衣裝詞殘留、對午睡的額外推論；Qwen仍有未翻正文、名稱／品牌變字、內容省略，且曾把要樂奈分成兩個名字，促使最後加整個原名保護。DeepSeek／Qwen的Kei衣裝漫畫語序也不清楚。不能宣稱任何模型已在全文章類型無誤。
+
+另以最終runtime重試實測Qwen三個問題案例：漫畫第45話兩次都遺失標記，NEDO兩次都未翻，均拒絕展示；模型化商品公告這次第一筆成功翻譯。所有嘗試仍只用Qwen；在更強的「與遮罩輸入比較」檢查下，不會因角色名被程式還原中文而把其他全文照抄放行。
+
+新策略全批已記錄成功呼叫的費用合計：DeepSeek US$0.004124106、Luna US$0.0040258、Qwen US$0.00099899。Luna／Qwen驗證失败後沒有保存usage，失敗API也可能計費，因此後兩值是**可記錄費用的下限**，不能拿它當完整帳單或精確每萬次比較。補測與runtime重試另外有費用。觀測延遲受API負載影響，非嚴格速度排名。
+
+### 現行路由與配額
+
+`src/ai/translation-policy.js`已接入按鈕處理；`TRANSLATION_PROVIDER=auto`時：
+
+- 一般公會額度內用GPT-6 Luna；`TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED=false`，因補測不支持DeepSeek更好。
+- 一般公會超額的新翻譯用Gateway的Qwen 3.7 Flash，不因時段或手動provider設定升回高階模型。
+- 沿用既有聊天配額`AI_FREE_DAILY_LIMIT`（預設每天20次）及台北午夜重置；**聊天與翻譯共用同一公會計數，不是另加每月1000次**。額度已滿則翻譯改走Qwen，聊天原有限制行為不變。
+- `DEEPSEEK_PREMIUM_GUILD_IDS`既有白名單不受公會20次限制；所有owner付費的新翻譯仍受既有`AI_OWNER_DAILY_LIMIT`（預設1500次）總量限制，包括Qwen。
+- 只在快取未命中且即將發出API時同步預留一次配額，失敗不退額度，最多一次驗證重試包含在這個邏輯請求中；每人冷卻與同時請求上限檢查先於計數。聊天和翻譯的計數保存在既有`data/ai-daily-usage.json`，沿用原本跨重啟持久化機制。
+- 公會內相同文章／策略的快取與原文切換不計次；同公會已快取的Luna譯文，即使後來用滿額度仍可免費重看。不同公會不共用這個快取，以免超額公會借到其他公會的高階生成。
+- 手動provider可指定額度內模型，但超額仍Qwen。翻譯使用owner既有金鑰，不擅自取得或轉用公會聊天BYOK金鑰。
+
+離峰分流功能已提供開關，預設不啟用；若之後接受DeepSeek品質，再設`TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED=true`。採[DeepSeek官方UTC時段](https://api-docs.deepseek.com/quick_start/pricing/)：週一至五01:00–04:00、06:00–10:00是尖峰，週末離峰。中國公眾假日全天離峰，可在`TRANSLATION_DEEPSEEK_OFFPEAK_DATES`填日期；範例包含當前2026年10/1–7，日期依[國務院2026放假通知](https://big5.www.gov.cn/gate/big5/www.gov.cn/zhengce/zhengceku/202511/content_7047091.htm)。這份日期清單需維護，不會自動下載未來年份假日；未列出的假日按平日尖峰規則選Luna，保守避免誤用DeepSeek。翻譯分流不更改既有聊天的時段程式。
+
+`auto`額度內需`OPENAI_API_KEY`，超額需`AI_GATEWAY_API_KEY`；選擇離峰DeepSeek另需`DEEPSEEK_API_KEY`。`X_TRANSLATION_ENABLED`仍預設false。沒有部署、修改正式.env或啟用正式bot。
+
+### 驗證與檔案
+
+全套`npm test`通過，新增檢查詞表語境與字詞邊界、千紗與梓分離、未知名保留、字面換行／程式碼保留、來源照抄拒絕、同模型最多兩次嘗試、尖峰起迄、週末／假日、公會最後額度、不同公會、台北午夜、白名單、owner總量、快取不計次与公會隔離。既有兩人私密回覆、不修改公開訊息驗證仍通過。50篇真實文篩選結果維持45篇應顯示全顯示、1篇多顯示；另外12個合成篩選案例均符合預期。
+
+評測來源相同，新增報告保留`originalText`與語料SHA-256，對照用`text`為譯文；評審仍由Codex主代理對照原文，不是獨立雙語人工認證。
+
+- 舊策略DeepSeek45篇：`docs/translation-eval-real-deepseek-2026-10-04.json`與`docs/translation-real-review-deepseek-2026-10-04.json`。
+- 新策略三模型各45篇：`docs/translation-eval-strategy-v2-2026-10-04.json`。
+- 最後新增專名保護後，各9篇：`docs/translation-eval-strategy-v3-targeted-2026-10-04.json`。
+- 最終Qwen實際重試：`docs/translation-eval-qwen-runtime-retry-2026-10-04.json`。
+- 名稱資料：`src/ai/translation-glossary.json`；路由：`src/ai/translation-policy.js`；啟用範例：`.env.example`。
