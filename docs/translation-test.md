@@ -214,3 +214,55 @@ TRANSLATION_EVAL_MODELS=tencent/hy-mt2-lite,alibaba/qwen3.7-flash TRANSLATION_EV
 ```sh
 TRANSLATION_EVAL_CASES_FILE=docs/translation-real-tweets-2026-10-04.json TRANSLATION_EVAL_MODELS=alibaba/qwen3.7-flash TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
 ```
+
+## 2026-10-04：同45篇真實文，GPT-6 Luna 對照
+
+**本批 Luna 比 Qwen 好，但仍不是完整過關。** 使用完全相同45篇正文、相同翻譯 prompt 與既有詞表，GPT-6 Luna 設 reasoning none，未增加人物詞表或為 Luna 調整 prompt。Luna 使用修正後的 ASCII-handle 保護；Qwen原45篇在修正前，受到影響的追蹤步驟已有Qwen重測成功，因此不把該程式修正計為Luna模型優勢。各模型輸入字串中的隨機 token 占位符不同，恢復後帳號、URL、標籤一致。
+
+45次API全部成功，沒有 token 保護失敗，usage中 reasoning／cached input皆為0。Luna本輪共12,323 input、4,614 output token，依[OpenAI Docs 官方標準單價](https://developers.openai.com/api/docs/models/gpt-6-luna)（輸入US$0.10、輸出US$0.50／百萬token）估算US$0.0035393，未核對帳單。平均2.30秒；同類貼文每萬次約US$0.787。Qwen前輪每萬次US$0.197，約為Luna四分之一；兩輪延遲不是同時執行，不能作嚴格速度排名。費用與平均延遲只包含各45篇首輪，不含小批重測。
+
+### Qwen原先八個重大問題的對照
+
+| 原文案例 | Qwen | Luna |
+| --- | --- | --- |
+| 泳裝Ui結束公告 | Ui變結衣 | 憂，保留截止與不可常駐招募 |
+| 四名學生復刻公告 | Himari變日向 | 日鞠，四名學生與期間保留 |
+| 玩家抽卡心得 | ナコトコイン變娜可露露幣；漏作品名 | 保留ナコトコイン，作品名TonoFura與保底保留 |
+| 競技排名問題 | 漏掉第1名目標 | 保留第6名能否打第1名 |
+| NEDO預告 | 整段仍為日文 | 完整翻譯正文與兩個主題 |
+| 泳裝Ui招募預告 | Ui變結衣 | 憂，UTC招募時段保留 |
+| 維護獎勵 | Pyroxene變紅柱石 | 青輝石720，信箱期限保留 |
+| 要樂奈玩偶 | 新增燈 & 樂奈 | 只有要樂奈，23:00左右保留 |
+
+Luna沒有重現這八個重大問題。此表只比較這八個案例，不表示其餘37篇都正確，也不是官方遊戲專名 benchmark。
+
+### Luna自己的問題
+
+逐篇對照標記：30篇主體可接受、8篇細節偏差、3篇專名需複核、2篇影響人物身份的錯譯、2篇換行格式問題。沿用首輪來源對照的主觀評審方法，非獨立人工翻譯評審或統計品質分數。即使API返回成功，也不視作翻譯通過。
+
+- [漫畫第129話](https://x.com/Blue_ArchiveJP/status/1692385866575237209)：シズコ／Shizuko寫成「志織」（Shiori），人物名稱資訊改變。
+- [漫畫第115話](https://x.com/Blue_ArchiveJP/status/1656871852705452032)：カズサ／Kazusa寫成「梓」（Azusa）；同角色韓文活動文則寫「佳澄」，沒有一致的專名策略。
+- ミネ寫成「峰」、トキ寫成「托奇」等自由譯名未查證官方名稱；標為專名需複核，不能單憑中文可讀就當作準確。
+- 英文玩家商店心得、Subaru直播請假文有字面的 `\n`，不是真正換行；商店文artifacts寫成「聖遺物」，仍需遊戲術語詞表。
+- 「先行抽選／預購」仍有「優先」用詞；韓文好眠被寫成午睡，添加原文未指明的時段。這些另記細節偏差。
+
+未改prompt重測上述兩篇人物文與兩篇格式文：Kazusa改成和紗、Shizuko變紫子，Mimori重測變美彌；專名生成不穩定。商店文的字面反斜線n仍出現，Subaru文則恢復正常換行。保留首輪失敗，不能用一次補測較好覆蓋它。
+
+### 採用判斷與保存
+
+若在兩者之間選下一個翻譯候選，本批支持優先Luna。正式採用前，應先決定人物／貨幣名稱使用可信詞表或原文保留，再驗證專名與字面換行問題。不能直接宣稱Luna所有遊戲文章過關；本次沒有更動prompt、預設模型或正式環境，也沒有部署。翻譯按鈕的篩選為本機規則，不依賴Luna，既有50篇分類結果不受這次模型測試影響。
+
+保存檔案：
+
+- 45篇首輪原始譯文及usage：`docs/translation-eval-real-luna-2026-10-04.json`。
+- 每篇註記與四篇重測解讀：`docs/translation-real-review-luna-2026-10-04.json`。
+- 四篇重測API結果：`docs/translation-eval-real-luna-recheck-2026-10-04.json`。
+- 同資料成本與原Qwen重大案例對照：`docs/translation-real-model-comparison-2026-10-04.json`。
+
+本輪僅新增評測結果與文件，未改執行程式；核對兩輪45篇來源ID／URL一致，Luna保存原文快照與未修改的語料一致、45筆API均成功、各保存JSON可讀取。`text`欄位是譯文，Luna另存`originalText`與語料SHA-256，避免把譯文誤認成原文。上一輪已通過全套`npm test`，此輪未重複跑與文件無關的回歸套件。
+
+重跑同一批（會產生少量API費用）：
+
+```sh
+TRANSLATION_EVAL_CASES_FILE=docs/translation-real-tweets-2026-10-04.json TRANSLATION_EVAL_MODELS=gpt-6-luna TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
+```

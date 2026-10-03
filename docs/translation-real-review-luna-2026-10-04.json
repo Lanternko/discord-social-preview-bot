@@ -1,0 +1,334 @@
+{
+  "reviewedAt": "2026-10-04",
+  "model": "gpt-6-luna",
+  "reviewer": "Codex primary agent, direct source/translation comparison; not an independent bilingual human review",
+  "settings": "Same 45 source posts, same prompt and glossary, reasoning none; current ASCII-handle protection. Qwen original batch preceded handle fix; only affected follow-step case was rechecked successfully with Qwen after fix.",
+  "decision": "Better than Qwen on this corpus; not a flawless pass. All eight previously blocking Qwen cases improved, but Luna has two separate character-name errors and two literal-newline formatting issues. Recommend as next candidate with explicit entity handling, not an unchanged production switch.",
+  "reviews": [
+    {
+      "id": "1814993059974897921",
+      "sourceUrl": "https://x.com/famitsu/status/1814993059974897921",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2038564087467254266",
+      "sourceUrl": "https://x.com/shinshin86/status/2038564087467254266",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "2041375534857478171",
+      "sourceUrl": "https://x.com/smoke_matsui/status/2041375534857478171",
+      "severity": "minor",
+      "note": "交付物品寫成送給，可能多出贈送含義，短句缺上下文",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2043593799465947627",
+      "sourceUrl": "https://x.com/nedo_info/status/2043593799465947627",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1755154436186628254",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "2041422252286386523",
+      "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+      "severity": "format",
+      "note": "輸出字面反斜線n；artifacts譯成聖遺物，遊戲術語需詞表",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1946110595948036237",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "1974761485919195464",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1908809403072966909",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1908809403072966909",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1612721216548405250",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1612721216548405250",
+      "severity": "entity-review",
+      "note": "ミネ/Mine譯成峰；不能確認官方中文譯名，需詞表或保留原文",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "1683753497127419904",
+      "sourceUrl": "https://x.com/goto_saori18/status/1683753497127419904",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "2043629372851343457",
+      "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "2036005030847717457",
+      "sourceUrl": "https://x.com/bang_dream_info/status/2036005030847717457",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1962350090762256873",
+      "sourceUrl": "https://x.com/gsc_goodsmile/status/1962350090762256873",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1892586135936770320",
+      "sourceUrl": "https://x.com/aoki__hina/status/1892586135936770320",
+      "severity": "minor",
+      "note": "自我打算並排擺放寫成問讀者，語氣略變",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "2067087337037983834",
+      "sourceUrl": "https://x.com/bang_dream_info/status/2067087337037983834",
+      "severity": "minor",
+      "note": "プレイガイド先行譯為售票平台優先，先行階段與優先權仍可能混淆",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2046489281758482802",
+      "sourceUrl": "https://x.com/animatesaga/status/2046489281758482802",
+      "severity": "minor",
+      "note": "先行抽選仍寫優先抽選，與Qwen有相同術語偏差",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1629013262229708800",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1629013262229708800",
+      "severity": "entity-review",
+      "note": "카즈사/Kazusa譯為佳澄；與其他篇同角色梓不一致，未查證官方譯名",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2039357564937498778",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/2039357564937498778",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1938160315524649042",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "app-fixed"
+    },
+    {
+      "id": "1692385866575237209",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+      "severity": "blocking",
+      "note": "シズコ/Shizuko被譯成志織(Shiori)，角色名讀音與身份資訊改變",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "1656871852705452032",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+      "severity": "blocking",
+      "note": "カズサ/Kazusa被譯成梓(Azusa)，變成不同角色名稱",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "1473141433188384769",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+      "severity": "minor",
+      "note": "作者署名純粋な不純物被翻譯，宜保留作者名",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "2007798168201973903",
+      "sourceUrl": "https://x.com/hiiragiryo/status/2007798168201973903",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2038851040439935256",
+      "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "2032729648594116738",
+      "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+      "severity": "entity-review",
+      "note": "トキ/Toki譯成托奇，專名需詞表或保留原文，未查證官方名稱",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "2016390788348051497",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/2016390788348051497",
+      "severity": "minor",
+      "note": "단잠本意好眠，被具體化成午睡，原文未指明時段",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1958803829111283892",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1958803829111283892",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "format"
+    },
+    {
+      "id": "1606484815594651648",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1606484815594651648",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "2016512834281320877",
+      "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+      "severity": "minor",
+      "note": "케이/Kei譯為字母K，專名表達可能模糊",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "1979722434376069189",
+      "sourceUrl": "https://x.com/just_Homi12/status/1979722434376069189",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "1991449000101441839",
+      "sourceUrl": "https://x.com/BArchiveWarfare/status/1991449000101441839",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1934087671162532070",
+      "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+      "severity": "format",
+      "note": "輸出字面反斜線n；請假日期、原因和下週二恢復的意思保留",
+      "qwenPreviousSeverity": "format"
+    },
+    {
+      "id": "1902535233011843291",
+      "sourceUrl": "https://x.com/umineko22/status/1902535233011843291",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "2023208411123593560",
+      "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2038490637323145475",
+      "sourceUrl": "https://x.com/fladdict/status/2038490637323145475",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "2041057536577782057",
+      "sourceUrl": "https://x.com/KinoShinjuku/status/2041057536577782057",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "minor"
+    },
+    {
+      "id": "2024386040031752663",
+      "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "1750760491431993377",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "2041416140787011865",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "1968933076991426682",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1905518971899822163",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1905518971899822163",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "acceptable"
+    },
+    {
+      "id": "1683674070829903873",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1683674070829903873",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "entity-review"
+    },
+    {
+      "id": "1892574535670440116",
+      "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+      "severity": "minor",
+      "note": "沒有新增燈，23:00左右保留；先行預購寫優先預購，術語可改進",
+      "qwenPreviousSeverity": "blocking"
+    },
+    {
+      "id": "1946588842326135226",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1946588842326135226",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+      "qwenPreviousSeverity": "entity-review"
+    }
+  ],
+  "targetedRecheck": {
+    "cases": 4,
+    "changedPrompt": false,
+    "findings": [
+      "Kazusa錯譯梓的案例重測改成和紗，顯示同prompt專名生成不穩定，不能抹去首輪錯誤",
+      "Shizuko首輪志織、重測紫子，Mimori重測美彌，未採一致原名或官方詞表",
+      "英文玩家文的字面反斜線n重測仍出現",
+      "Subaru文重測改為正常換行，格式問題不是每次必發"
+    ]
+  }
+}
