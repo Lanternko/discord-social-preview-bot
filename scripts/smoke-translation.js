@@ -24,6 +24,12 @@ async function main() {
   assert.equal(result.text, '你好 #BlueArchive');
   assert.equal(body.thinking.type, 'disabled');
   assert.equal(body.messages.length, 2); // No persona, conversation or tools.
+  await requestTranslation('Hello', { provider: 'openai', model: 'gpt-6-luna', apiKey: 'test-key', fetch: async (_, init) => {
+    const lunaBody = JSON.parse(init.body);
+    assert.equal(lunaBody.reasoning_effort, 'none');
+    assert.equal(lunaBody.temperature, undefined);
+    return { ok: true, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: '你好' } }] }) };
+  } });
   await assert.rejects(requestTranslation('Hello', { ...opts, fetch: async () => ({ ok: false, status: 429 }) }), /HTTP 429/);
   await assert.rejects(requestTranslation('Hello', { ...opts, fetch: async () => ({ ok: true, json: async () => ({ choices: [{ finish_reason: 'length', message: { content: 'half' } }] }) }) }), /Incomplete/);
 

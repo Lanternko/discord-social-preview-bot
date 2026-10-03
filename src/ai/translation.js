@@ -43,7 +43,7 @@ async function requestTranslation(text, options = {}) {
       body.max_tokens = 4096;
       body.thinking = { type: 'disabled' };
       body.temperature = 0;
-    } else if (/^gpt-5/.test(model)) body.reasoning_effort = model === 'gpt-5-nano' ? 'minimal' : 'none';
+    } else if (/^gpt-[56]/.test(model)) body.reasoning_effort = model === 'gpt-5-nano' ? 'minimal' : 'none';
     else body.temperature = 0;
   }
   const started = Date.now();

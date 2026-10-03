@@ -1,6 +1,6 @@
 # X 貼文翻譯測試（2026-10-03）
 
-建議測試版使用 `deepseek-flash`，關閉 thinking。在本次比較的模型中，它是六筆短貼文人工檢查沒有明顯漏翻、意思錯誤且成本最低的選項。這不是全市場排名，也不是大型翻譯品質評測。
+2026-10-03 初輪建議使用 `deepseek-flash`，關閉 thinking。2026-10-04 補測 `gpt-6-luna` 後，價格導向的候選首選改為 Luna（`reasoning_effort=none`）：本批六筆短文估算每萬次 US$0.51，低於 DeepSeek 離峰 US$0.59，但平均延遲較高。bot 的測試版預設仍是 DeepSeek，尚未切換或部署。這不是全市場排名，也不是大型翻譯品質評測。
 
 ## 實際 API 比較
 
@@ -65,3 +65,33 @@ TRANSLATION_MODEL=deepseek-flash
 - [GPT-4.1 nano](https://developers.openai.com/api/docs/models/gpt-4.1-nano)：0.10/0.40。
 - [GPT-5 nano](https://developers.openai.com/api/docs/models/gpt-5-nano)：0.05/0.40。
 - [GPT-5.4 nano](https://developers.openai.com/api/docs/models/gpt-5.4-nano)：0.20/1.25。
+
+## 2026-10-04：GPT-6 Luna 補測
+
+上一輪沒有測 GPT-6 Luna。本次使用同一份 prompt、同一組六筆合成貼文、相同網址／帳號／hashtag 保護流程，實際呼叫 `gpt-6-luna`，設定 `reasoning_effort=none`。六筆皆完成且未遺失保護 token，API usage 中 reasoning、cache hit、cache write token 皆為 0。
+
+| 模型 | 平均延遲 | 同批短文每萬次估算 |
+| --- | --- | --- |
+| GPT-6 Luna（本次） | 2.46 秒 | US$0.51 |
+| DeepSeek Flash（前次離峰） | 0.97 秒 | US$0.59 |
+
+Luna 本次共輸入 1,334 token、輸出 343 token，標準價估算總費用 US$0.0003049。每萬次估算 US$0.5082，約比前次 DeepSeek 便宜 14%；樣本為短文，不代表所有文章的成本。兩次測試非同時執行，延遲只是觀測值，無法作嚴格速度排名。
+
+人工檢查：
+
+- 活動公告：日期、時間、連結均保留，完整翻譯。「先行抽選」被譯成「優先抽選」，「預先抽選」更精準，屬術語偏差。
+- 維護公告：無法登入、結束時間可能提前或延後、補償 600 個青輝石都保留。
+- 英文否定句：不重置進度、伺服器離線、不要解除安裝都正確，保留 UTC，沒有轉換時區。
+- 韓文期限：明日 19:00、10 月 12 日 23:59、逾期無法再領都保留；「下午 7 點」在台灣較自然可寫「晚上 7 點」，屬表達差異。
+- 日文抽卡用語：「天井」翻成「保底」，語氣自然；但 prompt 本來就提供這個詞彙對照，不能據此宣稱模型獨立理解全部遊戲術語。
+- 指令文字：翻譯整段貼文，沒有照貼文要求只回 BANANA；票券不可退款的條件保留。
+
+六筆皆未見重大漏翻、否定反轉或新增退款條件。有限樣本不能證明整體品質優於 DeepSeek；本批顯示兩者皆可用，Luna 稍便宜，DeepSeek 前次觀測較快。此輪未更改 bot 預設模型。
+
+[GPT-6 Luna 官方文件](https://developers.openai.com/api/docs/models/gpt-6-luna)：標準每百萬 token 輸入 US$0.10、cached input US$0.01、cache write US$0.125、輸出 US$0.50。未使用 Batch／Flex／Fast mode。原始結果保存於 `docs/translation-eval-gpt6luna-2026-10-04.json`。
+
+單獨重跑：
+
+```sh
+TRANSLATION_EVAL_MODELS=gpt-6-luna TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
+```

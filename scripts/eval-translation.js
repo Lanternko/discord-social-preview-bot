@@ -19,10 +19,14 @@ const models = [
   { provider: 'openai', model: 'gpt-4.1-nano', inputRate: .10, outputRate: .40 },
   { provider: 'openai', model: 'gpt-5-nano', inputRate: .05, outputRate: .40 },
   { provider: 'openai', model: 'gpt-5.4-nano', inputRate: .20, outputRate: 1.25 },
+  { provider: 'openai', model: 'gpt-6-luna', inputRate: .10, cacheRate: .01, outputRate: .50 },
   { provider: 'deepseek', model: 'deepseek-flash', inputRate: .15, cacheRate: .003, outputRate: .60 },
 ];
 async function main() {
-  const results = await Promise.all(models.map(async model => {
+  const selectedNames = process.env.TRANSLATION_EVAL_MODELS?.split(',').map(name => name.trim());
+  const selected = selectedNames ? models.filter(model => selectedNames.includes(model.model)) : models;
+  if (!selected.length) throw new Error('No matching evaluation models');
+  const results = await Promise.all(selected.map(async model => {
     const rows = [];
     for (const sample of cases) {
       try {
@@ -46,7 +50,7 @@ async function main() {
     }
     return { ...model, rows };
   }));
-  const report = { testedAt: new Date().toISOString(), notes: 'Synthetic short posts, six per available model; prices checked 2026-10-03; DeepSeek off-peak. Mechanical preservation is not a semantic quality score.', results };
+  const report = { testedAt: new Date().toISOString(), notes: 'Synthetic short posts, six per available model; original prices checked 2026-10-03, GPT-6 Luna checked 2026-10-04; DeepSeek off-peak. Mechanical preservation is not a semantic quality score.', results };
   fs.mkdirSync(path.join(__dirname, '../data'), { recursive: true });
   fs.writeFileSync(path.join(__dirname, '../data/translation-eval.json'), JSON.stringify(report, null, 2));
 }
