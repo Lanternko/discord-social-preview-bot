@@ -80,24 +80,25 @@ function buildFacebookPayload(url) {
 // awaited only at the embed check, seconds later) lets validation catch that.
 async function buildTwitterPayload(url) {
   const meta = await fetchTweetMeta(url);
+  const { addTranslationButton } = require('./translation-preview');
   const secondaryUrl = replaceHostFixer(url, FIXER_TWITTER_SECONDARY);
   if (R18_SPOILER_ENABLED && meta?.sensitive && meta.photos.length > 0) {
-    return buildSensitiveTwitterPayload(url, meta, secondaryUrl);
+    return addTranslationButton(buildSensitiveTwitterPayload(url, meta, secondaryUrl), meta);
   }
   // Multi-image posts only: a single image already unfurls fine through the
   // fixer, and a post with video keeps the fixer's playable player.
   if (meta && !meta.hasNonPhotoMedia && meta.photos.length > 1) {
-    return buildTwitterCarouselPayload(url, meta);
+    return addTranslationButton(buildTwitterCarouselPayload(url, meta), meta);
   }
   const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
-  return {
+  return addTranslationButton({
     ...payload,
     nativeEmbedCheck: buildTwitterNativeCheck(meta),
     fallbackContents: [secondaryUrl],
     viewerValidation: "twitter",
     viewerRequiresMedia: meta ? meta.hasMedia : null,
     recoverUrls: [secondaryUrl, ...payload.recoverUrls],
-  };
+  }, meta);
 }
 
 // Text-only and single-image posts unfurl fine natively (full text, full-size
