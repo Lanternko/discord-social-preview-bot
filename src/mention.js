@@ -7,6 +7,8 @@ const {
   buildStickerCatalog,
   buildStickerSendPayload,
 } = require("./stickers");
+const { t, fortuneLabel, fortuneComments } = require("./system-text");
+const { getGuildAiChatMode } = require("./ai-chat-store");
 
 const FORTUNE_RESULTS = [
   { label: "大大吉", weight: 1 },
@@ -19,25 +21,6 @@ const FORTUNE_RESULTS = [
   { label: "大凶", weight: 6 },
 ];
 
-const FORTUNE_COMMENTS = {
-  大大吉: [
-    "欸欸欸…！這、這是超級幸運日……！////",
-    "大、大大吉…？我第一次看到…！好厲害喔…！",
-    "今、今天一定會發生超棒的事……！！！",
-  ],
-  大吉: ["今天會是很好的一天喔！", "哇…真的嗎…好厲害！", "運氣超好的…羨慕///"],
-  中吉: ["嗯…是好運喔！", "今天應該會順順的～", "有點小期待…的一天呢。"],
-  小吉: ["還好啦…小小的幸運～", "有一點點好運喔。", "有點小確幸喔…"],
-  末吉: ["唔…勉強算吉吧…", "就…就還行吧？", "平平淡淡的一天。"],
-  吉: ["普通普通…", "就是正常啦～", "嗯，還行喔！"],
-  凶: ["今天要小心一點喔…", "有點不好耶…好擔心…", "…要注意安全喔。"],
-  大凶: [
-    "啊、對不起…抽到大凶了…",
-    "不、不要難過…！明天會更好的…",
-    "今天就乖乖待在家吧…///",
-  ],
-};
-
 function drawFortune() {
   const total = FORTUNE_RESULTS.reduce((sum, r) => sum + r.weight, 0);
   let rand = Math.floor(Math.random() * total);
@@ -47,21 +30,6 @@ function drawFortune() {
   }
   return FORTUNE_RESULTS.at(-1).label;
 }
-
-// Said when 西寶 reached for a sticker that isn't in her catalog — she picked a
-// name the model invented, so there's nothing to post and nothing left to say.
-const STICKER_MISS_REPLIES = [
-  "欸…我剛剛想丟一張貼圖，結果找不到…",
-  "啊…那張貼圖我沒有啦…",
-  "我本來想貼圖的…算了…",
-];
-
-const FALLBACK_GREETINGS = [
-  "哎呀…突然叫我幹嘛…",
-  "有、有什麼事嗎…？///",
-  "嗯…？叫我了嗎…",
-  "…在的在的…怎麼了嗎？",
-];
 
 // Send 西寶's AI reply, attaching the sticker she asked for (if any).
 //
@@ -77,7 +45,7 @@ async function sendAIReply(message, aiReply, stickerCatalog) {
   // rather than posting silence or leaking the raw "[貼圖:…]" token.
   const textOnly = text
     ? { ...base, content: text }
-    : { ...base, content: pickRandom(STICKER_MISS_REPLIES) };
+    : { ...base, content: pickRandom(t("mention.stickerMiss")) };
 
   const stickerPayload = buildStickerSendPayload(sticker);
   if (!stickerPayload) {
@@ -110,10 +78,12 @@ async function handleMention(message, client) {
   const textLower = text.toLowerCase();
 
   if (textLower.includes("抽籤") || textLower.includes("運勢")) {
-    const result = drawFortune();
-    const comment = pickRandom(FORTUNE_COMMENTS[result]);
+    const tier = drawFortune();
     await message.reply({
-      content: `🎋 今日運勢：**${result}**\n${comment}`,
+      content: t("fortune.line", {
+        result: fortuneLabel(tier),
+        comment: pickRandom(fortuneComments(tier)),
+      }),
       allowedMentions: { repliedUser: false },
     });
     return;
@@ -121,7 +91,7 @@ async function handleMention(message, client) {
 
   if (textLower === "道歉") {
     await message.reply({
-      content: "對不起對不起…我知道我不好…///",
+      content: t("mention.apology"),
       allowedMentions: { repliedUser: false },
     });
     return;
@@ -168,14 +138,14 @@ async function handleMention(message, client) {
 
   if (text === "") {
     await message.reply({
-      content: pickRandom(FALLBACK_GREETINGS),
+      content: pickRandom(t("mention.greeting")),
       allowedMentions: { repliedUser: false },
     });
     return;
   }
 
   await message.reply({
-    content: "你…你在叫我嗎？///",
+    content: t("mention.calledMe"),
     allowedMentions: { repliedUser: false },
   });
 }
@@ -184,13 +154,32 @@ function isMentioningBot(message, client) {
   return message.mentions.has(client.user);
 }
 
+// A mention the user actually typed: <@bot> in the text, or the bot's own
+// managed role (Discord's autocomplete offers both). Unlike isMentioningBot,
+// a reply ping and @everyone / @here don't count.
+function isDirectMention(message, client) {
+  const botId = client.user?.id;
+  if (!botId) return false;
+  if (new RegExp(`<@!?${botId}>`).test(message.content || "")) return true;
+  const botRoleId = message.guild?.members?.me?.roles?.botRole?.id;
+  return Boolean(botRoleId && message.mentions.roles?.has?.(botRoleId));
+}
+
+// Whether this message should reach handleMention, per the guild's /ai-chat
+// mode. In "direct" mode a non-direct mention falls through to the normal
+// preview path, so a reply to 西寶 that carries a link still gets previewed.
+function shouldHandleMention(message, client) {
+  if (!isMentioningBot(message, client)) return false;
+  if (getGuildAiChatMode(message.guildId) === "all") return true;
+  return isDirectMention(message, client);
+}
+
 module.exports = {
   sendAIReply,
-  STICKER_MISS_REPLIES,
   FORTUNE_RESULTS,
-  FORTUNE_COMMENTS,
-  FALLBACK_GREETINGS,
   drawFortune,
   handleMention,
   isMentioningBot,
+  isDirectMention,
+  shouldHandleMention,
 };

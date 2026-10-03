@@ -7,6 +7,8 @@
 // itself; we shuffle locally. Models put the answer on B/C far more often
 // than chance, and a quiz whose answer is always C stops being a quiz.
 
+const { t } = require("./system-text");
+
 const QUIZ_MARKER = "【閱讀測驗】";
 const OPTION_MAX_CHARS = 80;
 const LETTERS = ["A", "B", "C", "D"];
@@ -97,12 +99,12 @@ function shuffleQuizOptions(quiz, rng = Math.random) {
 function formatStoryQuiz(quiz, rng = Math.random) {
   const { options, answer } = shuffleQuizOptions(quiz, rng);
   return [
-    "📝 **閱讀測驗**",
+    t("quiz.header"),
     quiz.question,
     "",
     ...options.map((option, i) => `${LETTERS[i]}. ${option}`),
     "",
-    `正確答案：||${answer}||`,
+    t("quiz.answer", { answer }),
   ].join("\n");
 }
 

@@ -430,6 +430,13 @@ check("help skill matches questions about 西寶 herself", () => {
     "權限要開哪些",
     "help",
     "what commands do you have",
+    "怎麼讓你閉嘴",
+    "要怎麼關掉你",
+    "可以叫你不要一直回嗎",
+    "我回覆你的訊息你會回嗎",
+    "有些人只想要預覽，不想跟你聊天，可以關掉嗎",
+    "自我介紹一下",
+    "介紹一下你自己",
   ];
   for (const text of asks) {
     assert.equal(detectSkill(text)?.id, "help", `expected help for: ${text}`);
@@ -442,7 +449,7 @@ check("help outranks story on questions about the story feature", () => {
 });
 
 check("help does not load on ordinary chat", () => {
-  for (const text of ["你好可愛", "晚餐要吃什麼", "今天天氣真好", "keyboard 壞了", "monkey"]) {
+  for (const text of ["你好可愛", "晚餐要吃什麼", "今天天氣真好", "keyboard 壞了", "monkey", "把冷氣關掉", "這裡好安靜"]) {
     assert.equal(detectSkill(text), null, `unexpected skill for: ${text}`);
   }
 });

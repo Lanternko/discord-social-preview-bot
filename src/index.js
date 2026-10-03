@@ -23,11 +23,12 @@ const {
   suppressOriginalEmbeds,
   checkAndHandleEmptyEmbeds,
 } = require("./discord-io");
-const { isMentioningBot, handleMention } = require("./mention");
+const { shouldHandleMention, handleMention } = require("./mention");
 const { handleReactionDelete } = require("./reaction-delete");
 const { sendGuildWelcome } = require("./guild-welcome");
 const { loadStickerLibrary } = require("./stickers");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
+const { runInGuildLanguage, t } = require("./system-text");
 const { AI_PROVIDER_CHAIN } = require("./ai/chain");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
 const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
@@ -120,7 +121,13 @@ client.on("guildDelete", (guild) => {
   );
 });
 
-client.on("interactionCreate", async (interaction) => {
+// Each event runs inside its guild's /language context, so fixed text the
+// bot posts while handling it (system-text.js) comes out in that language.
+client.on("interactionCreate", (interaction) =>
+  runInGuildLanguage(interaction.guildId, () => onInteractionCreate(interaction)),
+);
+
+async function onInteractionCreate(interaction) {
   // Any throw here propagates to the Client 'error' event and crashes
   // the whole process (no auto-restart). Swallow + log so a bug in one
   // handler can't take 西寶 offline.
@@ -132,7 +139,7 @@ client.on("interactionCreate", async (interaction) => {
     );
     try {
       const replyPayload = {
-        content: "指令執行失敗了…抱歉 🙏",
+        content: t("command.failed"),
         flags: MessageFlags.Ephemeral,
       };
       if (interaction.deferred || interaction.replied) {
@@ -146,7 +153,7 @@ client.on("interactionCreate", async (interaction) => {
       );
     }
   }
-});
+}
 
 client.on("messageReactionAdd", async (reaction, user) => {
   // Symmetric with the handlers above: a throw inside handleReactionDelete
@@ -159,7 +166,11 @@ client.on("messageReactionAdd", async (reaction, user) => {
   }
 });
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", (message) =>
+  runInGuildLanguage(message.guildId, () => onMessageCreate(message)),
+);
+
+async function onMessageCreate(message) {
   // Tally per-guild speaking count for any human message, regardless of
   // ignore markers — nopreview/fxignore suppress the preview feature, not
   // the user's existence in the channel.
@@ -173,7 +184,7 @@ client.on("messageCreate", async (message) => {
 
   if (shouldIgnoreMessage(message)) return;
 
-  if (isMentioningBot(message, client)) {
+  if (shouldHandleMention(message, client)) {
     // Dedup: messageCreate can fire twice for the same message (Discord
     // gateway reconnects). Without this, two parallel generateAIReply calls
     // race — one may fall through to the hardcoded fallback while the other
@@ -260,7 +271,7 @@ client.on("messageCreate", async (message) => {
   } finally {
     inFlightReplies.delete(processingKey);
   }
-});
+}
 
 startMemorySweepTimer();
 startProfileSweepTimer();

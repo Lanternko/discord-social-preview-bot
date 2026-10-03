@@ -11,11 +11,12 @@ const {
   buildThreadsMediaEmbed,
   buildThreadsCarouselEmbeds,
 } = require("../embeds");
+const { t } = require("../system-text");
 
 function buildTailHint(hiddenImages, hasVideo) {
   const parts = [];
-  if (hiddenImages > 0) parts.push(`還有 ${hiddenImages} 張`);
-  if (hasVideo) parts.push("影片");
+  if (hiddenImages > 0) parts.push(t("preview.moreImages", { n: hiddenImages }));
+  if (hasVideo) parts.push(t("preview.video"));
   if (!parts.length) return null;
   return `... ${parts.join(" + ")}`;
 }
@@ -28,10 +29,10 @@ const MAX_QUOTED_ANCESTORS = 2;
 const ANCESTOR_TEXT_LIMIT = 500;
 
 function quoteAncestor(ancestor) {
-  const header = ancestor.author ? `**@${ancestor.author}**` : "**原貼文**";
+  const header = ancestor.author ? `**@${ancestor.author}**` : `**${t("threads.originalPost")}**`;
   const body = ancestor.text
     ? trimDescription(ancestor.text, ANCESTOR_TEXT_LIMIT)
-    : "（無文字內容）";
+    : t("threads.noText");
   return [header, ...body.split("\n")].map((line) => `> ${line}`).join("\n");
 }
 
@@ -53,12 +54,12 @@ function buildReplyDescription(metadata) {
   quoted.forEach((ancestor, index) => {
     blocks.push(quoteAncestor(ancestor));
     if (index === 0 && skipped > 0) {
-      blocks.push(`> ⋯（中間還有 ${skipped} 則）`);
+      blocks.push(`> ⋯${t("threads.skippedReplies", { n: skipped })}`);
     }
   });
 
   const ownText = metadata.description || metadata.postText;
-  blocks.push(ownText ? `↳ ${ownText}` : "↳ （這則回覆沒有文字）");
+  blocks.push(`↳ ${ownText || t("threads.replyNoText")}`);
   return blocks.join("\n\n");
 }
 
@@ -72,9 +73,6 @@ function buildThreadsViewerUrls(url) {
   return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
 
-const WALLED_DESCRIPTION =
-  "未登入看不到這篇（限定或敏感內容），請跳轉至原文。";
-const GENERIC_DESCRIPTION = "預覽目前無法載入，請點標題前往原始貼文。";
 
 // The canonical permalink is /@user/post/ID, so the author survives even when
 // every fetch came back empty — the card should at least say whose post it is.
@@ -137,12 +135,12 @@ function buildThreadsLocalFallback(
   { walled = false, avatarUrl = null } = {},
 ) {
   const author = threadsAuthorFromUrl(url);
-  const kind = video ? "Threads 影片貼文" : "Threads 貼文";
+  const kind = t(video ? "threads.videoPost" : "threads.post");
   const embed = buildThreadsCompactEmbed(url, {
-    title: metadata?.title || (author ? `@${author} 的 ${kind}` : kind),
+    title: metadata?.title || (author ? t("threads.postBy", { author, kind }) : kind),
     description:
       metadata?.description ||
-      (walled ? WALLED_DESCRIPTION : GENERIC_DESCRIPTION),
+      t(walled ? "threads.walled" : "preview.unavailable"),
   });
   if (author) {
     embed.setAuthor({
@@ -154,8 +152,8 @@ function buildThreadsLocalFallback(
   }
   if (video) {
     const description = metadata?.description
-      ? `${trimDescription(metadata.description, 3900)}\n\n（影片無法載入，請點連結觀看）`
-      : "（影片無法載入，請點連結觀看）";
+      ? `${trimDescription(metadata.description, 3900)}\n\n${t("threads.videoUnavailable")}`
+      : t("threads.videoUnavailable");
     embed.setDescription(description);
   }
   return { embeds: [embed] };
@@ -247,7 +245,7 @@ async function buildThreadsPayload(url) {
     if (metadata.video || metadata.videoCount > 0) {
       console.log(`[preview] threads-video ${canonicalUrl}`);
       const videoEmbed = buildThreadsCompactEmbed(canonicalUrl, metadata);
-      if (!metadata.title) videoEmbed.setTitle("Threads 影片貼文");
+      if (!metadata.title) videoEmbed.setTitle(t("threads.videoPost"));
       return {
         ...(metadata.video ? { videoAttachment: metadata.video } : {}),
         videoAttachmentEmbeds: [videoEmbed],

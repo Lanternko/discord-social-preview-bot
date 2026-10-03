@@ -8,6 +8,7 @@ const {
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
 const { getGuildLanguage } = require("./language-store");
+const { runInGuildLanguage } = require("./system-text");
 const { trimDescription } = require("./utils");
 const {
   AI_PROVIDER_CHAIN,
@@ -16,6 +17,7 @@ const {
   runProviderChain,
 } = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
+const { screenPersonaReply } = require("./ai/meta-leak");
 const {
   buildEmojiMap,
   buildEmojiPromptBlock,
@@ -221,6 +223,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
       turns,
       persona,
       maxTokens,
+      { screen: screenPersonaReply },
     );
 
     if (!result) {
@@ -395,7 +398,9 @@ function registerJob(schedule, client) {
       const executionOptions = current.taskType === "daily_recap"
         ? { notBeforeMs: recapNotBeforeMs(taskContext) }
         : {};
-      executeScheduledTask(current, client, executionOptions).catch((err) => {
+      runInGuildLanguage(current.guildId, () =>
+        executeScheduledTask(current, client, executionOptions),
+      ).catch((err) => {
         console.error(
           `[scheduler] unhandled error schedule=${schedule.id}: ${err?.message || err}`,
         );

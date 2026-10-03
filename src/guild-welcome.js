@@ -43,6 +43,7 @@ function buildWelcomeMessage({ dailyLimit = AI_FREE_DAILY_LIMIT } = {}) {
     `- \`@西寶\` 可以跟我聊天，整個伺服器每天免費 ${dailyLimit} 次；管理員用 \`/ai-key\` 放 DeepSeek 金鑰就能解鎖更多`,
     "- 管理員可以用 `/schedule` 排床邊故事、早安問候或今日回顧",
     "- 預覽貼錯了，在我的訊息按 🗑️ 就會收掉",
+    "- 只想要預覽、不想被我插話？管理員用 `/ai-chat` 關掉，之後只有直接 @我 才會回",
     "",
     "想知道我還會什麼，就 @我問，或打 `/help` 看完整說明 ✨",
   ].join("\n");

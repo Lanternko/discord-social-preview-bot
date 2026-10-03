@@ -83,7 +83,8 @@ const { buildBilibiliPayload } = require("../src/platforms/bilibili");
 const { buildPreviewPayloads } = require("../src/preview");
 const { nativeEmbedsCover } = require("../src/native-embed");
 const { handleReactionDelete } = require("../src/reaction-delete");
-const { sendAIReply, STICKER_MISS_REPLIES } = require("../src/mention");
+const { sendAIReply } = require("../src/mention");
+const { t: systemText } = require("../src/system-text");
 const { mergeStickerSources } = require("../src/stickers");
 const {
   checkAndHandleEmptyEmbeds,
@@ -1412,6 +1413,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.deepEqual(p.fallbackContents, [
       "https://instagram7.com/reel/DcA0yXWMF4E/",
       "https://deinstagram.com/reel/DcA0yXWMF4E/",
+      "https://fxig.seria.moe/reel/DcA0yXWMF4E/",
     ]);
     assert.equal(p.viewerValidation, "instagram");
     assert.equal(s.hasEmbedFallback, false);
@@ -1621,7 +1623,7 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     assert.ok(p.content.includes("fxtwitter"));
     assert.ok(Array.isArray(p.recoverUrls) && p.recoverUrls.length >= 1);
     assert.equal(p.sourceUrl, "https://x.com/u/status/1");
-    assert.ok(p.recoverEmbedOptions?.footerText?.includes("X"));
+    assert.ok(p.recoverEmbedOptions?.platformLabel?.includes("X"));
   });
 
   await it("twitter URL → vxtwitter as fallback + first OG-recovery candidate", async () => {
@@ -2593,8 +2595,8 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     await sendAIReply(message, "[貼圖:我亂編的]", STICKER_CATALOG);
     assert.equal(sent.length, 1);
     assert.ok(
-      STICKER_MISS_REPLIES.includes(sent[0].content),
-      `expected a STICKER_MISS_REPLIES line, got ${JSON.stringify(sent[0].content)}`,
+      systemText("mention.stickerMiss").includes(sent[0].content),
+      `expected a mention.stickerMiss line, got ${JSON.stringify(sent[0].content)}`,
     );
   });
 

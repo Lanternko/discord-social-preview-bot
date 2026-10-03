@@ -42,10 +42,12 @@ const {
   RECAP_GEMINI_TIMEOUT_MS,
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
+const { screenPersonaReply } = require("./meta-leak");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
 const { isDeepSeekPeak } = require("./peak-hours");
 const { buildUserTurn } = require("./persona");
 const { getChannelAIHistory, recordAITurn } = require("./memory");
+const { t, allVariants } = require("../system-text");
 const {
   fetchGroupContext,
   buildGroupContextBlock,
@@ -379,11 +381,14 @@ function meterOwnerPaidReply(guildId, isWhitelisted) {
 
 // Zero-cost, in-character replies for a metered-out request. The ops line says
 // which limit it was and how it lifts, so nobody reads silence as a crash.
-const QUOTA_REPLIES = {
-  guild: `今天被叫太多次了…我先休息一下，明天再陪你們聊 ///\n-# 本伺服器今天的免費額度（${AI_FREE_DAILY_LIMIT} 次）用完了，台北時間 0 點重置；管理員可用 \`/ai-key set\` 自帶金鑰解除限制。`,
-  owner: `嗚…今天真的講不動了，明天再來找我好不好 ///\n-# 西寶今天整體的免費額度用完了，台北時間 0 點重置；自帶金鑰（\`/ai-key set\`）的伺服器不受影響。`,
-};
-const QUOTA_REPLY_SET = new Set(Object.values(QUOTA_REPLIES));
+// Rendered in the guild's /language at send time (system-text.js).
+function quotaReply(reason) {
+  return t(`quota.${reason}`, { limit: AI_FREE_DAILY_LIMIT });
+}
+const QUOTA_REPLY_SET = new Set([
+  ...allVariants("quota.guild", { limit: AI_FREE_DAILY_LIMIT }),
+  ...allVariants("quota.owner"),
+]);
 
 // Lets the caller skip reply post-processing (a skill's heading rewrite) on a
 // canned quota line.
@@ -599,7 +604,19 @@ function circuitKeyOf(provider) {
   return provider.circuitKey || provider.label;
 }
 
-async function runProviderChain(chain, turns, persona, maxTokens) {
+// `screen` (persona-voiced callers only — never the JSON extractors) vets an
+// ok reply; a rejected one counts as an `empty` failure so the next layer runs.
+function applyScreen(screen, key, result) {
+  if (!screen || !result?.ok) return result;
+  const { verdict, text } = screen(result.text);
+  if (verdict === "clean") return result;
+  console.warn(
+    `[ai] meta-leak ${verdict} label=${key} head=${JSON.stringify(result.text.slice(0, 80))}`,
+  );
+  return text ? { ...result, text } : { ok: false, kind: "empty", detail: "meta-leak" };
+}
+
+async function runProviderChain(chain, turns, persona, maxTokens, { screen } = {}) {
   for (const provider of chain) {
     const key = circuitKeyOf(provider);
     if (!isProviderAvailable(key)) {
@@ -607,7 +624,7 @@ async function runProviderChain(chain, turns, persona, maxTokens) {
       continue;
     }
 
-    const result = await provider.call(turns, persona, maxTokens);
+    const result = applyScreen(screen, key, await provider.call(turns, persona, maxTokens));
 
     if (result && result.ok) {
       recordProviderSuccess(key);
@@ -689,7 +706,7 @@ async function generateAIReply(message, userText, options = {}) {
     new Date(),
     images,
   );
-  if (rateLimited) return QUOTA_REPLIES[limitReason];
+  if (rateLimited) return quotaReply(limitReason);
   if (guildChain.length === 0) return null;
   const userTurn = buildUserTurn(message, userText, buildImageNote(images.length));
   const history = includeHistory ? getChannelAIHistory(message.channelId) : [];
@@ -852,6 +869,7 @@ async function generateAIReply(message, userText, options = {}) {
     turns,
     persona,
     Math.max(tierConfig.maxTokens, minTokens),
+    { screen: screenPersonaReply },
   );
   if (result) {
     const capped = trimDescription(
@@ -945,5 +963,5 @@ module.exports = {
   runProviderChain,
   generateAIReply,
   isQuotaReply,
-  QUOTA_REPLIES,
+  quotaReply,
 };

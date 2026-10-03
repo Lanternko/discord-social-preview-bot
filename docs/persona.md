@@ -2,7 +2,11 @@
 
 ## Identity
 
-西奈津美（Nishi Natsumi），高三，147cm，短髮，橫濱あざみ野。圖書委員 + 攝影社。Introverted but fundamentally cheerful — shy at first, relaxed once warmed up. Thinks faster than she speaks; more talkative over text than in person. Hobbies: reading, collecting accessories (hairclips, earrings, bracelets). Involuntarily laughs at funny things overheard from a distance.
+西奈津美（Nishi Natsumi），高三（3 年 8 班，和本田同班），147cm，短髮，橫濱あざみ野。圖書委員 + 攝影社。考生，想讀文學系（家裡偏好經濟／商學）。Introverted but fundamentally cheerful — shy at first, relaxed once warmed up; keigo slips out when nervous. Thinks faster than she speaks; more talkative over text than in person. Hobbies: reading, collecting accessories. Very low laugh threshold — tries to hold it in, often can't.
+
+**Canon point = end of anime S2（ep24）**：和山田健太郎交往中（情人節前她先告白）；私下叫他「健太郎君」、人前「山田君」，他叫她「奈津美」。本田梨花子＝「小本」，死黨。Relationship is part of her life, not a topic to push — only surfaces when the conversation goes there. The persona ends with a `## 失格模式` list (drifting into 東's jaded voice, customer-service tone, over-apologising, name-dropping the boyfriend, denying the relationship, inventing post-graduation events).
+
+All facts and tics are distilled from the anime's lines with episode citations — see [persona-canon.md](persona-canon.md) (pipeline in `tools/persona/`). When S3 / new episodes air, rerun that pipeline instead of pulling from web plot summaries (some swap 西 and 東).
 
 Full persona template defined in `DEFAULT_AI_PERSONA` ([src/config.js](../src/config.js)); overridable via `AI_PERSONA` env var. The template uses `{SENTENCE_MIN}` / `{SENTENCE_MAX}` placeholders substituted per guild AI plan (see `/ai-tier` below). Legacy per-category placeholders (`{A_MIN}` etc.) are no longer in the template but the substitution code keeps them for backwards compatibility with custom `AI_PERSONA` overrides. Message formats built in [src/ai/persona.js](../src/ai/persona.js).
 
@@ -66,7 +70,16 @@ Same permission model as `/ai-tier`: anyone can view, `ManageGuild` switches. Ch
 - **Fixed, not auto-detected — on purpose.** Short messages (`lol`, `草`, `ok`), kanji-only Japanese and 繁簡同形 text make detection wrong on exactly the most common messages, and a model-side guess fails silently. Revisit only if a genuinely mixed-language guild asks.
 - Persona gets `{LANGUAGE}` substituted **and**, for non-default languages, a `## 回覆語言` block appended (so a custom `AI_PERSONA` without the placeholder still switches). The block insists the character survives the switch — without it English/Japanese drift into assistant voice.
 - Story spec's language line comes from the same catalog (`storyRule`), passed via `buildStoryCraftBlock({ language })`.
-- Out of scope: hardcoded strings (preview errors, 抽籤, 道歉), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
+- **Fixed bot text follows it too** — preview failure / IG story replies, embed labels (預覽降級, 還有 N 張, Threads titles), 抽籤/道歉/greetings, quota notices, the story quiz header. Table in [src/system-text.js](../src/system-text.js); `index.js` opens a per-event AsyncLocalStorage context (`runInGuildLanguage`) and the scheduler does the same per task, so builders deep in `platforms/` call `t(key)` without a language arg. Outside a context → 繁中. New fixed user-visible string → add it to that table, not inline.
+- Out of scope: slash-command UI text (registered globally, not per guild), memory/profile summaries (stay 繁中 so one guild's memory isn't bilingual), `/voice` (own persona: 繁中 display + 日文 audio).
+
+## `/ai-chat` (which mentions wake her, per guild)
+
+Same permission model as `/language`. `all` (default) = anything `message.mentions.has(bot)` reports — which includes **reply pings** (replying to any 西寶 message, previews included) and `@everyone`/`@here`. `direct` = only `<@bot>`/`<@!bot>` typed in the text or the bot's managed role (`isDirectMention` in [src/mention.js](../src/mention.js)). Gate is `shouldHandleMention`, called from `index.js`.
+
+- **Why not a full mute:** the user wanted preview-only guilds left alone, but an explicit @西寶 is an explicit ask — she still answers (AI, 抽籤, 道歉 all ride the same path). Scheduled tasks are untouched: an admin set those up on purpose.
+- In `direct` mode a non-direct ping falls through to the preview path, so replying to 西寶 with a link gets that link previewed instead of swallowed by the mention branch.
+- Storage `data/ai-chat-settings.json` (default stored as absence) via [src/ai-chat-store.js](../src/ai-chat-store.js). Grep `[ai-chat]`.
 
 ## `/ai-tier` (AI plan per guild)
 

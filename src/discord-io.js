@@ -12,15 +12,18 @@ const {
 const { tryRecoverEmbedFromUrls } = require("./og-fallback");
 const {
   matchErrorCard,
+  readEmbedValue,
   collectEmbedText,
   embedHasMedia,
   embedHasPostMedia,
   hasMeaningfulText,
 } = require("./viewer-cards");
 const { fetchVideoAttachment } = require("./video");
+const { findBrokenEmbedVideo } = require("./embed-video-check");
 const { fetchSpoilerImageAttachments } = require("./image-attachment");
 const { fetchPanoramaAttachment } = require("./panorama");
 const { trimDescription } = require("./utils");
+const { t } = require("./system-text");
 
 const REQUIRED_CHANNEL_PERMISSIONS = [
   { flag: PermissionsBitField.Flags.ViewChannel, name: "ViewChannel" },
@@ -158,13 +161,34 @@ function classifyThreadsViewerEmbed(embed) {
   return { useful: true, quality: "full", reason: "ok" };
 }
 
+const VIDEO_POST_PATH = /^\/(?:reels?|tv)\//i;
+
+function isVideoPostEmbed(embed) {
+  const url = readEmbedValue(embed, "url");
+  if (typeof url !== "string") return false;
+  try {
+    return VIDEO_POST_PATH.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 function classifyInstagramViewerEmbed(embed) {
   const hasMedia = embedHasPostMedia(embed);
   const errorReason = matchErrorCard(embed, { hasMedia });
   if (errorReason)
     return { useful: false, quality: "none", reason: errorReason };
 
-  if (hasMedia) return { useful: true, quality: "full", reason: "ok" };
+  if (hasMedia) {
+    // A reel / IGTV card that carries a picture but no video is a viewer that
+    // lost the mp4: deinstagram then paints a fake play button onto the cover
+    // (reel DdvF1gjTizh, 2026-09-30), which reads as a video and plays nothing.
+    // Half an answer — keep it as the floor, keep looking for a playable one.
+    if (isVideoPostEmbed(embed) && !readEmbedValue(embed, "video")) {
+      return { useful: false, quality: "weak", reason: "video-post-cover-only" };
+    }
+    return { useful: true, quality: "full", reason: "ok" };
+  }
   if (!hasMeaningfulText(embed)) {
     // No cover and nothing but the viewer's own branding: pure failure card.
     return {
@@ -237,6 +261,22 @@ function classifyViewerPreview(
     verdicts.find((verdict) => verdict.quality === "weak") ||
     verdicts[0]
   );
+}
+
+// classifyViewerPreview plus a check that an advertised video really is one.
+// Instagram only: its viewers are the ones seen serving a dead og:video.
+async function classifyViewerPreviewChecked(
+  embeds,
+  viewerValidation,
+  options,
+  deps = {},
+) {
+  const verdict = classifyViewerPreview(embeds, viewerValidation, options);
+  if (!verdict.useful || viewerValidation !== "instagram") return verdict;
+  const broken = await (deps.findBrokenEmbedVideo || findBrokenEmbedVideo)(
+    embeds,
+  );
+  return broken ? { useful: false, quality: "none", reason: broken } : verdict;
 }
 
 function isViewerPreviewUseful(
@@ -369,7 +409,24 @@ async function resolveOutgoing(payload, message, options = {}) {
   return base;
 }
 
-async function sendPreviews(message, payloads) {
+async function postOutgoing(message, outgoing) {
+  try {
+    return REPLY_MODE === "send"
+      ? await message.channel.send(outgoing)
+      : await message.reply(outgoing);
+  } catch (error) {
+    const inferred = inferMissingPermissionsFromError(error);
+    if (inferred.length > 0) logMissingChannelPermissions(message, inferred);
+    throw error;
+  }
+}
+
+// Discord rejects an upload over the guild's real limit with 40005 / HTTP 413.
+function isUploadTooLarge(error) {
+  return error?.code === 40005 || error?.status === 413;
+}
+
+async function sendPreviews(message, payloads, options = {}) {
   const missingPermissions = getMissingChannelPermissions(message);
   if (missingPermissions.length > 0) {
     logMissingChannelPermissions(message, missingPermissions);
@@ -379,31 +436,32 @@ async function sendPreviews(message, payloads) {
   const sent = [];
 
   for (const payload of payloads) {
-    const base = await resolveOutgoing(payload, message);
-    const outgoing = {
-      ...base,
-      allowedMentions: { repliedUser: false },
-    };
+    let base = await resolveOutgoing(payload, message, options);
 
     let sentMessage;
-    if (REPLY_MODE === "send") {
-      try {
-        sentMessage = await message.channel.send(outgoing);
-      } catch (error) {
-        const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0)
-          logMissingChannelPermissions(message, inferred);
+    try {
+      sentMessage = await postOutgoing(message, {
+        ...base,
+        allowedMentions: { repliedUser: false },
+      });
+    } catch (error) {
+      // The attached video was over what Discord actually accepts here (our
+      // per-tier cap is a guess). Resend as if the download had missed, so the
+      // post still gets its fixer/cover preview instead of nothing at all.
+      if (!isUploadTooLarge(error) || !payload.videoAttachment || !base.files)
         throw error;
-      }
-    } else {
-      try {
-        sentMessage = await message.reply(outgoing);
-      } catch (error) {
-        const inferred = inferMissingPermissionsFromError(error);
-        if (inferred.length > 0)
-          logMissingChannelPermissions(message, inferred);
-        throw error;
-      }
+      const bytes = base.files[0]?.attachment?.length ?? "?";
+      console.log(
+        `[video] upload rejected 413 bytes=${bytes} tier=${message.guild?.premiumTier ?? "?"} guild=${message.guild?.id ?? "?"} → resend without video`,
+      );
+      base = await resolveOutgoing(payload, message, {
+        ...options,
+        fetchVideoAttachment: async () => null,
+      });
+      sentMessage = await postOutgoing(message, {
+        ...base,
+        allowedMentions: { repliedUser: false },
+      });
     }
 
     // A resolved video attachment adds `files` and clears the fixer `content`,
@@ -443,7 +501,7 @@ async function sendPreviews(message, payloads) {
 async function apologyReply(originalMessage) {
   try {
     await originalMessage.reply({
-      content: "對不起對不起…預覽載入失敗了…我知道我不好… ///",
+      content: t("preview.failed"),
       allowedMentions: { repliedUser: false },
     });
   } catch (error) {
@@ -599,7 +657,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
     }
 
     const platform = viewerValidation || "generic";
-    const firstVerdict = classifyViewerPreview(
+    const firstVerdict = await classifyViewerPreviewChecked(
       fetched.embeds,
       viewerValidation,
       validationOptions,
@@ -649,7 +707,7 @@ async function checkAndHandleEmptyEmbeds(originalMessage, sent) {
         );
       }
 
-      const verdict = classifyViewerPreview(
+      const verdict = await classifyViewerPreviewChecked(
         current?.embeds,
         viewerValidation,
         validationOptions,
@@ -756,6 +814,7 @@ module.exports = {
   isUsefulInstagramViewerEmbed,
   isUsefulTwitterViewerEmbed,
   classifyViewerPreview,
+  classifyViewerPreviewChecked,
   isViewerPreviewUseful,
   resolveOutgoing,
   sendPreviews,

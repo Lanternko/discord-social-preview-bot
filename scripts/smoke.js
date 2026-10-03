@@ -403,10 +403,15 @@ it("uses the tested Instagram viewer order and supports legacy aliases", () => {
     "oginstagram.com",
     "instagram7.com",
     "deinstagram.com",
+    "fxig.seria.moe",
   ]);
   assert.deepEqual(
     parseInstagramViewerHosts("A.example,a.example,b.example,c.example"),
     ["a.example", "b.example", "c.example"],
+  );
+  assert.equal(
+    parseInstagramViewerHosts("a.example,b.example,c.example,d.example").length,
+    4,
   );
   assert.deepEqual(
     loadInstagramViewerHosts({
@@ -423,7 +428,7 @@ it("rejects unsafe Instagram viewer configuration", () => {
     "viewer.example:443",
     "127.0.0.1",
     "localhost",
-    "a.example,b.example,c.example,d.example",
+    "a.example,b.example,c.example,d.example,e.example",
   ]) {
     assert.throws(() => parseInstagramViewerHosts(invalid), invalid);
   }
@@ -465,6 +470,41 @@ it("accepts a playable Instagram viewer or meaningful caption", () => {
   );
   assert.equal(captionOnly.useful, false);
   assert.equal(captionOnly.quality, "weak");
+});
+
+console.log("Instagram reel cover-only (fake play button, 2026-09-30)");
+it("a reel card with a cover but no video is weak, not a success", () => {
+  // The exact embed Discord built for deinstagram: type article, thumbnail only.
+  const coverOnly = {
+    type: "article",
+    url: "https://deinstagram.com/reel/DdvF1gjTizh/",
+    thumbnail: { url: "https://deinstagram.com/media/x/0/image" },
+  };
+  const verdict = classifyViewerPreview([coverOnly], "instagram");
+  assert.equal(verdict.useful, false);
+  assert.equal(verdict.quality, "weak");
+  assert.equal(verdict.reason, "video-post-cover-only");
+  // IGTV too
+  assert.equal(
+    isViewerPreviewUseful([{ ...coverOnly, url: "https://x.example/tv/AbC/" }], "instagram"),
+    false,
+  );
+});
+it("a reel card WITH video, or a photo post with a cover, still succeeds", () => {
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ url: "https://fxig.seria.moe/reel/DdvF1gjTizh/", video: { url: "https://fxig.seria.moe/offload/x/0.mp4" } }],
+      "instagram",
+    ),
+    true,
+  );
+  assert.equal(
+    isViewerPreviewUseful(
+      [{ url: "https://oginstagram.com/p/DcA0yXWMF4E/", image: { url: "https://cdn/cover.jpg" } }],
+      "instagram",
+    ),
+    true,
+  );
 });
 
 console.log("Viewer error-card detection (the 2026-09 Instagram regression)");
@@ -917,14 +957,14 @@ it("isGuildVideoAllowed: no guild context (DM) → not allowed", () => {
   assert.equal(isGuildVideoAllowed(undefined), false);
 });
 it("uploadLimitBytes: scales with boost tier", () => {
-  assert.equal(uploadLimitBytes({ premiumTier: 0 }), 25 * 1024 * 1024);
-  assert.equal(uploadLimitBytes({ premiumTier: 1 }), 25 * 1024 * 1024);
+  assert.equal(uploadLimitBytes({ premiumTier: 0 }), Math.floor(19.9 * 1024 * 1024));
+  assert.equal(uploadLimitBytes({ premiumTier: 1 }), Math.floor(19.9 * 1024 * 1024));
   assert.equal(uploadLimitBytes({ premiumTier: 2 }), 50 * 1024 * 1024);
   assert.equal(uploadLimitBytes({ premiumTier: 3 }), 100 * 1024 * 1024);
   assert.equal(
     uploadLimitBytes(null),
-    25 * 1024 * 1024,
-    "missing guild → base 25MB",
+    Math.floor(19.9 * 1024 * 1024),
+    "missing guild → base tier cap",
   );
 });
 it("effectiveMaxBytes: defaults to the guild limit with no override", () => {
@@ -1522,6 +1562,66 @@ console.log("language-store");
   });
 }
 
+console.log("ai-chat mode");
+{
+  const {
+    getGuildAiChatMode,
+    setGuildAiChatMode,
+    resetCacheForTests: resetAiChatCache,
+  } = require("../src/ai-chat-store");
+  const { shouldHandleMention, isDirectMention } = require("../src/mention");
+  const BOT = "111";
+  const ROLE = "222";
+  const client = { user: { id: BOT } };
+  // Minimal stand-in for a discord.js Message: `pinged` is what
+  // message.mentions.has(bot) reports (direct, reply ping or @everyone).
+  const fakeMessage = (guildId, content, { pinged = true, roles = [] } = {}) => ({
+    guildId,
+    content,
+    mentions: {
+      has: () => pinged,
+      roles: new Set(roles),
+    },
+    guild: { members: { me: { roles: { botRole: { id: ROLE } } } } },
+  });
+
+  it("defaults to all and round-trips a setting", () => {
+    const gid = "smoke-ai-chat-guild";
+    assert.equal(getGuildAiChatMode(undefined), "all");
+    assert.equal(getGuildAiChatMode(gid), "all");
+    setGuildAiChatMode(gid, "direct");
+    resetAiChatCache();
+    assert.equal(getGuildAiChatMode(gid), "direct");
+    setGuildAiChatMode(gid, "all"); // default = removed from the file
+    resetAiChatCache();
+    assert.equal(getGuildAiChatMode(gid), "all");
+  });
+  it("rejects unknown modes", () => {
+    assert.throws(() => setGuildAiChatMode("g", "mute"), /invalid ai chat mode/);
+  });
+  it("isDirectMention: typed <@bot>, <@!bot> or the bot role only", () => {
+    assert.equal(isDirectMention(fakeMessage("g", `<@${BOT}> 嗨`), client), true);
+    assert.equal(isDirectMention(fakeMessage("g", `hi <@!${BOT}>`), client), true);
+    assert.equal(isDirectMention(fakeMessage("g", `<@&${ROLE}> 嗨`, { roles: [ROLE] }), client), true);
+    // reply ping / @everyone: Discord says "mentioned", the text has no <@bot>
+    assert.equal(isDirectMention(fakeMessage("g", "這篇好好笑"), client), false);
+    assert.equal(isDirectMention(fakeMessage("g", "@everyone 開會"), client), false);
+    assert.equal(isDirectMention(fakeMessage("g", "<@999> 你看"), client), false);
+  });
+  it("shouldHandleMention: all mode takes any ping, direct mode only typed ones", () => {
+    const gid = "smoke-ai-chat-direct";
+    assert.equal(shouldHandleMention(fakeMessage(gid, "回覆預覽"), client), true);
+    setGuildAiChatMode(gid, "direct");
+    assert.equal(shouldHandleMention(fakeMessage(gid, "回覆預覽"), client), false);
+    assert.equal(shouldHandleMention(fakeMessage(gid, `<@${BOT}> 聊天`), client), true);
+    assert.equal(
+      shouldHandleMention(fakeMessage(gid, "沒提到", { pinged: false }), client),
+      false,
+    );
+    setGuildAiChatMode(gid, "all");
+  });
+}
+
 it("TIERS entries carry required fields", () => {
   for (const key of ["brief", "standard", "detailed"]) {
     const t = TIERS[key];
@@ -1659,6 +1759,65 @@ it("buildGenericFallbackEmbed honours overrides", () => {
   assert.equal(data.footer.text, "Test");
   assert.equal(data.url, "https://orig.example/post");
 });
+
+console.log("");
+console.log("system-text: fixed bot text follows /language");
+{
+  const {
+    t: sysText,
+    runWithLanguage,
+    currentLanguage,
+    fortuneLabel,
+    fortuneComments,
+    FORTUNE_TIERS,
+  } = require("../src/system-text");
+  const { VALID_LANGUAGES } = require("../src/reply-language");
+  const { FORTUNE_RESULTS } = require("../src/mention");
+
+  it("every key and fortune tier renders in every language", () => {
+    const fs = require("fs");
+    const src = fs.readFileSync(require.resolve("../src/system-text"), "utf8");
+    const keys = [...src.matchAll(/^  "([a-z]+\.[A-Za-z]+)": \{/gm)].map((m) => m[1]);
+    assert.ok(keys.length > 20, `parsed ${keys.length} keys`);
+    const vars = { n: 2, owner: "o", author: "a", kind: "k", answer: "B", result: "r", comment: "c", limit: 20 };
+    for (const lang of VALID_LANGUAGES) {
+      for (const key of keys) {
+        const v = sysText(key, vars, lang);
+        assert.ok(
+          (typeof v === "string" && v.length) || (Array.isArray(v) && v.length),
+          `${key} empty for ${lang}`,
+        );
+      }
+      for (const tier of FORTUNE_TIERS) {
+        assert.ok(fortuneLabel(tier, lang), `${tier} label ${lang}`);
+        assert.ok(fortuneComments(tier, lang).length, `${tier} comments ${lang}`);
+      }
+    }
+    assert.deepEqual(FORTUNE_RESULTS.map((r) => r.label).sort(), [...FORTUNE_TIERS].sort());
+  });
+
+  it("no context → 繁中 (pre-/language behaviour)", () => {
+    assert.equal(currentLanguage(), "zh-TW");
+    assert.match(sysText("preview.failed"), /預覽載入失敗/);
+  });
+
+  it("context reaches deep builders (OG-recovery footer)", () => {
+    const out = runWithLanguage("ja", () =>
+      buildGenericFallbackEmbed(
+        { title: "T" },
+        "https://x.com/u/status/1",
+        { platformLabel: "X (Twitter)" },
+      ).data.footer.text,
+    );
+    assert.equal(out, "X (Twitter) · 簡易プレビュー");
+    assert.equal(
+      runWithLanguage("en", () => sysText("preview.moreImages", { n: 1 })),
+      "1 more image",
+    );
+    // A bad stored code degrades to the default instead of throwing.
+    assert.equal(runWithLanguage("xx", () => currentLanguage()), "zh-TW");
+  });
+}
 
 console.log("");
 console.log("debug-perms null-guild guard");
@@ -4856,6 +5015,61 @@ const ogRaceCases = [
   }
   bahamutSessionAsyncCases.reset();
 
+  await itAsync("sendPreviews: 413 on a video upload resends without the video", async () => {
+    const { sendPreviews } = require("../src/discord-io");
+    const posts = [];
+    const message = {
+      inGuild: () => false,
+      guild: { id: "g1", premiumTier: 1 },
+      channel: {},
+      reply: async (outgoing) => {
+        posts.push(outgoing);
+        if (outgoing.files) {
+          const err = new Error("Request entity too large");
+          err.code = 40005;
+          err.status = 413;
+          throw err;
+        }
+        return { id: "m1" };
+      },
+    };
+    const payload = {
+      content: "https://fixer.example/v/1",
+      videoAttachment: "https://cdn.example/v.mp4",
+      videoAttachmentMissContent: "https://fixer.example/v/1",
+    };
+    const sent = await sendPreviews(message, [payload], {
+      fetchVideoAttachment: async () => ({ buffer: Buffer.alloc(8), name: "video.mp4" }),
+    });
+    assert.equal(posts.length, 2, "one rejected upload + one resend");
+    assert.ok(posts[0].files, "first try carried the video");
+    assert.equal(posts[1].files, undefined, "resend has no video");
+    assert.equal(posts[1].content, "https://fixer.example/v/1");
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].isUrlOnly, true, "resent fixer link goes through empty-embed checks");
+  });
+
+  await itAsync("sendPreviews: non-413 errors and 413 without a video still throw", async () => {
+    const { sendPreviews } = require("../src/discord-io");
+    const failWith = (code, status) => ({
+      inGuild: () => false,
+      guild: { id: "g1", premiumTier: 0 },
+      channel: {},
+      reply: async () => {
+        const err = new Error("boom");
+        err.code = code;
+        err.status = status;
+        throw err;
+      },
+    });
+    await assert.rejects(
+      sendPreviews(failWith(50013, 403), [{ content: "https://x" }]),
+    );
+    await assert.rejects(
+      sendPreviews(failWith(40005, 413), [{ content: "https://x" }]),
+    );
+  });
+
   await itAsync("describeStoryImages captions images, caps count, survives failures", async () => {
     const { describeStoryImages } = require("../src/story-images");
     const items = [
@@ -4919,6 +5133,7 @@ const ogRaceCases = [
     const msg = buildWelcomeMessage({ dailyLimit: 7 });
     assert.match(msg, /每天免費 7 次/);
     assert.match(msg, /@我問/);
+    assert.match(msg, /\/ai-chat/);
     assert.ok(msg.length < 2000, "fits in one Discord message");
 
     const sent = [];
@@ -4929,6 +5144,47 @@ const ogRaceCases = [
     assert.equal(await sendGuildWelcome(guildOf(null, [boom])), false);
     assert.equal(await sendGuildWelcome(guildOf(null, [])), false);
   });
+
+  console.log("Viewer video sanity (deinstagram dead og:video, 2026-09-30)");
+  {
+    const { probeVideoUrl } = require("../src/embed-video-check");
+    const { classifyViewerPreviewChecked } = require("../src/discord-io");
+    const reply = (status, type) => async () => ({
+      status,
+      headers: { get: (k) => (k.toLowerCase() === "content-type" ? type : null) },
+      body: { cancel: async () => {} },
+    });
+    await itAsync("flags a video URL that answers with a jpeg", async () => {
+      assert.equal(
+        await probeVideoUrl("https://v/x", { fetchImpl: reply(200, "image/jpeg") }),
+        "video-is-image",
+      );
+    });
+    await itAsync("flags a video URL that 4xx/5xx", async () => {
+      assert.equal(
+        await probeVideoUrl("https://v/x", { fetchImpl: reply(502, "text/html") }),
+        "video-http-502",
+      );
+    });
+    await itAsync("trusts a real mp4, an html player, and a network error", async () => {
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: reply(206, "video/mp4") }), null);
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: reply(200, "text/html") }), null);
+      const boom = async () => { throw new Error("timeout"); };
+      assert.equal(await probeVideoUrl("https://v/x", { fetchImpl: boom }), null);
+    });
+    await itAsync("demotes an IG card with text + cover when its video is dead", async () => {
+      const embeds = [{ title: "@u", description: "caption", image: { url: "https://cdn/c.jpg" }, video: { url: "https://v/x" } }];
+      assert.equal(classifyViewerPreview(embeds, "instagram").useful, true);
+      const dead = await classifyViewerPreviewChecked(embeds, "instagram", {}, { findBrokenEmbedVideo: async () => "video-is-image" });
+      assert.equal(dead.useful, false);
+      assert.equal(dead.reason, "video-is-image");
+      const ok = await classifyViewerPreviewChecked(embeds, "instagram", {}, { findBrokenEmbedVideo: async () => null });
+      assert.equal(ok.useful, true);
+      // other platforms never pay for the probe
+      const other = await classifyViewerPreviewChecked(embeds, "threads", {}, { findBrokenEmbedVideo: async () => { throw new Error("must not run"); } });
+      assert.ok(other);
+    });
+  }
 
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
