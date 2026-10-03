@@ -1,0 +1,169 @@
+{
+  "testedAt": "2026-10-03T18:20:58.159Z",
+  "notes": "Actual public X post text, unmodified; see sourceUrl and reviewFocus per case. Only independently labeled translation-eligible posts are sent. Mechanical preservation is not a semantic quality score.",
+  "results": [
+    {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "inputRate": 0.1,
+      "cacheRate": 0.01,
+      "outputRate": 0.5,
+      "rows": [
+        {
+          "id": "2041422252286386523",
+          "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+          "author": "cendol_plt",
+          "publishedAt": "Tue Apr 07 07:46:07 +0000 2026",
+          "text": "喔，不只是在商店裡，現在我們還能買更多種光碟和手記了\\n之前只能買兩種類型和一些莫名其妙的神秘遺物，真的很煩，這樣好多了 😭",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "不只是商店上架；可購買更多光碟與筆記；此前僅兩種",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "latencyMs": 4189,
+          "usage": {
+            "prompt_tokens": 212,
+            "completion_tokens": 58,
+            "total_tokens": 270,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 212,
+          "output": 58,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 5.02e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "OH NOT ONLY IT'S IN THE SHOP, WE CAN BUY WAY MORE DISKS AND NOTES NOW\nIt was always annoying that we're limited to two types and some artifacts for some reason, this is so much better 😭"
+        },
+        {
+          "id": "1692385866575237209",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri Aug 18 04:00:08 +0000 2023",
+          "text": "【蔚藍檔案！】第129話\n客人總算少了下來，紫子小姐終於能稍微休息一下。\n美彌小姐似乎想到疲憊不堪的紫子小姐，為她準備了專屬的休息空間……。\n\n🔷作：純粹的不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "latencyMs": 1961,
+          "usage": {
+            "prompt_tokens": 295,
+            "completion_tokens": 116,
+            "total_tokens": 411,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 295,
+          "output": 116,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 8.75e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第129話\n客足がようやく落ち着き、少し休めることとなったシズコさん。\nそんなお疲れなシズコさんを思い、ミモリさんが専用の休憩スペースを用意してくれたようで…。\n\n🔷作:純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "1656871852705452032",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri May 12 04:00:07 +0000 2023",
+          "text": "【蔚藍檔案！】第115話\n拿到限定甜點的玲紗。\n她急忙拿來當作送給和紗的伴手禮，似乎因為太匆忙，甜點的形狀都塌掉了……。\n\n🔷作：純粹的不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "latencyMs": 2243,
+          "usage": {
+            "prompt_tokens": 299,
+            "completion_tokens": 127,
+            "total_tokens": 426,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 299,
+          "output": 127,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 9.340000000000001e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第115話\n限定スイーツを手に入れたレイサさん。\nカズサさんへのお土産にと急いで持って来たため、急ぎ過ぎて形が崩れてしまったようで…。\n\n🔷作:純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "1934087671162532070",
+          "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+          "author": "oozorasubaru",
+          "publishedAt": "Sun Jun 15 03:16:49 +0000 2025",
+          "text": "早安！！！  \n今天喉嚨沙啞還沒好，所以中午的直播休息一天喔！😭🙏\n\n今天和明天會好好讓喉嚨休息，從下週二開始再繼續直播！！！  \n還請多多指教🥳✨️",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "喉嚨仍沙啞，取消中午直播；今明休息，下週二恢復",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "latencyMs": 1668,
+          "usage": {
+            "prompt_tokens": 240,
+            "completion_tokens": 69,
+            "total_tokens": 309,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 240,
+          "output": 69,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 5.85e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "おはよー！！！\n今日は喉のかすれがまだ治らないのでお昼の放送はお休みしますー！😭🙏\n\n今日と明日しっかり喉を休めて、来週火曜日からまた配信するぞー！！！\nよろしくお願いします🥳✨️"
+        }
+      ]
+    }
+  ],
+  "sourceCorpusFile": "docs/translation-real-tweets-2026-10-04.json",
+  "sourceCorpusSha256": "6c26d5032cae9f3e53ddd39bf66aa2aff325fe67566b2088e31b29dedb0d9040"
+}

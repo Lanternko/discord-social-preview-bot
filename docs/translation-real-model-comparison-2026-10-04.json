@@ -1,0 +1,111 @@
+{
+  "notes": "Non-random corpus, one full sample per model. Source URLs/source text match; prompts unchanged. Costs exclude targeted rechecks. Latency from different run times is observational, not a controlled speed benchmark. Subjective semantic review is not a population quality score.",
+  "summary": [
+    {
+      "model": "gpt-6-luna",
+      "calls": 45,
+      "costUsd": 0.0035393,
+      "costType": "token-rate estimate",
+      "projectedUsdPer10000": 0.786511111111111,
+      "meanLatencyMs": 2296.1555555555556
+    },
+    {
+      "model": "alibaba/qwen3.7-flash",
+      "calls": 45,
+      "costUsd": 0.00088664,
+      "costType": "Gateway response usage.cost",
+      "projectedUsdPer10000": 0.1970311111111111,
+      "meanLatencyMs": 1891.3111111111111
+    }
+  ],
+  "qwenBlockingCases": [
+    {
+      "id": "1755154436186628254",
+      "qwenProblem": "Ui被替換成結衣，改變角色身份；重測仍錯",
+      "lunaReview": {
+        "id": "1755154436186628254",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "1946110595948036237",
+      "qwenProblem": "히마리(Himari)被替換成日向(Hinata)，改變角色身份",
+      "lunaReview": {
+        "id": "1946110595948036237",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "2043629372851343457",
+      "qwenProblem": "ナコトコイン變成娜可露露幣，添加原文不存在的專名；とのフラ作品名漏掉",
+      "lunaReview": {
+        "id": "2043629372851343457",
+        "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "2038851040439935256",
+      "qwenProblem": "漏掉從第6名能否攻擊第1名這個關鍵排名目標；重測仍漏；ツクヨ被變成Tsukuyomi/月讀",
+      "lunaReview": {
+        "id": "2038851040439935256",
+        "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "2024386040031752663",
+      "qwenProblem": "幾乎整段仍是日文，未完成翻譯；同prompt重測仍一樣",
+      "lunaReview": {
+        "id": "2024386040031752663",
+        "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "1750760491431993377",
+      "qwenProblem": "Ui被替換成結衣，角色身份錯誤",
+      "lunaReview": {
+        "id": "1750760491431993377",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "2041416140787011865",
+      "qwenProblem": "遊戲貨幣Pyroxene變成紅柱石；應使用青輝石詞表或保留Pyroxene",
+      "lunaReview": {
+        "id": "2041416140787011865",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+        "severity": "acceptable",
+        "note": "未見影響主要意思的錯誤；主詞、動作、限制與主要數字保留",
+        "qwenPreviousSeverity": "blocking"
+      }
+    },
+    {
+      "id": "1892574535670440116",
+      "qwenProblem": "原文只有要樂奈，譯文新增燈 & 樂奈；重測仍新增燈；23:00頃近似時間被改成精確起點",
+      "lunaReview": {
+        "id": "1892574535670440116",
+        "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+        "severity": "minor",
+        "note": "沒有新增燈，23:00左右保留；先行預購寫優先預購，術語可改進",
+        "qwenPreviousSeverity": "blocking"
+      }
+    }
+  ]
+}

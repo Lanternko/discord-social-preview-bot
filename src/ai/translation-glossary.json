@@ -1,0 +1,257 @@
+{
+  "version": 2,
+  "locale": "tw",
+  "verifiedAt": "2026-10-04",
+  "source": "https://github.com/SchaleDB/SchaleDB (archived game-localization dataset; names aligned by student ID across jp/en/kr/tw)",
+  "terms": [
+    {
+      "studentId": 10001,
+      "aliases": [
+        "エイミ",
+        "Eimi",
+        "에이미",
+        "英美"
+      ],
+      "translation": "英美"
+    },
+    {
+      "studentId": 10003,
+      "aliases": [
+        "ヒフミ",
+        "Hifumi",
+        "히후미",
+        "日步美"
+      ],
+      "translation": "日步美"
+    },
+    {
+      "studentId": 10004,
+      "aliases": [
+        "ヒナ",
+        "Hina",
+        "히나",
+        "陽奈"
+      ],
+      "translation": "陽奈"
+    },
+    {
+      "studentId": 13004,
+      "aliases": [
+        "ノノミ",
+        "Nonomi",
+        "노노미",
+        "野乃美"
+      ],
+      "translation": "野乃美"
+    },
+    {
+      "studentId": 23003,
+      "aliases": [
+        "ハレ",
+        "Hare",
+        "하레",
+        "晴"
+      ],
+      "translation": "晴"
+    },
+    {
+      "studentId": 26000,
+      "aliases": [
+        "チナツ",
+        "Chinatsu",
+        "치나츠",
+        "千夏"
+      ],
+      "translation": "千夏"
+    },
+    {
+      "studentId": 26001,
+      "aliases": [
+        "コタマ",
+        "Kotama",
+        "코타마",
+        "小玉"
+      ],
+      "translation": "小玉"
+    },
+    {
+      "studentId": 23006,
+      "aliases": [
+        "シズコ",
+        "Shizuko",
+        "시즈코",
+        "靜子"
+      ],
+      "translation": "靜子"
+    },
+    {
+      "studentId": 10015,
+      "aliases": [
+        "アリス",
+        "Aris",
+        "아리스",
+        "愛麗絲",
+        "Alice"
+      ],
+      "translation": "愛麗絲"
+    },
+    {
+      "studentId": 10019,
+      "aliases": [
+        "アズサ",
+        "Azusa",
+        "아즈사",
+        "梓"
+      ],
+      "translation": "梓"
+    },
+    {
+      "studentId": 20008,
+      "aliases": [
+        "アコ",
+        "Ako",
+        "아코",
+        "亞子"
+      ],
+      "translation": "亞子"
+    },
+    {
+      "studentId": 10034,
+      "aliases": [
+        "ミモリ",
+        "Mimori",
+        "미모리",
+        "三森"
+      ],
+      "translation": "三森"
+    },
+    {
+      "studentId": 10035,
+      "aliases": [
+        "ウイ",
+        "Ui",
+        "우이",
+        "憂"
+      ],
+      "translation": "憂"
+    },
+    {
+      "studentId": 10040,
+      "aliases": [
+        "ツクヨ",
+        "Tsukuyo",
+        "츠쿠요",
+        "月夜"
+      ],
+      "translation": "月夜"
+    },
+    {
+      "studentId": 10041,
+      "aliases": [
+        "ミサキ",
+        "Misaki",
+        "미사키",
+        "美咲"
+      ],
+      "translation": "美咲"
+    },
+    {
+      "studentId": 10049,
+      "aliases": [
+        "カズサ",
+        "Kazusa",
+        "카즈사",
+        "千紗"
+      ],
+      "translation": "千紗"
+    },
+    {
+      "studentId": 20020,
+      "aliases": [
+        "ヒマリ",
+        "Himari",
+        "히마리",
+        "陽葵"
+      ],
+      "translation": "陽葵"
+    },
+    {
+      "studentId": 10058,
+      "aliases": [
+        "ミネ",
+        "Mine",
+        "미네",
+        "美禰"
+      ],
+      "translation": "美禰"
+    },
+    {
+      "studentId": 10062,
+      "aliases": [
+        "トキ",
+        "Toki",
+        "토키",
+        "季"
+      ],
+      "translation": "季"
+    },
+    {
+      "studentId": 10068,
+      "aliases": [
+        "レイサ",
+        "Reisa",
+        "레이사",
+        "澪紗"
+      ],
+      "translation": "澪紗"
+    },
+    {
+      "aliases": [
+        "Pyroxene",
+        "청휘석",
+        "青輝石"
+      ],
+      "translation": "青輝石"
+    },
+    {
+      "aliases": [
+        "ナコトコイン"
+      ],
+      "translation": "ナコトコイン"
+    },
+    {
+      "aliases": [
+        "ミルヴァ"
+      ],
+      "translation": "ミルヴァ"
+    },
+    {
+      "context": "bandori",
+      "aliases": [
+        "要 楽奈",
+        "要楽奈"
+      ],
+      "translation": "要 楽奈",
+      "source": "https://x.com/bang_dream_info/status/1892574535670440116",
+      "note": "Preserve original Japanese full name rather than inventing a second product/character"
+    },
+    {
+      "aliases": [
+        "ケイ",
+        "케이",
+        "Kei"
+      ],
+      "translation": null,
+      "note": "Not verified in the archived localization snapshot; preserve the original alias"
+    },
+    {
+      "aliases": [
+        "ヒカリ",
+        "히카리",
+        "Hikari"
+      ],
+      "translation": null,
+      "note": "Not verified in the archived localization snapshot; preserve the original alias"
+    }
+  ]
+}

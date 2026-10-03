@@ -1,0 +1,1039 @@
+{
+  "testedAt": "2026-10-03T20:17:21.894Z",
+  "notes": "Actual public X post text, unmodified; see sourceUrl and reviewFocus per case. Only independently labeled translation-eligible posts are sent. Mechanical preservation is not a semantic quality score.",
+  "results": [
+    {
+      "provider": "gateway",
+      "model": "alibaba/qwen3.7-flash",
+      "inputRate": 0.03,
+      "cacheRate": 0.006,
+      "outputRate": 0.13,
+      "rows": [
+        {
+          "id": "1755154436186628254",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Wed Feb 07 09:00:01 +0000 2024",
+          "text": "【限定角色招募結束通知】\n\n3★ 憂（泳裝）限定招募將持續至 2/8（週四）凌晨 1:59（UTC）！\n\n* 3★ 憂（泳裝）的限定招募結束後，將無法透過一般招募獲得。\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Ui限定招募2/8 1:59 AM UTC截止；之後無法一般招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2981,
+          "usage": {
+            "prompt_tokens": 314,
+            "completion_tokens": 110,
+            "total_tokens": 424,
+            "cost": 2.372e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.372e-05,
+            "gateway_cost": 2.372e-05
+          },
+          "input": 314,
+          "output": 110,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.372e-05,
+          "gatewayReportedUsd": 2.372e-05,
+          "missing": [],
+          "originalText": "[Unique Pick-Up Recruitment End Notice]\n\n3★ Ui (Swimsuit) Pick-Up Recruitment is available until 2/8 (Thu) 1:59 AM (UTC)!\n\n* Once the Unique Pick-Up period for 3★ Ui (Swimsuit) ends, she CANNOT be recruited via Regular Recruitment.\n\n#BlueArchive"
+        },
+        {
+          "id": "1974761485919195464",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sun Oct 05 09:00:02 +0000 2025",
+          "text": "[特別招募結束通知]\n\n★3 히카리 特別招募將進行至 10/7（週二）10:59！\n\n（請注意，★3 히카리 在特別招募結束後無法於「常規招募」中招募）\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "Hikari10/7 10:59截止；之後不可常駐招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1960,
+          "usage": {
+            "prompt_tokens": 296,
+            "completion_tokens": 95,
+            "total_tokens": 391,
+            "cost": 2.123e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.123e-05,
+            "gateway_cost": 2.123e-05
+          },
+          "input": 296,
+          "output": 95,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.123e-05,
+          "gatewayReportedUsd": 2.123e-05,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 종료 안내]\n\n★3 히카리 픽업 모집은 10/7(화) 10:59 까지 진행됩니다!\n\n(★3 히카리는 특별 픽업 종료 후 '상시 모집'에서 모집할 수 없으니 주의해 주세요)\n\n#블루아카이브"
+        },
+        {
+          "id": "1656871852705452032",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri May 12 04:00:07 +0000 2023",
+          "text": "【布魯阿凱布！】第115話\n\n獲得限定甜點的澪紗先生。\n因為趕著要帶去當給千紗先生的伴手禮，結果太匆忙導致形狀都變形了……\n\n🔷作者：純粋な不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2063,
+          "usage": {
+            "prompt_tokens": 340,
+            "completion_tokens": 141,
+            "total_tokens": 481,
+            "cost": 2.853e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.853e-05,
+            "gateway_cost": 2.853e-05
+          },
+          "input": 340,
+          "output": 141,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.853e-05,
+          "gatewayReportedUsd": 2.853e-05,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第115話\n限定スイーツを手に入れたレイサさん。\nカズサさんへのお土産にと急いで持って来たため、急ぎ過ぎて形が崩れてしまったようで…。\n\n🔷作:純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "1473141433188384769",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Dec 21 04:01:01 +0000 2021",
+          "text": "【ぶるーあーかいぶっ！】第45話 \n任務を終え、ゲヘナへと戻ってきたチナツさん。問題児集団を追う苛酷な任務を終えた直後にも関わらず、お肌はツヤツヤで調子良さそうなチナツさんを、アコさんとヒナさんは気になったようで…。\n\n🔹作:純粋な不純物(@parang9494)先生 \n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "error": "Translation lost a protected token",
+          "originalText": "【ぶるーあーかいぶっ！】第45話 \n任務を終え、ゲヘナへと戻ってきたチナツさん。問題児集団を追う苛酷な任務を終えた直後にも関わらず、お肌はツヤツヤで調子良さそうなチナツさんを、アコさんとヒナさんは気になったようで…。\n\n🔹作:純粋な不純物(@parang9494)先生 \n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "2016512834281320877",
+          "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+          "author": "ToothBrusher28",
+          "publishedAt": "Wed Jan 28 14:04:59 +0000 2026",
+          "text": "亞子 穿著衣服的 케이 漫畫\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1111,
+          "usage": {
+            "prompt_tokens": 248,
+            "completion_tokens": 54,
+            "total_tokens": 302,
+            "cost": 1.446e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.446e-05,
+            "gateway_cost": 1.446e-05
+          },
+          "input": 248,
+          "output": 54,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.446e-05,
+          "gatewayReportedUsd": 1.446e-05,
+          "missing": [],
+          "originalText": "아코 옷을 입은 케이 만화\n\n#블루아카이브"
+        },
+        {
+          "id": "2023208411123593560",
+          "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+          "author": "Lulu_Tenma",
+          "publishedAt": "Mon Feb 16 01:30:49 +0000 2026",
+          "text": "早安🫶🏻\n今天是休息日.ᐟ\n\n晚上會從比較早的時間開始直播ʕ •́؈•̀ ₎",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "今天休息日，但晚上較早時間直播",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1032,
+          "usage": {
+            "prompt_tokens": 234,
+            "completion_tokens": 34,
+            "total_tokens": 268,
+            "cost": 1.144e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.144e-05,
+            "gateway_cost": 1.144e-05
+          },
+          "input": 234,
+          "output": 34,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.1439999999999999e-05,
+          "gatewayReportedUsd": 1.144e-05,
+          "missing": [],
+          "originalText": "おはよーっ🫶🏻\n今日はお休みの日.ᐟ\n\n夜はやめの時間から配信するねʕ •́؈•̀ ₎"
+        },
+        {
+          "id": "2024386040031752663",
+          "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+          "author": "nedo_info",
+          "publishedAt": "Thu Feb 19 07:30:17 +0000 2026",
+          "text": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "error": "Untranslated post",
+          "originalText": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック"
+        },
+        {
+          "id": "1968933076991426682",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Sep 19 07:00:01 +0000 2025",
+          "text": "[特別招募預告]\n\n9/23（週二）將開始新的特別招募！\n\n💌 招募對象學生：★3 히카리\n🗓️ 招募期間：9/23（週二）維護後 ~ 10/7（週二）10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "9/23維護後至10/7 10:59",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2140,
+          "usage": {
+            "prompt_tokens": 301,
+            "completion_tokens": 99,
+            "total_tokens": 400,
+            "cost": 2.19e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.19e-05,
+            "gateway_cost": 2.19e-05
+          },
+          "input": 301,
+          "output": 99,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.1899999999999997e-05,
+          "gatewayReportedUsd": 2.19e-05,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 예고]\n\n9/23(화) 새로운 특별 픽업 모집이 시작될 예정입니다!\n\n💌픽업 대상 학생: ★3 히카리\n🗓️픽업 모집 기간: 9/23(화) 점검 후 ~ 10/7(화) 10:59\n\n#블루아카이브"
+        },
+        {
+          "id": "1892574535670440116",
+          "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+          "author": "bang_dream_info",
+          "publishedAt": "Thu Feb 20 13:58:26 +0000 2025",
+          "text": "／\n#グッドスマイルカンパニー 轉自\n大型40cm玩偶\nMyGO!!!!! 要 楽奈 發售確定🎊\n＼\n\n在 Bandari! TV LIVE 2025 結束後，從23:00左右開始\n於 Good Smile Company 官方商店\n將開始先行預約✨\n\n詳細資訊👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "40cm玩偶；TV LIVE結束後23:00左右開始預訂",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1860,
+          "usage": {
+            "prompt_tokens": 351,
+            "completion_tokens": 149,
+            "total_tokens": 500,
+            "cost": 2.99e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.99e-05,
+            "gateway_cost": 2.99e-05
+          },
+          "input": 351,
+          "output": 149,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.99e-05,
+          "gatewayReportedUsd": 2.99e-05,
+          "missing": [],
+          "originalText": "／\n#グッドスマイルカンパニー より\nおおきな40cmぬいぐるみ \nMyGO!!!!! 要 楽奈の発売が決定🎊\n＼\n\nバンドリ！TV LIVE 2025 終了後の23:00頃から\nグッドスマイルカンパニー公式ショップにて\n先行予約開始となります✨\n\n詳細👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE"
+        }
+      ]
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-6-luna",
+      "inputRate": 0.1,
+      "cacheRate": 0.01,
+      "outputRate": 0.5,
+      "rows": [
+        {
+          "id": "1755154436186628254",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Wed Feb 07 09:00:01 +0000 2024",
+          "text": "【限定精選招募結束公告】\n\n3★ 憂（泳裝）精選招募開放至 2/8（四）1:59 AM（UTC）！\n\n* 3★ 憂（泳裝）的限定精選招募結束後，將無法透過一般招募招募她。\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Ui限定招募2/8 1:59 AM UTC截止；之後無法一般招募",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2075,
+          "usage": {
+            "prompt_tokens": 344,
+            "completion_tokens": 103,
+            "total_tokens": 447,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 344,
+          "output": 103,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 8.59e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[Unique Pick-Up Recruitment End Notice]\n\n3★ Ui (Swimsuit) Pick-Up Recruitment is available until 2/8 (Thu) 1:59 AM (UTC)!\n\n* Once the Unique Pick-Up period for 3★ Ui (Swimsuit) ends, she CANNOT be recruited via Regular Recruitment.\n\n#BlueArchive"
+        },
+        {
+          "id": "1974761485919195464",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sun Oct 05 09:00:02 +0000 2025",
+          "text": "【特別精選招募結束公告】\n\n★3 히카리 精選招募將於 10/7(二) 10:59 結束！\n\n（請注意，★3 히카리 在特別精選招募結束後，無法從「常駐招募」中招募）\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "Hikari10/7 10:59截止；之後不可常駐招募",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1784,
+          "usage": {
+            "prompt_tokens": 349,
+            "completion_tokens": 110,
+            "total_tokens": 459,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 349,
+          "output": 110,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 8.99e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 종료 안내]\n\n★3 히카리 픽업 모집은 10/7(화) 10:59 까지 진행됩니다!\n\n(★3 히카리는 특별 픽업 종료 후 '상시 모집'에서 모집할 수 없으니 주의해 주세요)\n\n#블루아카이브"
+        },
+        {
+          "id": "1656871852705452032",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri May 12 04:00:07 +0000 2023",
+          "text": "【蔚藍檔案！】第115話\n拿到限定甜點的澪紗。\n因為急著拿來當作送給千紗的伴手禮，似乎太匆忙，結果把甜點弄壞了……。\n\n🔷作：純粋な不純物（@parang9494）老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1726,
+          "usage": {
+            "prompt_tokens": 378,
+            "completion_tokens": 132,
+            "total_tokens": 510,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 378,
+          "output": 132,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 0.00010380000000000002,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第115話\n限定スイーツを手に入れたレイサさん。\nカズサさんへのお土産にと急いで持って来たため、急ぎ過ぎて形が崩れてしまったようで…。\n\n🔷作:純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "1473141433188384769",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Dec 21 04:01:01 +0000 2021",
+          "text": "【蔚藍檔案！】第45話\n結束任務，回到格黑娜的千夏。明明才剛完成追捕問題兒童團體的嚴苛任務，肌膚卻依然水嫩有光澤、看起來狀態很好的千夏，似乎引起了亞子和陽奈的注意……。\n\n🔹作者：純粋な不純物（@parang9494）老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2654,
+          "usage": {
+            "prompt_tokens": 428,
+            "completion_tokens": 182,
+            "total_tokens": 610,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 428,
+          "output": 182,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 0.0001338,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第45話 \n任務を終え、ゲヘナへと戻ってきたチナツさん。問題児集団を追う苛酷な任務を終えた直後にも関わらず、お肌はツヤツヤで調子良さそうなチナツさんを、アコさんとヒナさんは気になったようで…。\n\n🔹作:純粋な不純物(@parang9494)先生 \n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "2016512834281320877",
+          "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+          "author": "ToothBrusher28",
+          "publishedAt": "Wed Jan 28 14:04:59 +0000 2026",
+          "text": "穿著 亞子 的 케이 漫畫\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1547,
+          "usage": {
+            "prompt_tokens": 292,
+            "completion_tokens": 52,
+            "total_tokens": 344,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 292,
+          "output": 52,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 5.52e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "아코 옷을 입은 케이 만화\n\n#블루아카이브"
+        },
+        {
+          "id": "2023208411123593560",
+          "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+          "author": "Lulu_Tenma",
+          "publishedAt": "Mon Feb 16 01:30:49 +0000 2026",
+          "text": "早安🫶🏻\n今天是休假日.ᐟ\n\n晚上會提早一點開始直播喔ʕ •́؈•̀ ₎",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "今天休息日，但晚上較早時間直播",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1238,
+          "usage": {
+            "prompt_tokens": 284,
+            "completion_tokens": 40,
+            "total_tokens": 324,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 284,
+          "output": 40,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 4.8400000000000004e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "おはよーっ🫶🏻\n今日はお休みの日.ᐟ\n\n夜はやめの時間から配信するねʕ •́؈•̀ ₎"
+        },
+        {
+          "id": "2024386040031752663",
+          "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+          "author": "nedo_info",
+          "publishedAt": "Thu Feb 19 07:30:17 +0000 2026",
+          "text": "【懸賞金預告網站公開🎉】\n「NEDO懸賞金活用型計畫」的課題之一「運用腦部訊號開發新系統」，將廣泛徵求來自不同領域、專業背景的挑戰者，目標是在神經科技領域開創新市場💫\n預計以以下兩個主題刊登懸賞公告。\n🔸主題1：開發效能最佳化解決方案\n🔸主題2：開發溝通革新解決方案\n詳細資訊預計近日於此預告網站公開\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2544,
+          "usage": {
+            "prompt_tokens": 462,
+            "completion_tokens": 202,
+            "total_tokens": 664,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 462,
+          "output": 202,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 0.0001472,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック"
+        },
+        {
+          "id": "1968933076991426682",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Sep 19 07:00:01 +0000 2025",
+          "text": "【特別精選招募預告】\n\n9/23（週二）預計開始新的特別精選招募！\n\n💌精選學生：★3 히카리\n🗓️精選招募期間：9/23（週二）維護後 ~ 10/7（週二）10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "9/23維護後至10/7 10:59",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1659,
+          "usage": {
+            "prompt_tokens": 347,
+            "completion_tokens": 102,
+            "total_tokens": 449,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 347,
+          "output": 102,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 8.570000000000001e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 예고]\n\n9/23(화) 새로운 특별 픽업 모집이 시작될 예정입니다!\n\n💌픽업 대상 학생: ★3 히카리\n🗓️픽업 모집 기간: 9/23(화) 점검 후 ~ 10/7(화) 10:59\n\n#블루아카이브"
+        },
+        {
+          "id": "1892574535670440116",
+          "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+          "author": "bang_dream_info",
+          "publishedAt": "Thu Feb 20 13:58:26 +0000 2025",
+          "text": "／\n來自 #グッドスマイルカンパニー\n大尺寸40cm絨毛玩偶\nMyGO!!!!! 要 楽奈 確定發售🎊\n＼\n\n預計於 BanG Dream! TV LIVE 2025 結束後的23:00左右起，\n在 Good Smile Company 官方商店\n開始預約✨\n\n詳情👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "40cm玩偶；TV LIVE結束後23:00左右開始預訂",
+          "keep": [],
+          "provider": "openai",
+          "model": "gpt-6-luna",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 2328,
+          "usage": {
+            "prompt_tokens": 380,
+            "completion_tokens": 125,
+            "total_tokens": 505,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            }
+          },
+          "input": 380,
+          "output": 125,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 0.0001005,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "／\n#グッドスマイルカンパニー より\nおおきな40cmぬいぐるみ \nMyGO!!!!! 要 楽奈の発売が決定🎊\n＼\n\nバンドリ！TV LIVE 2025 終了後の23:00頃から\nグッドスマイルカンパニー公式ショップにて\n先行予約開始となります✨\n\n詳細👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE"
+        }
+      ]
+    },
+    {
+      "provider": "deepseek",
+      "model": "deepseek-flash",
+      "inputRate": 0.15,
+      "cacheRate": 0.003,
+      "outputRate": 0.6,
+      "rows": [
+        {
+          "id": "1755154436186628254",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Wed Feb 07 09:00:01 +0000 2024",
+          "text": "[獨特精選招募結束通知]\n\n3★ 憂（泳裝）精選招募開放至 2/8（四）1:59 AM（UTC）！\n\n* 一旦 3★ 憂（泳裝）的獨特精選期間結束，她將無法透過常規招募獲得。\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Ui限定招募2/8 1:59 AM UTC截止；之後無法一般招募",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1035,
+          "usage": {
+            "prompt_tokens": 305,
+            "completion_tokens": 104,
+            "total_tokens": 409,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 177
+          },
+          "input": 305,
+          "output": 104,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 8.933400000000001e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[Unique Pick-Up Recruitment End Notice]\n\n3★ Ui (Swimsuit) Pick-Up Recruitment is available until 2/8 (Thu) 1:59 AM (UTC)!\n\n* Once the Unique Pick-Up period for 3★ Ui (Swimsuit) ends, she CANNOT be recruited via Regular Recruitment.\n\n#BlueArchive"
+        },
+        {
+          "id": "1974761485919195464",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sun Oct 05 09:00:02 +0000 2025",
+          "text": "[特別精選招募結束通知]\n\n★3 히카리 精選招募將進行至 10/7(二) 10:59 為止！\n\n(請注意，★3 히카리 在特別精選結束後，將無法於「常駐招募」中招募)\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "Hikari10/7 10:59截止；之後不可常駐招募",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1172,
+          "usage": {
+            "prompt_tokens": 314,
+            "completion_tokens": 99,
+            "total_tokens": 413,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 186
+          },
+          "input": 314,
+          "output": 99,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 8.7684e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 종료 안내]\n\n★3 히카리 픽업 모집은 10/7(화) 10:59 까지 진행됩니다!\n\n(★3 히카리는 특별 픽업 종료 후 '상시 모집'에서 모집할 수 없으니 주의해 주세요)\n\n#블루아카이브"
+        },
+        {
+          "id": "1656871852705452032",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri May 12 04:00:07 +0000 2023",
+          "text": "【蔚藍檔案！】第115話\n拿到了限定甜點的澪紗。\n因為急著要拿來當作給千紗的伴手禮，似乎因為太趕而導致形狀崩壞了…。\n\n🔷作:純粋な不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 816,
+          "usage": {
+            "prompt_tokens": 338,
+            "completion_tokens": 126,
+            "total_tokens": 464,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 210
+          },
+          "input": 338,
+          "output": 126,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 0.00010748399999999999,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第115話\n限定スイーツを手に入れたレイサさん。\nカズサさんへのお土産にと急いで持って来たため、急ぎ過ぎて形が崩れてしまったようで…。\n\n🔷作:純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "1473141433188384769",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Dec 21 04:01:01 +0000 2021",
+          "text": "【蔚藍檔案！】第45話\n完成任務後，回到格黑娜的千夏。明明才剛結束追捕問題兒童集團的嚴酷任務，肌膚卻依然水潤、狀態看起來很好的千夏，讓亞子和陽奈似乎很在意……。\n\n🔹作：純粋な不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1350,
+          "usage": {
+            "prompt_tokens": 382,
+            "completion_tokens": 157,
+            "total_tokens": 539,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 254
+          },
+          "input": 382,
+          "output": 157,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 0.000132684,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【ぶるーあーかいぶっ！】第45話 \n任務を終え、ゲヘナへと戻ってきたチナツさん。問題児集団を追う苛酷な任務を終えた直後にも関わらず、お肌はツヤツヤで調子良さそうなチナツさんを、アコさんとヒナさんは気になったようで…。\n\n🔹作:純粋な不純物(@parang9494)先生 \n\n#ブルアカ #ぶるーあーかいぶっ"
+        },
+        {
+          "id": "2016512834281320877",
+          "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+          "author": "ToothBrusher28",
+          "publishedAt": "Wed Jan 28 14:04:59 +0000 2026",
+          "text": "亞子 穿著衣服的 케이 漫畫\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 496,
+          "usage": {
+            "prompt_tokens": 244,
+            "completion_tokens": 50,
+            "total_tokens": 294,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 244
+          },
+          "input": 244,
+          "output": 50,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 6.659999999999999e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "아코 옷을 입은 케이 만화\n\n#블루아카이브"
+        },
+        {
+          "id": "2023208411123593560",
+          "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+          "author": "Lulu_Tenma",
+          "publishedAt": "Mon Feb 16 01:30:49 +0000 2026",
+          "text": "早安～🫶🏻\n今天是休息日.ᐟ\n\n晚上會從晚一點的時間開始直播喔ʕ •́؈•̀ ₎",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "今天休息日，但晚上較早時間直播",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 581,
+          "usage": {
+            "prompt_tokens": 238,
+            "completion_tokens": 34,
+            "total_tokens": 272,
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            },
+            "prompt_cache_hit_tokens": 0,
+            "prompt_cache_miss_tokens": 238
+          },
+          "input": 238,
+          "output": 34,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 5.6099999999999995e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "おはよーっ🫶🏻\n今日はお休みの日.ᐟ\n\n夜はやめの時間から配信するねʕ •́؈•̀ ₎"
+        },
+        {
+          "id": "2024386040031752663",
+          "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+          "author": "nedo_info",
+          "publishedAt": "Thu Feb 19 07:30:17 +0000 2026",
+          "text": "【懸賞金預告網站公開🎉】\n「NEDO懸賞金活用型プログラム」的課題之一「運用腦衍生訊號的新系統開發」，將不限領域與專業，廣泛募集以在神經科技領域創造新市場為目標的挑戰💫\n以下兩個主題，預定發布懸賞廣告。\n🔸主題1：效能最佳化方案開發\n🔸主題2：溝通革新方案開發\n詳細內容預定於此預告網站近日公開\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 1090,
+          "usage": {
+            "prompt_tokens": 403,
+            "completion_tokens": 162,
+            "total_tokens": 565,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 275
+          },
+          "input": 403,
+          "output": 162,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 0.000138834,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック"
+        },
+        {
+          "id": "1968933076991426682",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Sep 19 07:00:01 +0000 2025",
+          "text": "[特別精選招募預告]\n\n9/23(二) 新的特別精選招募即將開始！\n\n💌精選對象學生：★3 히카리\n🗓️精選招募期間：9/23(二) 維護後 ~ 10/7(二) 10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "9/23維護後至10/7 10:59",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 784,
+          "usage": {
+            "prompt_tokens": 308,
+            "completion_tokens": 90,
+            "total_tokens": 398,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 180
+          },
+          "input": 308,
+          "output": 90,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 8.1384e-05,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "[특별 픽업 모집 예고]\n\n9/23(화) 새로운 특별 픽업 모집이 시작될 예정입니다!\n\n💌픽업 대상 학생: ★3 히카리\n🗓️픽업 모집 기간: 9/23(화) 점검 후 ~ 10/7(화) 10:59\n\n#블루아카이브"
+        },
+        {
+          "id": "1892574535670440116",
+          "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+          "author": "bang_dream_info",
+          "publishedAt": "Thu Feb 20 13:58:26 +0000 2025",
+          "text": "／\n#グッドスマイルカンパニー 的\n大尺寸40cm玩偶\nMyGO!!!!! 要 楽奈 確定發售🎊\n＼\n\nBanG Dream！TV LIVE 2025 結束後約23:00起\n將於Good Smile Company官方商店\n開始預先預約✨\n\n詳細👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "40cm玩偶；TV LIVE結束後23:00左右開始預訂",
+          "keep": [],
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "promptVersion": "3-tw-entities-bandori",
+          "latencyMs": 965,
+          "usage": {
+            "prompt_tokens": 346,
+            "completion_tokens": 133,
+            "total_tokens": 479,
+            "prompt_tokens_details": {
+              "cached_tokens": 128
+            },
+            "prompt_cache_hit_tokens": 128,
+            "prompt_cache_miss_tokens": 218
+          },
+          "input": 346,
+          "output": 133,
+          "cache": 128,
+          "thoughts": 0,
+          "estimatedUsd": 0.00011288399999999999,
+          "gatewayReportedUsd": null,
+          "missing": [],
+          "originalText": "／\n#グッドスマイルカンパニー より\nおおきな40cmぬいぐるみ \nMyGO!!!!! 要 楽奈の発売が決定🎊\n＼\n\nバンドリ！TV LIVE 2025 終了後の23:00頃から\nグッドスマイルカンパニー公式ショップにて\n先行予約開始となります✨\n\n詳細👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE"
+        }
+      ]
+    }
+  ],
+  "sourceCorpusFile": "docs/translation-real-tweets-2026-10-04.json",
+  "sourceCorpusSha256": "6c26d5032cae9f3e53ddd39bf66aa2aff325fe67566b2088e31b29dedb0d9040",
+  "policyNotes": "Final glossary additions, nine targeted sources per model; single-attempt eval, not runtime retries. Later source-copy guard strengthened to compare masked input as well; covered by mock regression and dedicated runtime retry report."
+}

@@ -1,0 +1,278 @@
+{
+  "reviewedAt": "2026-10-04",
+  "reviewer": "Codex primary agent, direct source/translation comparison; not independent bilingual human review",
+  "criteria": "Blocking: unchanged Japanese prose, altered recruitment identity, added product/coin name, lost rank target, incorrect currency. Entity-review: noncanonical or inconsistent names needing a glossary; not asserting verified official Chinese equivalents. Minor/format are recorded separately. App-fixed is an implementation error, not model failure.",
+  "decision": "Do not directly adopt current Qwen configuration. Prior six-synthetic-case conclusion does not generalize to actual posts.",
+  "reviews": [
+    {
+      "id": "1814993059974897921",
+      "sourceUrl": "https://x.com/famitsu/status/1814993059974897921",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2038564087467254266",
+      "sourceUrl": "https://x.com/shinshin86/status/2038564087467254266",
+      "severity": "minor",
+      "note": "AI角色運用者被縮成玩家；語氣較生硬"
+    },
+    {
+      "id": "2041375534857478171",
+      "sourceUrl": "https://x.com/smoke_matsui/status/2041375534857478171",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2043593799465947627",
+      "sourceUrl": "https://x.com/nedo_info/status/2043593799465947627",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1755154436186628254",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+      "severity": "blocking",
+      "note": "Ui被替換成結衣，改變角色身份；重測仍錯"
+    },
+    {
+      "id": "2041422252286386523",
+      "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+      "severity": "minor",
+      "note": "disks與artifacts採字面磁碟與神器，遊戲術語較不自然"
+    },
+    {
+      "id": "1946110595948036237",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+      "severity": "blocking",
+      "note": "히마리(Himari)被替換成日向(Hinata)，改變角色身份"
+    },
+    {
+      "id": "1974761485919195464",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+      "severity": "minor",
+      "note": "Hikari寫成光之；沒有統一角色專名策略"
+    },
+    {
+      "id": "1908809403072966909",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1908809403072966909",
+      "severity": "minor",
+      "note": "Pick-up/精選招募一概寫限定，容易和限定學生混淆；常駐可取得條件保留"
+    },
+    {
+      "id": "1612721216548405250",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1612721216548405250",
+      "severity": "entity-review",
+      "note": "ミネ/Mine改成美音；需詞表或保留原名，不能確認官方中文名稱"
+    },
+    {
+      "id": "1683753497127419904",
+      "sourceUrl": "https://x.com/goto_saori18/status/1683753497127419904",
+      "severity": "entity-review",
+      "note": "ウイ/Ui變成優衣；與同角色其他貼文譯名不一致"
+    },
+    {
+      "id": "2043629372851343457",
+      "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+      "severity": "blocking",
+      "note": "ナコトコイン變成娜可露露幣，添加原文不存在的專名；とのフラ作品名漏掉"
+    },
+    {
+      "id": "2036005030847717457",
+      "sourceUrl": "https://x.com/bang_dream_info/status/2036005030847717457",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1962350090762256873",
+      "sourceUrl": "https://x.com/gsc_goodsmile/status/1962350090762256873",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1892586135936770320",
+      "sourceUrl": "https://x.com/aoki__hina/status/1892586135936770320",
+      "severity": "minor",
+      "note": "並べるか的自我決定語氣被寫成問讀者"
+    },
+    {
+      "id": "2067087337037983834",
+      "sourceUrl": "https://x.com/bang_dream_info/status/2067087337037983834",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2046489281758482802",
+      "sourceUrl": "https://x.com/animatesaga/status/2046489281758482802",
+      "severity": "minor",
+      "note": "先行抽選寫成優先抽選，可能混淆抽選階段與優先權"
+    },
+    {
+      "id": "1629013262229708800",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1629013262229708800",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2039357564937498778",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/2039357564937498778",
+      "severity": "minor",
+      "note": "原文作品名稱Happy Liefe被自行改為Happy Life"
+    },
+    {
+      "id": "1938160315524649042",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+      "severity": "app-fixed",
+      "note": "追蹤步驟未翻是@handle保護正則吞掉日文後綴；修正後重測完整翻譯"
+    },
+    {
+      "id": "1692385866575237209",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+      "severity": "entity-review",
+      "note": "作品名稱與角色譯名採自由音譯，須避免聲稱官方譯名"
+    },
+    {
+      "id": "1656871852705452032",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+      "severity": "entity-review",
+      "note": "カズサ被翻為和瀨，與同批和紗不一致"
+    },
+    {
+      "id": "1473141433188384769",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+      "severity": "entity-review",
+      "note": "角色名ヒナ/地名ゲヘナ採自由譯名，需專名策略"
+    },
+    {
+      "id": "2007798168201973903",
+      "sourceUrl": "https://x.com/hiiragiryo/status/2007798168201973903",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2038851040439935256",
+      "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+      "severity": "blocking",
+      "note": "漏掉從第6名能否攻擊第1名這個關鍵排名目標；重測仍漏；ツクヨ被變成Tsukuyomi/月讀"
+    },
+    {
+      "id": "2032729648594116738",
+      "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+      "severity": "minor",
+      "note": "手辦是中國常用語；あみあみ品牌保留原文合理"
+    },
+    {
+      "id": "2016390788348051497",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/2016390788348051497",
+      "severity": "minor",
+      "note": "添加原文沒有的午後；單純睡得香改成短暫小憩"
+    },
+    {
+      "id": "1958803829111283892",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1958803829111283892",
+      "severity": "format",
+      "note": "輸出字面反斜線n，貼文卡片會顯示跳脫文字；主體意思保留"
+    },
+    {
+      "id": "1606484815594651648",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1606484815594651648",
+      "severity": "entity-review",
+      "note": "아리우스/Arius小隊變成阿瑞斯(Ares)，專名可靠性不足"
+    },
+    {
+      "id": "2016512834281320877",
+      "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+      "severity": "entity-review",
+      "note": "Ako/Kei自由音譯，沒有統一角色名稱"
+    },
+    {
+      "id": "1979722434376069189",
+      "sourceUrl": "https://x.com/just_Homi12/status/1979722434376069189",
+      "severity": "minor",
+      "note": "部分作品名以其他英文名替換；日期、參與者與背景許可保留"
+    },
+    {
+      "id": "1991449000101441839",
+      "sourceUrl": "https://x.com/BArchiveWarfare/status/1991449000101441839",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1934087671162532070",
+      "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+      "severity": "format",
+      "note": "輸出字面反斜線n，直播取消與下週二恢復意思正確"
+    },
+    {
+      "id": "1902535233011843291",
+      "sourceUrl": "https://x.com/umineko22/status/1902535233011843291",
+      "severity": "minor",
+      "note": "展覽名被自行漢字化，宜保留原名"
+    },
+    {
+      "id": "2023208411123593560",
+      "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2038490637323145475",
+      "sourceUrl": "https://x.com/fladdict/status/2038490637323145475",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "2041057536577782057",
+      "sourceUrl": "https://x.com/KinoShinjuku/status/2041057536577782057",
+      "severity": "minor",
+      "note": "簽名書手渡活動改成贈送活動，容易誤會免費贈書"
+    },
+    {
+      "id": "2024386040031752663",
+      "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+      "severity": "blocking",
+      "note": "幾乎整段仍是日文，未完成翻譯；同prompt重測仍一樣"
+    },
+    {
+      "id": "1750760491431993377",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+      "severity": "blocking",
+      "note": "Ui被替換成結衣，角色身份錯誤"
+    },
+    {
+      "id": "2041416140787011865",
+      "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+      "severity": "blocking",
+      "note": "遊戲貨幣Pyroxene變成紅柱石；應使用青輝石詞表或保留Pyroxene"
+    },
+    {
+      "id": "1968933076991426682",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1905518971899822163",
+      "sourceUrl": "https://x.com/KR_BlueArchive/status/1905518971899822163",
+      "severity": "acceptable",
+      "note": "未見影響主要意思的錯誤；主詞、動作與條件大致保留"
+    },
+    {
+      "id": "1683674070829903873",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1683674070829903873",
+      "severity": "entity-review",
+      "note": "ウイ/Ui變成小薇，與其他兩筆同角色譯名不一致"
+    },
+    {
+      "id": "1892574535670440116",
+      "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+      "severity": "blocking",
+      "note": "原文只有要樂奈，譯文新增燈 & 樂奈；重測仍新增燈；23:00頃近似時間被改成精確起點"
+    },
+    {
+      "id": "1946588842326135226",
+      "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1946588842326135226",
+      "severity": "entity-review",
+      "note": "ノノミ/Nonomi變成野野原，角色名稱可靠性不足"
+    }
+  ]
+}

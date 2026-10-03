@@ -1,0 +1,2040 @@
+{
+  "testedAt": "2026-10-03T17:40:13.500Z",
+  "notes": "Actual public X post text, unmodified; see sourceUrl and reviewFocus per case. Only independently labeled translation-eligible posts are sent. Mechanical preservation is not a semantic quality score.",
+  "results": [
+    {
+      "provider": "gateway",
+      "model": "alibaba/qwen3.7-flash",
+      "inputRate": 0.03,
+      "cacheRate": 0.006,
+      "outputRate": 0.13,
+      "rows": [
+        {
+          "id": "1814993059974897921",
+          "sourceUrl": "https://x.com/famitsu/status/1814993059974897921",
+          "author": "famitsu",
+          "publishedAt": "Sun Jul 21 11:57:21 +0000 2024",
+          "text": "《蔚藍檔案》「夢留下的足跡」Part5 將於明天（7/22）維護後實裝\nhttps://www.famitsu.com/article/202407/11586\n\n主線劇情終於迎來續篇。由於更新在令人胸口悶痛至極的時刻暫停，歡呼聲在直播中不斷湧現。 #ブルアカ #ブルーアーカイブ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "Part5 明日7/22維護後推出；不是今天",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 3182,
+          "usage": {
+            "prompt_tokens": 246,
+            "completion_tokens": 114,
+            "total_tokens": 360,
+            "cost": 2.22e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.22e-05,
+            "gateway_cost": 2.22e-05
+          },
+          "input": 246,
+          "output": 114,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.22e-05,
+          "gatewayReportedUsd": 2.22e-05,
+          "missing": []
+        },
+        {
+          "id": "2038564087467254266",
+          "sourceUrl": "https://x.com/shinshin86/status/2038564087467254266",
+          "author": "shinshin86",
+          "publishedAt": "Mon Mar 30 10:28:47 +0000 2026",
+          "text": "喔，這看起來像是使用 AI 角色的玩家一定要來關注的討論串預感...！👀\n我也想順便確認一下被引用的「超級 Eco 醬」的那篇討論串\n\n很好奇到底有哪些「對教育來說還不錯的冷知識」可以拿來教給 AI 呢？",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1615,
+          "usage": {
+            "prompt_tokens": 187,
+            "completion_tokens": 61,
+            "total_tokens": 248,
+            "cost": 1.354e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.354e-05,
+            "gateway_cost": 1.354e-05
+          },
+          "input": 187,
+          "output": 61,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.3539999999999999e-05,
+          "gatewayReportedUsd": 1.354e-05,
+          "missing": []
+        },
+        {
+          "id": "2041375534857478171",
+          "sourceUrl": "https://x.com/smoke_matsui/status/2041375534857478171",
+          "author": "smoke_matsui",
+          "publishedAt": "Tue Apr 07 04:40:29 +0000 2026",
+          "text": "我來遞給你哦ー！",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "會交給對方；短日文句",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 844,
+          "usage": {
+            "prompt_tokens": 136,
+            "completion_tokens": 7,
+            "total_tokens": 143,
+            "cost": 4.99e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 4.99e-06,
+            "gateway_cost": 4.99e-06
+          },
+          "input": 136,
+          "output": 7,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 4.9900000000000005e-06,
+          "gatewayReportedUsd": 4.99e-06,
+          "missing": []
+        },
+        {
+          "id": "2043593799465947627",
+          "sourceUrl": "https://x.com/nedo_info/status/2043593799465947627",
+          "author": "nedo_info",
+          "publishedAt": "Mon Apr 13 07:35:04 +0000 2026",
+          "text": "【#NEDOイベント 活動資訊】\n我們將舉辦一場「實踐型深度科技社群實體活動」，旨在透過課題設定、資本設計與聯盟建構，朝向事業化邁進。\n本次企劃旨在促進腦部與神經科技領域的事業化媒合。\n・日期時間：4月23日（週四）16:00–19:15\n・地點：新東京大樓8樓（距離東京站步行約10分鐘）\n・對象：研究人員／新創公司／企業／創投基金／歡迎跨產業參與\n・費用：免費\n報名截止至【4月15日（週三）20:00】為止。詳細資訊及報名請參考以下連結。\nhttps://peatix.com/event/4955707/view",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 3134,
+          "usage": {
+            "prompt_tokens": 320,
+            "completion_tokens": 188,
+            "total_tokens": 508,
+            "cost": 3.404e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 3.404e-05,
+            "gateway_cost": 3.404e-05
+          },
+          "input": 320,
+          "output": 188,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 3.404e-05,
+          "gatewayReportedUsd": 3.404e-05,
+          "missing": []
+        },
+        {
+          "id": "1755154436186628254",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Wed Feb 07 09:00:01 +0000 2024",
+          "text": "【限定角色招募結束通知】\n\n3★ 結衣（泳裝）限定招募將持續至 2/8（週四）1:59 AM (UTC)！\n\n* 3★ 結衣（泳裝）的限定招募結束後，她將無法透過一般招募獲得。\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Ui限定招募2/8 1:59 AM UTC截止；之後無法一般招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1444,
+          "usage": {
+            "prompt_tokens": 220,
+            "completion_tokens": 82,
+            "total_tokens": 302,
+            "cost": 1.726e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.726e-05,
+            "gateway_cost": 1.726e-05
+          },
+          "input": 220,
+          "output": 82,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.7259999999999997e-05,
+          "gatewayReportedUsd": 1.726e-05,
+          "missing": []
+        },
+        {
+          "id": "2041422252286386523",
+          "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+          "author": "cendol_plt",
+          "publishedAt": "Tue Apr 07 07:46:07 +0000 2026",
+          "text": "天啊，不僅上架了，現在我們還能買更多磁碟和筆記了！\n以前一直覺得很煩，因為某種原因我們只能選兩種類型和一些神器，這樣好太多了😭",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "不只是商店上架；可購買更多光碟與筆記；此前僅兩種",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1935,
+          "usage": {
+            "prompt_tokens": 175,
+            "completion_tokens": 41,
+            "total_tokens": 216,
+            "cost": 1.058e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.058e-05,
+            "gateway_cost": 1.058e-05
+          },
+          "input": 175,
+          "output": 41,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.058e-05,
+          "gatewayReportedUsd": 1.058e-05,
+          "missing": []
+        },
+        {
+          "id": "1946110595948036237",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Jul 18 07:31:37 +0000 2025",
+          "text": "[復刻限定招募預告]\n\n7/22（二）預計將開始復刻限定招募！\n\n💌 招募對象學生：★3 日向、★3 艾米（泳裝）、★3 晴（露營）、★3 小玉（露營）\n🗓️ 招募期間：7/22（二）維護後 ~ 8/5（二）10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "7/22維護後至8/5 10:59；四名學生",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1579,
+          "usage": {
+            "prompt_tokens": 251,
+            "completion_tokens": 108,
+            "total_tokens": 359,
+            "cost": 2.157e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.157e-05,
+            "gateway_cost": 2.157e-05
+          },
+          "input": 251,
+          "output": 108,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.1570000000000002e-05,
+          "gatewayReportedUsd": 2.157e-05,
+          "missing": []
+        },
+        {
+          "id": "1974761485919195464",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sun Oct 05 09:00:02 +0000 2025",
+          "text": "[特別招募結束通知]\n\n★3 光之特別招募將持續至 10/7（週二）10:59！\n\n（請注意，★3 光之在特別招募結束後無法於「常規招募」中獲得）\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "Hikari10/7 10:59截止；之後不可常駐招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2228,
+          "usage": {
+            "prompt_tokens": 213,
+            "completion_tokens": 73,
+            "total_tokens": 286,
+            "cost": 1.588e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.588e-05,
+            "gateway_cost": 1.588e-05
+          },
+          "input": 213,
+          "output": 73,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.588e-05,
+          "gatewayReportedUsd": 1.588e-05,
+          "missing": []
+        },
+        {
+          "id": "1908809403072966909",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1908809403072966909",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sun Apr 06 09:10:00 +0000 2025",
+          "text": "[抽卡活動結束通知]\n\n★3 日富美（泳裝）限定招募將持續至 4/8（週二）10:59！\n\n(★3 日富美（泳裝）在復刻限定招募結束後，也可在「常規招募」中獲得)\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Hifumi4/8 10:59截止；之後可以常駐招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2079,
+          "usage": {
+            "prompt_tokens": 218,
+            "completion_tokens": 84,
+            "total_tokens": 302,
+            "cost": 1.746e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.746e-05,
+            "gateway_cost": 1.746e-05
+          },
+          "input": 218,
+          "output": 84,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.7460000000000002e-05,
+          "gatewayReportedUsd": 1.746e-05,
+          "missing": []
+        },
+        {
+          "id": "1612721216548405250",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1612721216548405250",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Jan 10 08:01:15 +0000 2023",
+          "text": "【角色介紹・技能篇】\n救護騎士團團長美音小姐。使用EX技能，會衝向指定地點並對圓形範圍內的敵人造成傷害，同時降低其迴避值與防禦力。若敵方為中型單位，減少效果將強化為原本的兩倍，因此非常強力…！\n\n■PROFILE\n蒼森美音\nFRONT・坦克\nCV:#堀江由衣\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "圓形傷害、降低迴避與防禦；中型敵減少值翻倍",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2163,
+          "usage": {
+            "prompt_tokens": 248,
+            "completion_tokens": 116,
+            "total_tokens": 364,
+            "cost": 2.252e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.252e-05,
+            "gateway_cost": 2.252e-05
+          },
+          "input": 248,
+          "output": 116,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.252e-05,
+          "gatewayReportedUsd": 2.252e-05,
+          "missing": []
+        },
+        {
+          "id": "1683753497127419904",
+          "sourceUrl": "https://x.com/goto_saori18/status/1683753497127419904",
+          "author": "goto_saori18",
+          "publishedAt": "Tue Jul 25 08:18:10 +0000 2023",
+          "text": "泳裝造型的優衣登場了！🏊‍♀️✨\n\n腳跟上的貼布可愛得讓人忍不住一直看…\n不禁讓人浮想聯翩，她之間會發生什麼樣的互動呢？？🩹\n\n雖然優衣不太擅長炎熱的天氣，但願她能與老師一起度過美好的夏天…☺️🌻👒\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2012,
+          "usage": {
+            "prompt_tokens": 231,
+            "completion_tokens": 96,
+            "total_tokens": 327,
+            "cost": 1.941e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.941e-05,
+            "gateway_cost": 1.941e-05
+          },
+          "input": 231,
+          "output": 96,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.941e-05,
+          "gatewayReportedUsd": 1.941e-05,
+          "missing": []
+        },
+        {
+          "id": "2043629372851343457",
+          "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+          "author": "Luxu_LostMaster",
+          "publishedAt": "Mon Apr 13 09:56:25 +0000 2026",
+          "text": "這次抽卡，不只是蔚藍檔案，也在煩惱要推誰，因為可能會把米爾瓦當推，所以先迎來了試玩版米爾瓦和和風兔女郎米爾瓦的皮膚。\n試玩版米爾瓦是保底出的。\n和風兔女郎米爾瓦的皮膚是用娜可露露幣換的。\n#とのフラ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "試用Milva抽到保底；和風兔女郎造型用代幣換",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2281,
+          "usage": {
+            "prompt_tokens": 218,
+            "completion_tokens": 92,
+            "total_tokens": 310,
+            "cost": 1.85e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.85e-05,
+            "gateway_cost": 1.85e-05
+          },
+          "input": 218,
+          "output": 92,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.85e-05,
+          "gatewayReportedUsd": 1.85e-05,
+          "missing": []
+        },
+        {
+          "id": "2036005030847717457",
+          "sourceUrl": "https://x.com/bang_dream_info/status/2036005030847717457",
+          "author": "bang_dream_info",
+          "publishedAt": "Mon Mar 23 09:00:01 +0000 2026",
+          "text": "＼票券先行販售 至本日為止📢／\n\n🎧RAISE A SUILEN LIVE 2026\n「Boot IGNITION」🎧\n\n東京公演 6/18(四)\n兵庫公演 6/26(五)\n\n🎫請在此申請\nhttps://eplus.jp/ras-2026/\n\n⏰受理期間\n至本日23:59為止\n\n#バンドリ #RAS",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "東京6/18、兵庫6/26；今日23:59截止",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1768,
+          "usage": {
+            "prompt_tokens": 272,
+            "completion_tokens": 136,
+            "total_tokens": 408,
+            "cost": 2.584e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.584e-05,
+            "gateway_cost": 2.584e-05
+          },
+          "input": 272,
+          "output": 136,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.584e-05,
+          "gatewayReportedUsd": 2.584e-05,
+          "missing": []
+        },
+        {
+          "id": "1962350090762256873",
+          "sourceUrl": "https://x.com/gsc_goodsmile/status/1962350090762256873",
+          "author": "gsc_goodsmile",
+          "publishedAt": "Mon Sep 01 03:01:34 +0000 2025",
+          "text": "🎶 商品資訊 🎶\n\n絨毛玩偶 外出用小包 各款式\n\n預計於9月27日起舉辦的「BanG Dream! 絨毛玩偶Fes.」中先行販售🧸\n\n▼商品詳情請見此處\nhttps://goodsmile.link/dn0oPK\n\n#バンドリ #すまぬい #ポピパ #Afterglow #パスパレ #Roselia #ハロハピ #Morfonica #RAS #MyGO #AveMujica #ゆめみた",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2275,
+          "usage": {
+            "prompt_tokens": 367,
+            "completion_tokens": 233,
+            "total_tokens": 600,
+            "cost": 4.13e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 4.13e-05,
+            "gateway_cost": 4.13e-05
+          },
+          "input": 367,
+          "output": 233,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 4.13e-05,
+          "gatewayReportedUsd": 4.13e-05,
+          "missing": []
+        },
+        {
+          "id": "1892586135936770320",
+          "sourceUrl": "https://x.com/aoki__hina/status/1892586135936770320",
+          "author": "aoki__hina",
+          "publishedAt": "Thu Feb 20 14:44:32 +0000 2025",
+          "text": "感覺像龍貓和小龍貓呢，要並排擺放嗎？",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1588,
+          "usage": {
+            "prompt_tokens": 144,
+            "completion_tokens": 16,
+            "total_tokens": 160,
+            "cost": 6.4e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 6.4e-06,
+            "gateway_cost": 6.4e-06
+          },
+          "input": 144,
+          "output": 16,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 6.4000000000000006e-06,
+          "gatewayReportedUsd": 6.4e-06,
+          "missing": []
+        },
+        {
+          "id": "2067087337037983834",
+          "sourceUrl": "https://x.com/bang_dream_info/status/2067087337037983834",
+          "author": "bang_dream_info",
+          "publishedAt": "Wed Jun 17 03:30:00 +0000 2026",
+          "text": "＼演唱會資訊🎸／\n\n8/29(六)・30(日)\n🌹Roselia「Lehre der Rose」 \n  #Roselia10周年記念Album 發售紀念演唱會🌹\n\n🎫票券先行販售中\nhttps://eplus.jp/roselia-lehre-der-rose/\n\n⏰受理期間\n～7/3(五) 23:59\n\n#バンドリ #Roselia",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "8/29與30演出；7/3 23:59截止",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2131,
+          "usage": {
+            "prompt_tokens": 276,
+            "completion_tokens": 139,
+            "total_tokens": 415,
+            "cost": 2.635e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.635e-05,
+            "gateway_cost": 2.635e-05
+          },
+          "input": 276,
+          "output": 139,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.635e-05,
+          "gatewayReportedUsd": 2.635e-05,
+          "missing": []
+        },
+        {
+          "id": "2046489281758482802",
+          "sourceUrl": "https://x.com/animatesaga/status/2046489281758482802",
+          "author": "animatesaga",
+          "publishedAt": "Tue Apr 21 07:20:41 +0000 2026",
+          "text": "【💿新譜到貨資訊💿】\nBanG Dream! #バンドリ！\n#Morfonica『Resonant Strings』\n已上架❣\n\n🎁#アニメイト特典（倉田真白 ver.）\n🩵寫真卡\n🩵壓克力立牌＆馬口鐵徽章（通常盤不適用）\n\n🎟️內附特典\n2026年9月預計舉辦\nMorfonica 單獨演唱會活動 最速優先抽選申請券",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "壓克力與徽章不適用通常盤；9月活動最速先行抽選券",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2221,
+          "usage": {
+            "prompt_tokens": 291,
+            "completion_tokens": 155,
+            "total_tokens": 446,
+            "cost": 2.888e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.888e-05,
+            "gateway_cost": 2.888e-05
+          },
+          "input": 291,
+          "output": 155,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.888e-05,
+          "gatewayReportedUsd": 2.888e-05,
+          "missing": []
+        },
+        {
+          "id": "1629013262229708800",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1629013262229708800",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Feb 24 07:00:01 +0000 2023",
+          "text": "[活動預告]\n\n2/28（週二），來電的是和紗！\n她說有想跟老師商量的事情呢？\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1768,
+          "usage": {
+            "prompt_tokens": 184,
+            "completion_tokens": 47,
+            "total_tokens": 231,
+            "cost": 1.163e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.163e-05,
+            "gateway_cost": 1.163e-05
+          },
+          "input": 184,
+          "output": 47,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.1629999999999999e-05,
+          "gatewayReportedUsd": 1.163e-05,
+          "missing": []
+        },
+        {
+          "id": "2039357564937498778",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/2039357564937498778",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Wed Apr 01 15:01:47 +0000 2026",
+          "text": "【開始配信】\n老師！\n由空與柴大將演唱的「暖心 Happy Life」已開始配信！\n敬請聆聽！\n\n▼各音樂服務平台如下！\nhttps://nex-tone.link/A00215884\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1338,
+          "usage": {
+            "prompt_tokens": 214,
+            "completion_tokens": 73,
+            "total_tokens": 287,
+            "cost": 1.591e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.591e-05,
+            "gateway_cost": 1.591e-05
+          },
+          "input": 214,
+          "output": 73,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.5910000000000002e-05,
+          "gatewayReportedUsd": 1.591e-05,
+          "missing": []
+        },
+        {
+          "id": "1938160315524649042",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Thu Jun 26 09:00:03 +0000 2025",
+          "text": "【追蹤&RP活動】\n電視廣告播出紀念🎉\n抽選中將有2名幸運兒獲得『桔梗(泳裝)聲優 #小松未可子 親筆簽名明信片』🎁\n\n參與方式\n@Blue_ArchiveJPをフォロー\n對這篇貼文進行RP\n\n截止時間：7/8(二) 23:59止\n\n▼影片請見此處\nhttps://youtu.be/ZsFwrpOPLIg\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "抽2名；追蹤帳號、轉發；7/8 23:59截止",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2303,
+          "usage": {
+            "prompt_tokens": 276,
+            "completion_tokens": 141,
+            "total_tokens": 417,
+            "cost": 2.661e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.661e-05,
+            "gateway_cost": 2.661e-05
+          },
+          "input": 276,
+          "output": 141,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.661e-05,
+          "gatewayReportedUsd": 2.661e-05,
+          "missing": []
+        },
+        {
+          "id": "1692385866575237209",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri Aug 18 04:00:08 +0000 2023",
+          "text": "【布魯阿卡伊布！】第129話\n\n客流量終於穩定下來，靜子總算能稍微休息一下。\n想到疲憊的靜子，美守似乎準備了專屬的休息空間……\n\n🔷作：純粋な不純物(@parang9494)老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2187,
+          "usage": {
+            "prompt_tokens": 248,
+            "completion_tokens": 106,
+            "total_tokens": 354,
+            "cost": 2.122e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.122e-05,
+            "gateway_cost": 2.122e-05
+          },
+          "input": 248,
+          "output": 106,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.122e-05,
+          "gatewayReportedUsd": 2.122e-05,
+          "missing": []
+        },
+        {
+          "id": "1656871852705452032",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Fri May 12 04:00:07 +0000 2023",
+          "text": "【布魯阿卡伊布！】第115話\n蕾莎小姐獲得了限定甜點。\n因為趕著要帶去給和瀨小姐當伴手禮，結果太匆忙導致形狀都變形了……\n\n🔷作者：純粋な不純物(@parang9494)先生\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1892,
+          "usage": {
+            "prompt_tokens": 249,
+            "completion_tokens": 113,
+            "total_tokens": 362,
+            "cost": 2.216e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.216e-05,
+            "gateway_cost": 2.216e-05
+          },
+          "input": 249,
+          "output": 113,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.216e-05,
+          "gatewayReportedUsd": 2.216e-05,
+          "missing": []
+        },
+        {
+          "id": "1473141433188384769",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Dec 21 04:01:01 +0000 2021",
+          "text": "【布魯阿卡伊布！】第45話\n\n結束任務後，千夏小姐回到了格黑娜。儘管剛結束追捕問題兒童集團的嚴酷任務，但她的肌膚依然光澤水潤、狀態極佳，這讓亞子小姐和雛小姐感到相當在意……\n\n🔹原作：純粋な不純物(@parang9494) 老師\n\n#ブルアカ #ぶるーあーかいぶっ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2369,
+          "usage": {
+            "prompt_tokens": 275,
+            "completion_tokens": 129,
+            "total_tokens": 404,
+            "cost": 2.502e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.502e-05,
+            "gateway_cost": 2.502e-05
+          },
+          "input": 275,
+          "output": 129,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.502e-05,
+          "gatewayReportedUsd": 2.502e-05,
+          "missing": []
+        },
+        {
+          "id": "2007798168201973903",
+          "sourceUrl": "https://x.com/hiiragiryo/status/2007798168201973903",
+          "author": "hiiragiryo",
+          "publishedAt": "Sun Jan 04 12:56:01 +0000 2026",
+          "text": "C107新刊・蔚藍檔案同人誌《BLUE DESIGN》已於Melon Books開始委託販售。這本蔚藍檔案同人誌是封面設計的彙整本。採用A4全彩108頁、科德克斯裝幀＋特殊紙＋燙金的豪華裝幀。敬請支持。#ブルアカ\n\n特設頁面\nhttps://iswdesigning.com/special/c107bluedesign/\n🍈\nhttps://melonbooks.co.jp/detail/detail.php?product_id=3305509",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2090,
+          "usage": {
+            "prompt_tokens": 256,
+            "completion_tokens": 132,
+            "total_tokens": 388,
+            "cost": 2.484e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.484e-05,
+            "gateway_cost": 2.484e-05
+          },
+          "input": 256,
+          "output": 132,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.484e-05,
+          "gatewayReportedUsd": 2.484e-05,
+          "missing": []
+        },
+        {
+          "id": "2038851040439935256",
+          "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+          "author": "thegamehhhkk",
+          "publishedAt": "Tue Mar 31 05:29:02 +0000 2026",
+          "text": "今天凌晨4點前，我在第1名時被Alice揍了一下掉到第4名，然後我反擊揍了Alice，又回到第1名。之後又被Tsukuyomi揍，掉到第6名…。從第6名開始還能揍人嗎？\n\n另外，防禦陣容明顯還在編組中，但蔚藍檔案在編組過程中也能進行攻擊嗎？\n#ブルアカ\n#戦術対抗戦",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "4點前第1名被Alice打至第4、反擊回第1、Tsukuyo打至第6；詢問編成中能否攻擊",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2498,
+          "usage": {
+            "prompt_tokens": 243,
+            "completion_tokens": 115,
+            "total_tokens": 358,
+            "cost": 2.224e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.224e-05,
+            "gateway_cost": 2.224e-05
+          },
+          "input": 243,
+          "output": 115,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.224e-05,
+          "gatewayReportedUsd": 2.224e-05,
+          "missing": []
+        },
+        {
+          "id": "2032729648594116738",
+          "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+          "author": "figure_times",
+          "publishedAt": "Sat Mar 14 08:04:49 +0000 2026",
+          "text": "あみあみ庫存復活✨\n\nALTER 將《蔚藍檔案》的「飛鳥馬時」推出為手辦！可替換女僕裝與動力服！預計2026年1月發售\nhttps://figure-times.com/?p=185830\n\n#フィギュア #アルター #ブルーアーカイブ #ブルアカ #飛鳥馬トキ #BlueArcive #碧蓝档案",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2389,
+          "usage": {
+            "prompt_tokens": 297,
+            "completion_tokens": 162,
+            "total_tokens": 459,
+            "cost": 2.997e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.997e-05,
+            "gateway_cost": 2.997e-05
+          },
+          "input": 297,
+          "output": 162,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.9970000000000003e-05,
+          "gatewayReportedUsd": 2.997e-05,
+          "missing": []
+        },
+        {
+          "id": "2016390788348051497",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/2016390788348051497",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Wed Jan 28 06:00:01 +0000 2026",
+          "text": "美咲在海灘上享受著午後的短暫小憩。  \n其實，這樣的悠閒時光，或許正是我們所亟需的吧？  \n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1331,
+          "usage": {
+            "prompt_tokens": 177,
+            "completion_tokens": 47,
+            "total_tokens": 224,
+            "cost": 1.142e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.142e-05,
+            "gateway_cost": 1.142e-05
+          },
+          "input": 177,
+          "output": 47,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.142e-05,
+          "gatewayReportedUsd": 1.142e-05,
+          "missing": []
+        },
+        {
+          "id": "1958803829111283892",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1958803829111283892",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Aug 22 08:10:00 +0000 2025",
+          "text": "今天是千夏小姐的生日！🎉\\n\\n老師還記得剛來到基沃托斯的時候嗎？當時千夏小姐也給予了許多幫助。\\n現在，是時候回報她了！\\n\\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1946,
+          "usage": {
+            "prompt_tokens": 207,
+            "completion_tokens": 62,
+            "total_tokens": 269,
+            "cost": 1.427e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.427e-05,
+            "gateway_cost": 1.427e-05
+          },
+          "input": 207,
+          "output": 62,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.4269999999999999e-05,
+          "gatewayReportedUsd": 1.427e-05,
+          "missing": []
+        },
+        {
+          "id": "1606484815594651648",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1606484815594651648",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Sat Dec 24 03:00:01 +0000 2022",
+          "text": "為慶祝聖誕節，我們帶來 Mooku(@M0_0KU) 作者的賀詞！\n何不像阿瑞斯小隊一樣，將幸福的回憶以影片形式留存下來呢？\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1780,
+          "usage": {
+            "prompt_tokens": 200,
+            "completion_tokens": 68,
+            "total_tokens": 268,
+            "cost": 1.484e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.484e-05,
+            "gateway_cost": 1.484e-05
+          },
+          "input": 200,
+          "output": 68,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.484e-05,
+          "gatewayReportedUsd": 1.484e-05,
+          "missing": []
+        },
+        {
+          "id": "2016512834281320877",
+          "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+          "author": "ToothBrusher28",
+          "publishedAt": "Wed Jan 28 14:04:59 +0000 2026",
+          "text": "穿著阿科服裝的凱漫畫\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 955,
+          "usage": {
+            "prompt_tokens": 157,
+            "completion_tokens": 24,
+            "total_tokens": 181,
+            "cost": 7.83e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 7.83e-06,
+            "gateway_cost": 7.83e-06
+          },
+          "input": 157,
+          "output": 24,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 7.83e-06,
+          "gatewayReportedUsd": 7.83e-06,
+          "missing": []
+        },
+        {
+          "id": "1979722434376069189",
+          "sourceUrl": "https://x.com/just_Homi12/status/1979722434376069189",
+          "author": "just_Homi12",
+          "publishedAt": "Sun Oct 19 01:33:04 +0000 2025",
+          "text": "#10서코 #10수코 #카탈로그\n[RT🥰🥰] 大家好，我是霍米！\n預計於10月25日至26日在水原MEC舉辦的Comic World 325水原攤位目錄已公開！您可以在下方霍米的攤位目錄網站上查看目錄！\nhttps://homicatalog.com\n其他類型也會陸續製作並上傳！\n[蔚藍檔案] JAZZ JACK 作者 (@JAZZ_JACK_)\n[Stelllive] 洋菇手 作者 (@YangsongiHand)\n[HoYoverse] SBGU 作者 (@SBGU1635)\n[Trickster] Dongle E 作者 (@Dongle2DongleE)\n感謝允許使用背景！",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "10/25–26水原活動；其他作品陸續上傳；感謝背景使用許可",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2815,
+          "usage": {
+            "prompt_tokens": 430,
+            "completion_tokens": 268,
+            "total_tokens": 698,
+            "cost": 4.774e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 4.774e-05,
+            "gateway_cost": 4.774e-05
+          },
+          "input": 430,
+          "output": 268,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 4.774e-05,
+          "gatewayReportedUsd": 4.774e-05,
+          "missing": []
+        },
+        {
+          "id": "1991449000101441839",
+          "sourceUrl": "https://x.com/BArchiveWarfare/status/1991449000101441839",
+          "author": "BArchiveWarfare",
+          "publishedAt": "Thu Nov 20 10:10:15 +0000 2025",
+          "text": "在 iOS 系統中，如果你像卸載應用程式那樣長按遊戲圖示，它會顯示：\n\n「不要啊！！老師。你只是把圖示移來移去對吧？」\n\n看來阿羅娜擔心玩家會卸載遊戲。這其實是開發者新增的、透過作業系統介於應用程式與使用者之間的特別互動功能。\n\n（僅限日文版，且你的 iPhone 必須是最新的 iOS 26）\n\n#BlueArchive #ブルアカ #블루아카이브",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "只限日版與最新iOS26；長按移動圖示、Arona擔心解除安裝",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2580,
+          "usage": {
+            "prompt_tokens": 282,
+            "completion_tokens": 147,
+            "total_tokens": 429,
+            "cost": 2.757e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.757e-05,
+            "gateway_cost": 2.757e-05
+          },
+          "input": 282,
+          "output": 147,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.757e-05,
+          "gatewayReportedUsd": 2.757e-05,
+          "missing": []
+        },
+        {
+          "id": "1934087671162532070",
+          "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+          "author": "oozorasubaru",
+          "publishedAt": "Sun Jun 15 03:16:49 +0000 2025",
+          "text": "早安！！！\\n因為喉嚨的沙啞還沒好，所以今天中午的直播就先暫停囉！😭🙏\\n\\n今天和明天我會好好讓喉嚨休息，下週二開始再繼續直播喔！！！\\n請大家多多指教🥳✨️",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "喉嚨仍沙啞，取消中午直播；今明休息，下週二恢復",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1401,
+          "usage": {
+            "prompt_tokens": 192,
+            "completion_tokens": 62,
+            "total_tokens": 254,
+            "cost": 1.382e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.382e-05,
+            "gateway_cost": 1.382e-05
+          },
+          "input": 192,
+          "output": 62,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.382e-05,
+          "gatewayReportedUsd": 1.382e-05,
+          "missing": []
+        },
+        {
+          "id": "1902535233011843291",
+          "sourceUrl": "https://x.com/umineko22/status/1902535233011843291",
+          "author": "umineko22",
+          "publishedAt": "Thu Mar 20 01:38:41 +0000 2025",
+          "text": "今天休息。海臍展覽從明天開始！",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "今天休息、展覽明天開始",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 959,
+          "usage": {
+            "prompt_tokens": 144,
+            "completion_tokens": 11,
+            "total_tokens": 155,
+            "cost": 5.75e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 5.75e-06,
+            "gateway_cost": 5.75e-06
+          },
+          "input": 144,
+          "output": 11,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 5.75e-06,
+          "gatewayReportedUsd": 5.75e-06,
+          "missing": []
+        },
+        {
+          "id": "2023208411123593560",
+          "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+          "author": "Lulu_Tenma",
+          "publishedAt": "Mon Feb 16 01:30:49 +0000 2026",
+          "text": "早安🫶🏻\n今天是休息日.ᐟ\n\n晚上會從比較早的時間開始直播ʕ •́؈•̀ ₎",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "今天休息日，但晚上較早時間直播",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1204,
+          "usage": {
+            "prompt_tokens": 172,
+            "completion_tokens": 34,
+            "total_tokens": 206,
+            "cost": 9.58e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 9.58e-06,
+            "gateway_cost": 9.58e-06
+          },
+          "input": 172,
+          "output": 34,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 9.58e-06,
+          "gatewayReportedUsd": 9.58e-06,
+          "missing": []
+        },
+        {
+          "id": "2038490637323145475",
+          "sourceUrl": "https://x.com/fladdict/status/2038490637323145475",
+          "author": "fladdict",
+          "publishedAt": "Mon Mar 30 05:36:55 +0000 2026",
+          "text": "正在徵集可以教給 AI 的冷知識。請推薦一些對教育沒有不良影響的有趣題材。",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1002,
+          "usage": {
+            "prompt_tokens": 156,
+            "completion_tokens": 24,
+            "total_tokens": 180,
+            "cost": 7.8e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 7.8e-06,
+            "gateway_cost": 7.8e-06
+          },
+          "input": 156,
+          "output": 24,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 7.8e-06,
+          "gatewayReportedUsd": 7.8e-06,
+          "missing": []
+        },
+        {
+          "id": "2041057536577782057",
+          "sourceUrl": "https://x.com/KinoShinjuku/status/2041057536577782057",
+          "author": "KinoShinjuku",
+          "publishedAt": "Mon Apr 06 07:36:52 +0000 2026",
+          "text": "【公告】已決定追加徵選松井ケムリ的簽名本贈送活動。詳情請至活動官方網站確認。",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1156,
+          "usage": {
+            "prompt_tokens": 159,
+            "completion_tokens": 29,
+            "total_tokens": 188,
+            "cost": 8.54e-06,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 8.54e-06,
+            "gateway_cost": 8.54e-06
+          },
+          "input": 159,
+          "output": 29,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 8.54e-06,
+          "gatewayReportedUsd": 8.54e-06,
+          "missing": []
+        },
+        {
+          "id": "2024386040031752663",
+          "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+          "author": "nedo_info",
+          "publishedAt": "Thu Feb 19 07:30:17 +0000 2026",
+          "text": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2056,
+          "usage": {
+            "prompt_tokens": 310,
+            "completion_tokens": 177,
+            "total_tokens": 487,
+            "cost": 3.231e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 3.231e-05,
+            "gateway_cost": 3.231e-05
+          },
+          "input": 310,
+          "output": 177,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 3.231e-05,
+          "gatewayReportedUsd": 3.231e-05,
+          "missing": []
+        },
+        {
+          "id": "1750760491431993377",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Fri Jan 26 06:00:03 +0000 2024",
+          "text": "【限定角色招募預覽】\n\n新的限定角色招募將於 1/30（二）開始！\n登場學生：3★ 結衣（泳裝）\n\n招募時間：1/30（二）維護後 – 2/8（四）凌晨 1:59（UTC）\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "1/30維護後至2/8 1:59 AM UTC",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1501,
+          "usage": {
+            "prompt_tokens": 224,
+            "completion_tokens": 84,
+            "total_tokens": 308,
+            "cost": 1.764e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.764e-05,
+            "gateway_cost": 1.764e-05
+          },
+          "input": 224,
+          "output": 84,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.764e-05,
+          "gatewayReportedUsd": 1.764e-05,
+          "missing": []
+        },
+        {
+          "id": "2041416140787011865",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Tue Apr 07 07:21:50 +0000 2026",
+          "text": "[4/7 更新公告]\n\n4/7（週二）的預定維護已結束。\n\n➡️更新詳情：https://forum.nexon.com/bluearchive-en/board_view?board=3217&thread=3415801\n➡️維護獎勵：紅柱石 x 720\n（維護獎勵將發放至您的郵件，領取期限至 4/14（週二）UTC 下午 2:59）\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "4/7維護結束；720青輝石；4/14 2:59 PM UTC信箱截止",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2054,
+          "usage": {
+            "prompt_tokens": 239,
+            "completion_tokens": 112,
+            "total_tokens": 351,
+            "cost": 2.173e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.173e-05,
+            "gateway_cost": 2.173e-05
+          },
+          "input": 239,
+          "output": 112,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.173e-05,
+          "gatewayReportedUsd": 2.173e-05,
+          "missing": []
+        },
+        {
+          "id": "1968933076991426682",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Sep 19 07:00:01 +0000 2025",
+          "text": "[特別招募預告]\n\n9/23（二）新的特別招募即將開始！\n\n💌 登場學生：★3 光\n🗓️ 招募期間：9/23（二）維護後 ~ 10/7（二）10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "9/23維護後至10/7 10:59",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1373,
+          "usage": {
+            "prompt_tokens": 222,
+            "completion_tokens": 78,
+            "total_tokens": 300,
+            "cost": 1.68e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.68e-05,
+            "gateway_cost": 1.68e-05
+          },
+          "input": 222,
+          "output": 78,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.6800000000000002e-05,
+          "gatewayReportedUsd": 1.68e-05,
+          "missing": []
+        },
+        {
+          "id": "1905518971899822163",
+          "sourceUrl": "https://x.com/KR_BlueArchive/status/1905518971899822163",
+          "author": "KR_BlueArchive",
+          "publishedAt": "Fri Mar 28 07:15:00 +0000 2025",
+          "text": "[復刻限定招募預告]\n\n4/1(二) 將開始復刻限定招募！\n\n💌 招募對象學生：★3 日富美 (泳裝)\n🗓️ 招募期間：4/1(二) 維護後 ~ 4/8(二) 10:59\n\n#블루아카이브",
+          "language": "ko",
+          "expectedDisplay": true,
+          "reviewFocus": "4/1維護後至4/8 10:59",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2350,
+          "usage": {
+            "prompt_tokens": 226,
+            "completion_tokens": 89,
+            "total_tokens": 315,
+            "cost": 1.835e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.835e-05,
+            "gateway_cost": 1.835e-05
+          },
+          "input": 226,
+          "output": 89,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.8350000000000002e-05,
+          "gatewayReportedUsd": 1.835e-05,
+          "missing": []
+        },
+        {
+          "id": "1683674070829903873",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1683674070829903873",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Tue Jul 25 03:02:34 +0000 2023",
+          "text": "【學生介紹】\n為了進行遺跡調查而前來的「古書館的魔術師」小薇。\n雖然不擅長外出活動身體，但由於喜歡古書、遺跡和文物，看來她對調查本身相當認真……\n\n「呼、呼……好熱……糟透了……」\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1670,
+          "usage": {
+            "prompt_tokens": 219,
+            "completion_tokens": 81,
+            "total_tokens": 300,
+            "cost": 1.71e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.71e-05,
+            "gateway_cost": 1.71e-05
+          },
+          "input": 219,
+          "output": 81,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.7100000000000002e-05,
+          "gatewayReportedUsd": 1.71e-05,
+          "missing": []
+        },
+        {
+          "id": "1892574535670440116",
+          "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+          "author": "bang_dream_info",
+          "publishedAt": "Thu Feb 20 13:58:26 +0000 2025",
+          "text": "／\n來自 #グッドスマイルカンパニー\n大型 40cm 絨毛玩偶\nMyGO!!!!! 燈 & 樂奈 發售決定🎊\n＼\n\n在 Bandari! TV LIVE 2025 結束後，從 23:00 開始\n於 Good Smile Company 官方商店\n將開始先行預約✨\n\n詳細資訊👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "40cm玩偶；TV LIVE結束後23:00左右開始預訂",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1927,
+          "usage": {
+            "prompt_tokens": 278,
+            "completion_tokens": 143,
+            "total_tokens": 421,
+            "cost": 2.693e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.693e-05,
+            "gateway_cost": 2.693e-05
+          },
+          "input": 278,
+          "output": 143,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.693e-05,
+          "gatewayReportedUsd": 2.693e-05,
+          "missing": []
+        },
+        {
+          "id": "1946588842326135226",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1946588842326135226",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Sat Jul 19 15:12:00 +0000 2025",
+          "text": "【開始配信】\n老師！\n「羈絆對話系列」第14彈已開始配信！\n\n這次是對策委員會的野野原同學！\n有野野原同學的笑容相伴…\n讓我們享受這樣的出遊時光吧！\n\n▼各種音樂服務請見此處！\nhttps://nex-tone.link/A00197543\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 1736,
+          "usage": {
+            "prompt_tokens": 239,
+            "completion_tokens": 101,
+            "total_tokens": 340,
+            "cost": 2.03e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.03e-05,
+            "gateway_cost": 2.03e-05
+          },
+          "input": 239,
+          "output": 101,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.0300000000000002e-05,
+          "gatewayReportedUsd": 2.03e-05,
+          "missing": []
+        }
+      ]
+    }
+  ]
+}

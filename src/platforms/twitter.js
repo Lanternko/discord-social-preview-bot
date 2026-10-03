@@ -55,6 +55,7 @@ async function lookupTweet(statusId) {
         .map((item) => ({ width: item.width, height: item.height })),
       hasNonPhotoMedia: media.some((item) => item.type !== "photo"),
       text: tweet.text || "",
+      language: tweet.lang || tweet.language || "",
       authorName: tweet.author?.name || "",
       authorHandle: tweet.author?.screen_name || "",
       authorAvatar: tweet.author?.avatar_url || null,

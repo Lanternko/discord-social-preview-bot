@@ -1143,6 +1143,7 @@ async function handleDeleteMessageContext(interaction, client) {
 }
 
 async function handleInteraction(interaction, client) {
+  if (await require('./translation-preview').handleTranslationInteraction(interaction, client)) return;
   if (
     interaction.isMessageContextMenuCommand?.() &&
     interaction.commandName === DELETE_MESSAGE_COMMAND.name

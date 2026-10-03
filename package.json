@@ -7,7 +7,10 @@
   "type": "commonjs",
   "scripts": {
     "start": "node src/index.js",
-    "test": "npm run test:pure && npm run test:routing && npm run test:circuit && npm run test:voice && npm run test:skills",
+    "test": "npm run test:pure && npm run test:routing && npm run test:circuit && npm run test:voice && npm run test:skills && npm run test:translation",
+    "test:translation": "node scripts/smoke-translation.js",
+    "eval:translation": "node scripts/eval-translation.js",
+    "eval:translation-filter": "node scripts/eval-translation-filter.js",
     "test:pure": "node scripts/smoke.js",
     "test:routing": "node scripts/routing-smoke.js",
     "test:circuit": "node scripts/smoke-ai-circuit.js",
