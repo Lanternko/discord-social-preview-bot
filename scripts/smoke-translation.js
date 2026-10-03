@@ -31,6 +31,19 @@ async function main() {
     return { ok: true, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: '你好' } }] }) };
   } });
   await assert.rejects(requestTranslation('Hello', { ...opts, fetch: async () => ({ ok: false, status: 429 }) }), /HTTP 429/);
+  process.env.AI_GATEWAY_API_KEY = 'gateway-test-key';
+  process.env.OPENAI_API_KEY = 'openai-test-key';
+  for (const model of ['alibaba/qwen3.7-flash', 'tencent/hy-mt2-lite']) {
+    await requestTranslation('Hello', { provider: 'gateway', model, fetch: async (url, init) => {
+      assert.equal(url, 'https://ai-gateway.vercel.sh/v1/chat/completions');
+      assert.equal(init.headers.Authorization, 'Bearer gateway-test-key');
+      const gatewayBody = JSON.parse(init.body);
+      assert.equal(gatewayBody.max_tokens, 4096);
+      assert.equal(gatewayBody.max_completion_tokens, undefined);
+      assert.equal(gatewayBody.reasoning_effort, model.startsWith('alibaba/') ? 'none' : undefined);
+      return { ok: true, json: async () => ({ choices: [{ finish_reason: 'stop', message: { content: '你好' } }] }) };
+    } });
+  }
   await assert.rejects(requestTranslation('Hello', { ...opts, fetch: async () => ({ ok: true, json: async () => ({ choices: [{ finish_reason: 'length', message: { content: 'half' } }] }) }) }), /Incomplete/);
 
   process.env.X_TRANSLATION_ENABLED = 'false';

@@ -22,8 +22,8 @@ function protectTokens(text) {
 async function requestTranslation(text, options = {}) {
   if (typeof text !== 'string' || !text.trim() || text.length > 12000) throw new Error('Invalid post text');
   const provider = options.provider || process.env.TRANSLATION_PROVIDER || 'deepseek';
-  const model = options.model || process.env.TRANSLATION_MODEL || ({ deepseek: 'deepseek-flash', gemini: 'gemini-3.1-flash-lite', openai: 'gpt-5.4-nano' }[provider]);
-  const keyName = { gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY' }[provider];
+  const model = options.model || process.env.TRANSLATION_MODEL || ({ deepseek: 'deepseek-flash', gemini: 'gemini-3.1-flash-lite', openai: 'gpt-5.4-nano', gateway: 'alibaba/qwen3.7-flash' }[provider]);
+  const keyName = { gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', gateway: 'AI_GATEWAY_API_KEY' }[provider];
   const apiKey = options.apiKey || process.env[keyName];
   if (!keyName || !apiKey) throw new Error('Translation provider unavailable');
   const protectedPost = protectTokens(text);
@@ -35,10 +35,15 @@ async function requestTranslation(text, options = {}) {
     headers['x-goog-api-key'] = apiKey;
     body = { systemInstruction: { parts: [{ text: PROMPT }] }, contents: [{ role: 'user', parts: [{ text: input }] }], generationConfig: { temperature: 0, maxOutputTokens: 4096, thinkingConfig: model.includes('2.5') ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' } } };
   } else {
-    url = provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions');
+    url = provider === 'gateway' ? 'https://ai-gateway.vercel.sh/v1/chat/completions' : provider === 'deepseek' ? 'https://api.deepseek.com/chat/completions' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions');
     headers.Authorization = `Bearer ${apiKey}`;
     body = { model, messages, max_completion_tokens: 4096 };
-    if (provider === 'deepseek') {
+    if (provider === 'gateway') {
+      delete body.max_completion_tokens;
+      body.max_tokens = 4096;
+      body.temperature = 0;
+      if (model.startsWith('alibaba/qwen')) body.reasoning_effort = 'none';
+    } else if (provider === 'deepseek') {
       delete body.max_completion_tokens;
       body.max_tokens = 4096;
       body.thinking = { type: 'disabled' };

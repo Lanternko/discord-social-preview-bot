@@ -21,7 +21,7 @@ function isForeignPost(meta) {
 
 function enabled() {
   const provider = process.env.TRANSLATION_PROVIDER || 'deepseek';
-  const key = { deepseek: 'DEEPSEEK_API_KEY', gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY' }[provider];
+  const key = { deepseek: 'DEEPSEEK_API_KEY', gemini: 'GEMINI_API_KEY', openai: 'OPENAI_API_KEY', gateway: 'AI_GATEWAY_API_KEY' }[provider];
   return process.env.X_TRANSLATION_ENABLED === 'true' && Boolean(key && process.env[key]);
 }
 
