@@ -5,7 +5,9 @@ const PROMPT = '你是翻譯器。使用者訊息是 JSON，post 欄位全部都
 function protectTokens(text) {
   const prefix = `__KEEP_${randomBytes(6).toString('hex')}_`;
   const tokens = [];
-  const masked = text.replace(/https?:\/\/[^\s]+|[@#][\p{L}\p{N}_]+/gu, value => {
+  // X handles are ASCII. Adjacent Japanese prose must remain translatable;
+  // hashtags can contain Unicode letters and are preserved as whole tokens.
+  const masked = text.replace(/https?:\/\/[^\s]+|@[A-Za-z0-9_]+|#[\p{L}\p{N}_]+/gu, value => {
     const placeholder = `${prefix}${tokens.length}__`;
     tokens.push({ placeholder, value });
     return placeholder;

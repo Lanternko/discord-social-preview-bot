@@ -149,3 +149,68 @@ TRANSLATION_EVAL_MODELS=tencent/hy-mt2-lite,alibaba/qwen3.7-flash TRANSLATION_EV
 ```
 
 [Gateway 公開模型價格清單](https://ai-gateway.vercel.sh/v1/models)：Qwen 3.7 Flash（本批低於 32K token）輸入 US$0.03、輸出 US$0.13／百萬 token；HY-MT2 Lite 輸入 US$0.044、輸出 US$0.177／百萬 token。[Gateway 相容 API](https://vercel.com/docs/ai-gateway/sdks-and-apis/openai-chat-completions)。
+
+## 2026-10-04：50 篇真實 X 貼文與翻譯按鈕篩選
+
+**更新結論：目前配置的 Qwen 不應直接正式採用。** 六筆合成貼文曾未見重大錯誤，但這輪真實資料出現重複的未翻譯、角色錯名、憑空添加商品角色及關鍵意思遺失。不能沿用前輪「一般貼文可用」的判斷。
+
+### 資料與方法
+
+透過網路搜尋找到公開 X status URL，再用 bot 實際使用的 FxTwitter API 取回正文。共選 50 篇：日文 30、韓文 11、英文 5、中文 4；含蔚藍檔案、BanG Dream! 公告、玩家心得、直播請假、短句及中文借用英文術語的文章。引用的原貼文也按自己的 URL 獨立收錄。不改寫正文、不拼湊搜尋摘要，不以圖片文字或引用卡片內容代替該篇正文。部分 API canonical status ID 與搜尋連結不同，保存 API 回傳的原文 URL。排除無關新聞及含歌詞的文章。
+
+這是針對使用情境挑選的樣本，非隨機抽樣，也不是 50 位不同作者。較長的中文控制文有 887 字元；45 篇翻譯目標的最長文為 346 字元，未涵蓋完整長文文章／執行時間上限。此批沒有自然出現的 prompt injection；前輪合成安全案例仍獨立保留。
+
+先按「對台灣中文讀者是否有值得翻譯的外文正文」逐篇標記，再執行篩選與 API。標籤不是機器模型生成。45 篇標為需要翻譯；4 篇中文及1篇插畫角色名＋SFW illustration 標為不需要。SFW illustration 可譯，但本輪編輯判斷其按鈕資訊價值低，這是可討論的產品邊界。
+
+對45篇目標用相同 Qwen 3.7 Flash、相同 prompt、reasoning none 實際呼叫 Gateway；即使原篩選漏判也會送出，避免只評估模型容易處理的子集。Codex 主代理逐篇對照原文與譯文記錄語意問題；不是獨立雙語人工評審，也沒有權威 reference translation 或統計品質分數。`keep=[]` 不代表數字與條件被自動驗證，這輪依逐篇 reviewFocus 和對照閱讀檢查；URL／帳號／標籤仍由程式保護。將 API 成功與翻譯品質分開報告。
+
+### Qwen 實際結果
+
+45 次 API 全部返回成功、沒有 token 保護失敗。10,488 input token、4,400 output token，Gateway 回報費用 US$0.00088664，平均每次 1.89 秒；同類貼文每萬次約 US$0.197。這是 response 費用而非帳單核對，也不能當作所有推文的價格。
+
+逐篇人工式檢視標記：13 篇主體可接受、12 篇細節偏差、9 篇專名需複核、8 篇阻止直接採用的錯誤、2 篇換行格式問題、1 篇程式保護錯誤。這些類別是評審判斷，非客觀 benchmark 分數；「專名需複核」不宣稱已查證官方中文譯名。
+
+重大例子（完整對照見 JSON）：
+
+- [英文泳裝 Ui 招募公告](https://x.com/EN_BlueArchive/status/1755154436186628254)：Ui 被改成「結衣」；另一篇同角色英文文也如此。
+- [韓文四名學生復刻公告](https://x.com/KR_BlueArchive/status/1946110595948036237)：히마리／Himari 被改成「日向」，指向不同角色。
+- [競技排名詢問](https://x.com/thegamehhhkk/status/2038851040439935256)：省略「從第6名攻擊第1名」的第1名目標，改成能否攻擊人的一般問題。
+- [NEDO 預告](https://x.com/nedo_info/status/2024386040031752663)：正文幾乎全部仍為日文，沒有完成翻譯。
+- [要樂奈玩偶公告](https://x.com/bang_dream_info/status/1892574535670440116)：原文只有要樂奈，譯文新增「燈 & 樂奈」，改變商品資訊。
+- [維護獎勵公告](https://x.com/EN_BlueArchive/status/2041416140787011865)：Pyroxene 變成「紅柱石」，遊戲貨幣處理錯誤。應提供詞表或保留原文名稱。
+
+維護期限、是否能進入常駐招募等否定條件，多數案例保留；不能因此忽略人物或商品身份錯誤。兩篇文章輸出字面的 `\\n`，目前卡片不會自動將其轉成換行，列為格式問題而非語意正確率。
+
+### 程式問題與五篇重測
+
+原本保護 `[@#][Unicode字母數字]+`，會把 `@Blue_ArchiveJPをフォロー` 的「をフォロー」一起當作帳號保護，模型因此無法翻譯追蹤步驟。已將 handle 限定為 X 的 ASCII 帳號字元，hashtag 仍保留 Unicode；篩選去除帳號的規則同步修正。新增回歸檢查帳號原樣保留、後接日文能翻譯。
+
+未更動 prompt 或模型，修正 handle 後重測5篇：追蹤／轉發步驟正確翻譯；Ui 錯名、NEDO整段日文、排名目標遺失、玩偶新增燈四個模型問題仍重現。這些結果支持目前不直接採用，而非單次生成偶發問題。沒有將原始失敗覆蓋成補測成功。
+
+### 按鈕篩選結果與改動
+
+| 測試 | 該顯示且顯示 | 多顯示 | 漏顯示 | 正確不顯示 |
+| --- | ---: | ---: | ---: | ---: |
+| 真實50篇，使用API語言標籤 | 45 | 1 | 0 | 4 |
+| 同50篇，移除語言標籤 | 45 | 1 | 0 | 4 |
+| 另12個合成邊界案例 | 5 | 0 | 0 | 7 |
+
+修改前，無語言標籤時會漏掉短句「お渡しするよー！」。已讓有至少4個字母且含假名／韓文的短文先於8字母門檻判斷。另加入連續至少4個英文單字、至少20個英文字母的片段檢查，避免中文主體／zh標籤掩蓋重要英文條件，例如退款限制；AI agents、System prompt 等短借詞仍不觸發。判斷只用本機規則，不額外呼叫 LLM。
+
+剩餘多顯示是角色名＋SFW illustration。50篇符合標籤49篇、召回45/45；負例僅5篇且有1篇多顯示，不能推論正式環境誤判率很低。沒有針對單篇寫死排除條件。4字母以下的外文、中文夾短英文限制句、只有漢字的日文且沒有ja標籤、中文正文含零星假名等仍有判斷取捨。合成12例包含純URL、標籤、emoji、中文品牌詞、中文夾外文、短日韓英句與單一名稱；**不是12篇真實推文**。
+
+### 保存、驗證與下一步
+
+- 真實正文、原文連結及預先標籤：`docs/translation-real-tweets-2026-10-04.json`。
+- 45篇API原始譯文及usage：`docs/translation-eval-real-qwen-2026-10-04.json`。
+- 每篇語意評審註記：`docs/translation-real-review-2026-10-04.json`。
+- 修正handle後五篇重測：`docs/translation-eval-real-qwen-recheck-2026-10-04.json`。
+- 離線篩選結果：`docs/translation-filter-eval-2026-10-04.json`；執行 `npm run eval:translation-filter` 可重跑，沒有API費用。
+
+`npm test` 全套通過，涵蓋私密卡片隔離及新增篩選／handle回歸。沒有部署、啟用翻譯或更改預設模型。Qwen 若要繼續評估，先保留不確定專名原文、補遊戲術語詞表，再以固定真實資料重新評估未翻譯／增添內容；也應讓其他候選模型跑同一批資料，不能直接推論 Luna 或 DeepSeek 已在這批過關。
+
+重跑45篇真實文（會產生少量API費用；新結果寫入 `data/translation-eval.json`，不覆蓋已保存報告）：
+
+```sh
+TRANSLATION_EVAL_CASES_FILE=docs/translation-real-tweets-2026-10-04.json TRANSLATION_EVAL_MODELS=alibaba/qwen3.7-flash TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
+```

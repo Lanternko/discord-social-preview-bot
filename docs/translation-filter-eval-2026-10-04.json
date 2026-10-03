@@ -1,0 +1,697 @@
+{
+  "testedAt": "2026-10-03T17:42:41.920Z",
+  "notes": "Real corpus and synthetic edge controls are reported separately. No paid API calls. Ground-truth labels reflect useful foreign prose for a Taiwan-Chinese reader. Purposeful small sample, not a population estimate.",
+  "realWithMetadata": {
+    "total": 50,
+    "tp": 45,
+    "fp": 1,
+    "fn": 0,
+    "tn": 4,
+    "precision": 0.9782608695652174,
+    "recall": 1,
+    "rows": [
+      {
+        "id": "1814993059974897921",
+        "sourceUrl": "https://x.com/famitsu/status/1814993059974897921",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038564087467254266",
+        "sourceUrl": "https://x.com/shinshin86/status/2038564087467254266",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041375534857478171",
+        "sourceUrl": "https://x.com/smoke_matsui/status/2041375534857478171",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043593799465947627",
+        "sourceUrl": "https://x.com/nedo_info/status/2043593799465947627",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1755154436186628254",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041422252286386523",
+        "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1946110595948036237",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1974761485919195464",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1908809403072966909",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1908809403072966909",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1612721216548405250",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1612721216548405250",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1683753497127419904",
+        "sourceUrl": "https://x.com/goto_saori18/status/1683753497127419904",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043629372851343457",
+        "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2036005030847717457",
+        "sourceUrl": "https://x.com/bang_dream_info/status/2036005030847717457",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1962350090762256873",
+        "sourceUrl": "https://x.com/gsc_goodsmile/status/1962350090762256873",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1892586135936770320",
+        "sourceUrl": "https://x.com/aoki__hina/status/1892586135936770320",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2067087337037983834",
+        "sourceUrl": "https://x.com/bang_dream_info/status/2067087337037983834",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2046489281758482802",
+        "sourceUrl": "https://x.com/animatesaga/status/2046489281758482802",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1629013262229708800",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1629013262229708800",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2039357564937498778",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/2039357564937498778",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1938160315524649042",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1692385866575237209",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2034827518340157579",
+        "sourceUrl": "https://x.com/Rinca_ba/status/2034827518340157579",
+        "expected": false,
+        "actual": true
+      },
+      {
+        "id": "1656871852705452032",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1473141433188384769",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2007798168201973903",
+        "sourceUrl": "https://x.com/hiiragiryo/status/2007798168201973903",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038851040439935256",
+        "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2035184348371329539",
+        "sourceUrl": "https://x.com/MaxCryptoSpace/status/2035184348371329539",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "2030252947297448166",
+        "sourceUrl": "https://x.com/we5952879818041/status/2030252947297448166",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "2032729648594116738",
+        "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2016390788348051497",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/2016390788348051497",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1958803829111283892",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1958803829111283892",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1606484815594651648",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1606484815594651648",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2016512834281320877",
+        "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1979722434376069189",
+        "sourceUrl": "https://x.com/just_Homi12/status/1979722434376069189",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1991449000101441839",
+        "sourceUrl": "https://x.com/BArchiveWarfare/status/1991449000101441839",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043015208596373705",
+        "sourceUrl": "https://x.com/wind_dmr/status/2043015208596373705",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "1934087671162532070",
+        "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1902535233011843291",
+        "sourceUrl": "https://x.com/umineko22/status/1902535233011843291",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2023208411123593560",
+        "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038490637323145475",
+        "sourceUrl": "https://x.com/fladdict/status/2038490637323145475",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041057536577782057",
+        "sourceUrl": "https://x.com/KinoShinjuku/status/2041057536577782057",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2024386040031752663",
+        "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1750760491431993377",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041416140787011865",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1968933076991426682",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1905518971899822163",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1905518971899822163",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1683674070829903873",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1683674070829903873",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1892574535670440116",
+        "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1946588842326135226",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1946588842326135226",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2034163809246711940",
+        "sourceUrl": "https://x.com/MaxCryptoSpace/status/2034163809246711940",
+        "expected": false,
+        "actual": false
+      }
+    ]
+  },
+  "realWithoutMetadata": {
+    "total": 50,
+    "tp": 45,
+    "fp": 1,
+    "fn": 0,
+    "tn": 4,
+    "precision": 0.9782608695652174,
+    "recall": 1,
+    "rows": [
+      {
+        "id": "1814993059974897921",
+        "sourceUrl": "https://x.com/famitsu/status/1814993059974897921",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038564087467254266",
+        "sourceUrl": "https://x.com/shinshin86/status/2038564087467254266",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041375534857478171",
+        "sourceUrl": "https://x.com/smoke_matsui/status/2041375534857478171",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043593799465947627",
+        "sourceUrl": "https://x.com/nedo_info/status/2043593799465947627",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1755154436186628254",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041422252286386523",
+        "sourceUrl": "https://x.com/cendol_plt/status/2041422252286386523",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1946110595948036237",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1946110595948036237",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1974761485919195464",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1974761485919195464",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1908809403072966909",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1908809403072966909",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1612721216548405250",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1612721216548405250",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1683753497127419904",
+        "sourceUrl": "https://x.com/goto_saori18/status/1683753497127419904",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043629372851343457",
+        "sourceUrl": "https://x.com/Luxu_LostMaster/status/2043629372851343457",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2036005030847717457",
+        "sourceUrl": "https://x.com/bang_dream_info/status/2036005030847717457",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1962350090762256873",
+        "sourceUrl": "https://x.com/gsc_goodsmile/status/1962350090762256873",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1892586135936770320",
+        "sourceUrl": "https://x.com/aoki__hina/status/1892586135936770320",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2067087337037983834",
+        "sourceUrl": "https://x.com/bang_dream_info/status/2067087337037983834",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2046489281758482802",
+        "sourceUrl": "https://x.com/animatesaga/status/2046489281758482802",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1629013262229708800",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1629013262229708800",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2039357564937498778",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/2039357564937498778",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1938160315524649042",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1692385866575237209",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1692385866575237209",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2034827518340157579",
+        "sourceUrl": "https://x.com/Rinca_ba/status/2034827518340157579",
+        "expected": false,
+        "actual": true
+      },
+      {
+        "id": "1656871852705452032",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1656871852705452032",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1473141433188384769",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1473141433188384769",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2007798168201973903",
+        "sourceUrl": "https://x.com/hiiragiryo/status/2007798168201973903",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038851040439935256",
+        "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2035184348371329539",
+        "sourceUrl": "https://x.com/MaxCryptoSpace/status/2035184348371329539",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "2030252947297448166",
+        "sourceUrl": "https://x.com/we5952879818041/status/2030252947297448166",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "2032729648594116738",
+        "sourceUrl": "https://x.com/figure_times/status/2032729648594116738",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2016390788348051497",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/2016390788348051497",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1958803829111283892",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1958803829111283892",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1606484815594651648",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1606484815594651648",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2016512834281320877",
+        "sourceUrl": "https://x.com/ToothBrusher28/status/2016512834281320877",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1979722434376069189",
+        "sourceUrl": "https://x.com/just_Homi12/status/1979722434376069189",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1991449000101441839",
+        "sourceUrl": "https://x.com/BArchiveWarfare/status/1991449000101441839",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2043015208596373705",
+        "sourceUrl": "https://x.com/wind_dmr/status/2043015208596373705",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "1934087671162532070",
+        "sourceUrl": "https://x.com/oozorasubaru/status/1934087671162532070",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1902535233011843291",
+        "sourceUrl": "https://x.com/umineko22/status/1902535233011843291",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2023208411123593560",
+        "sourceUrl": "https://x.com/Lulu_Tenma/status/2023208411123593560",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2038490637323145475",
+        "sourceUrl": "https://x.com/fladdict/status/2038490637323145475",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041057536577782057",
+        "sourceUrl": "https://x.com/KinoShinjuku/status/2041057536577782057",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2024386040031752663",
+        "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1750760491431993377",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/1750760491431993377",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2041416140787011865",
+        "sourceUrl": "https://x.com/EN_BlueArchive/status/2041416140787011865",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1968933076991426682",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1968933076991426682",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1905518971899822163",
+        "sourceUrl": "https://x.com/KR_BlueArchive/status/1905518971899822163",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1683674070829903873",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1683674070829903873",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1892574535670440116",
+        "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "1946588842326135226",
+        "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1946588842326135226",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "2034163809246711940",
+        "sourceUrl": "https://x.com/MaxCryptoSpace/status/2034163809246711940",
+        "expected": false,
+        "actual": false
+      }
+    ]
+  },
+  "syntheticControls": {
+    "total": 12,
+    "tp": 5,
+    "fp": 0,
+    "fn": 0,
+    "tn": 7,
+    "precision": 1,
+    "recall": 1,
+    "rows": [
+      {
+        "id": "url-only",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "tags-only",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "emoji-only",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "cn-only",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "cn-brand",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "cn-en-clause",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "cn-ja-clause",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "short-ja",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "short-ko",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "short-en",
+        "expected": true,
+        "actual": true
+      },
+      {
+        "id": "one-name",
+        "expected": false,
+        "actual": false
+      },
+      {
+        "id": "one-word-label",
+        "expected": false,
+        "actual": false
+      }
+    ]
+  }
+}

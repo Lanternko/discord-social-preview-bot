@@ -1,0 +1,240 @@
+{
+  "testedAt": "2026-10-03T17:42:23.510Z",
+  "notes": "Actual public X post text, unmodified; see sourceUrl and reviewFocus per case. Only independently labeled translation-eligible posts are sent. Mechanical preservation is not a semantic quality score.",
+  "results": [
+    {
+      "provider": "gateway",
+      "model": "alibaba/qwen3.7-flash",
+      "inputRate": 0.03,
+      "cacheRate": 0.006,
+      "outputRate": 0.13,
+      "rows": [
+        {
+          "id": "1755154436186628254",
+          "sourceUrl": "https://x.com/EN_BlueArchive/status/1755154436186628254",
+          "author": "EN_BlueArchive",
+          "publishedAt": "Wed Feb 07 09:00:01 +0000 2024",
+          "text": "【限定招募結束通知】\n\n3★ 結衣（泳裝）限定招募將持續至 2/8（週四）凌晨 1:59（UTC）！\n\n* 3★ 結衣（泳裝）的限定招募期間結束後，她將無法透過一般招募獲得。\n\n#BlueArchive",
+          "language": "en",
+          "expectedDisplay": true,
+          "reviewFocus": "泳裝Ui限定招募2/8 1:59 AM UTC截止；之後無法一般招募",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2526,
+          "usage": {
+            "prompt_tokens": 216,
+            "completion_tokens": 79,
+            "total_tokens": 295,
+            "cost": 1.675e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 1.675e-05,
+            "gateway_cost": 1.675e-05
+          },
+          "input": 216,
+          "output": 79,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 1.675e-05,
+          "gatewayReportedUsd": 1.675e-05,
+          "missing": []
+        },
+        {
+          "id": "1938160315524649042",
+          "sourceUrl": "https://x.com/Blue_ArchiveJP/status/1938160315524649042",
+          "author": "Blue_ArchiveJP",
+          "publishedAt": "Thu Jun 26 09:00:03 +0000 2025",
+          "text": "【追蹤&RP活動】\n電視廣告播出紀念🎉\n抽選中將有2名幸運兒獲得『桔梗(泳裝)役 #小松未可子 親筆簽名明信片』🎁\n\n參與方式\n追蹤 @Blue_ArchiveJP\n轉發此貼文\n\n截止時間：7/8(二) 23:59前\n\n▼影片連結\nhttps://youtu.be/ZsFwrpOPLIg\n\n#ブルアカ",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "抽2名；追蹤帳號、轉發；7/8 23:59截止",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2270,
+          "usage": {
+            "prompt_tokens": 277,
+            "completion_tokens": 137,
+            "total_tokens": 414,
+            "cost": 2.612e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.612e-05,
+            "gateway_cost": 2.612e-05
+          },
+          "input": 277,
+          "output": 137,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.6120000000000004e-05,
+          "gatewayReportedUsd": 2.612e-05,
+          "missing": []
+        },
+        {
+          "id": "2038851040439935256",
+          "sourceUrl": "https://x.com/thegamehhhkk/status/2038851040439935256",
+          "author": "thegamehhhkk",
+          "publishedAt": "Tue Mar 31 05:29:02 +0000 2026",
+          "text": "今天凌晨4點前，我在第1名的時候被愛麗絲揍了一拳掉到第4名，然後我反擊揍了愛麗絲一拳又回到第1名。之後又被月讀揍了一下掉到第6名…。從第6名開始還能互相攻擊嗎？\n\n另外，防禦陣容明顯還在編組中途，但蔚藍檔案在編組中也能進行攻擊嗎？\n#ブルアカ\n#戦術対抗戦",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "4點前第1名被Alice打至第4、反擊回第1、Tsukuyo打至第6；詢問編成中能否攻擊",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2131,
+          "usage": {
+            "prompt_tokens": 241,
+            "completion_tokens": 116,
+            "total_tokens": 357,
+            "cost": 2.231e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.231e-05,
+            "gateway_cost": 2.231e-05
+          },
+          "input": 241,
+          "output": 116,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.2309999999999998e-05,
+          "gatewayReportedUsd": 2.231e-05,
+          "missing": []
+        },
+        {
+          "id": "2024386040031752663",
+          "sourceUrl": "https://x.com/nedo_info/status/2024386040031752663",
+          "author": "nedo_info",
+          "publishedAt": "Thu Feb 19 07:30:17 +0000 2026",
+          "text": "【懸賞金ティザーサイト公開🎉】\n「NEDO懸賞金活用型プログラム」の課題の一つ「脳由来信号を活用した新システムの開発」では、ニューロテック分野での新たな市場創出を目指す挑戦を分野や専門を問わず幅広く募集します💫\n以下の２テーマで、懸賞広告を予定しています。\n🔸テーマ１：パフォーマンス最適化ソリューション開発\n🔸テーマ２：コミュニケーション革新ソリューション開発\n詳細はこちらのティザーサイトで近日公開予定です\nhttps://neurotechchallenge.nedo.go.jp/\n#NEDOChallenge #ニューロテック #ブレインテック",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 7686,
+          "usage": {
+            "prompt_tokens": 310,
+            "completion_tokens": 177,
+            "total_tokens": 487,
+            "cost": 3.231e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 3.231e-05,
+            "gateway_cost": 3.231e-05
+          },
+          "input": 310,
+          "output": 177,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 3.231e-05,
+          "gatewayReportedUsd": 3.231e-05,
+          "missing": []
+        },
+        {
+          "id": "1892574535670440116",
+          "sourceUrl": "https://x.com/bang_dream_info/status/1892574535670440116",
+          "author": "bang_dream_info",
+          "publishedAt": "Thu Feb 20 13:58:26 +0000 2025",
+          "text": "／\n#グッドスマイルカンパニー 轉自\n\n大型40cm玩偶\nMyGO!!!!! 燈 & 樂奈 發售確定🎊\n＼\n\n在 Bandari! TV LIVE 2025 結束後，從23:00起\nGood Smile Company 官方商店\n將開始先行預約✨\n\n詳細👉https://bang-dream.com/news/2027\n\n#バンドリ #バンドリTVLIVE",
+          "language": "ja",
+          "expectedDisplay": true,
+          "reviewFocus": "40cm玩偶；TV LIVE結束後23:00左右開始預訂",
+          "keep": [],
+          "provider": "gateway",
+          "model": "alibaba/qwen3.7-flash",
+          "latencyMs": 2015,
+          "usage": {
+            "prompt_tokens": 274,
+            "completion_tokens": 132,
+            "total_tokens": 406,
+            "cost": 2.538e-05,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": null,
+              "upstream_inference_prompt_cost": 0,
+              "upstream_inference_completions_cost": 0
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 0,
+              "image_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "market_cost": 2.538e-05,
+            "gateway_cost": 2.538e-05
+          },
+          "input": 274,
+          "output": 132,
+          "cache": 0,
+          "thoughts": 0,
+          "estimatedUsd": 2.5379999999999998e-05,
+          "gatewayReportedUsd": 2.538e-05,
+          "missing": []
+        }
+      ]
+    }
+  ]
+}

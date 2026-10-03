@@ -9,9 +9,16 @@ let active = 0;
 const PREFIX = 'xtranslate:';
 
 function isForeignPost(meta) {
-  const text = (meta?.text || '').replace(/https?:\/\/\S+|[@#][\p{L}\p{N}_]+/gu, '');
+  const text = (meta?.text || '').replace(/https?:\/\/\S+|@[A-Za-z0-9_]+|#[\p{L}\p{N}_]+/gu, '');
   const letters = text.match(/\p{L}/gu) || [];
+  // Short Japanese/Korean sentences still carry meaning without API language
+  // metadata. Keep one-name captions (e.g. アロナ) below the four-letter floor.
+  if (letters.length >= 4 && /[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
   if (/^(ja|ko)\b/i.test(meta?.language || '') && letters.length >= 4) return true;
+  // A meaningful English clause can need translation even when Chinese prose
+  // dominates or X labels the whole mixed post zh. Short borrowed terms do not.
+  const clauses = text.match(/[A-Za-z]+(?:[’'-][A-Za-z]+)*(?:[ \t]+[A-Za-z]+(?:[’'-][A-Za-z]+)*){3,}/g) || [];
+  if (clauses.some(clause => (clause.match(/[A-Za-z]/g) || []).length >= 20)) return true;
   if (letters.length < 8) return false;
   if (/[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
   if (/^zh\b/i.test(meta?.language || '')) return false;

@@ -11,9 +11,17 @@ async function main() {
   assert.equal(isForeignPost({ text: 'The update does not reset your progress.' }), true);
   assert.equal(isForeignPost({ text: '이벤트 보상은 내일까지 수령할 수 있습니다.' }), true);
   assert.equal(isForeignPost({ text: '今天有更新，Please log in to claim your rewards!' }), true);
+  assert.equal(isForeignPost({ text: 'お渡しするよー！' }), true);
+  assert.equal(isForeignPost({ text: 'アロナ #ブルアカ' }), false);
+  assert.equal(isForeignPost({ text: '不要漏看公告，以下是需要留意的退款條件：Tickets are not refundable after purchase.', language: 'zh' }), true);
+  assert.equal(isForeignPost({ text: '今天研究 AI agents 和 System prompt，有趣。', language: 'zh' }), false);
   const tokens = protectTokens('Hello @BlueArchive #ブルアカ https://example.com');
   assert.equal(tokens.restore(tokens.masked), 'Hello @BlueArchive #ブルアカ https://example.com');
   assert.throws(() => tokens.restore('no tokens'), /protected token/);
+  const adjacent = protectTokens('@Blue_ArchiveJPをフォロー #ブルアカ');
+  assert.ok(adjacent.masked.includes('をフォロー'));
+  assert.equal(adjacent.restore(adjacent.masked.replace('をフォロー', '追蹤')), '@Blue_ArchiveJP追蹤 #ブルアカ');
+  assert.equal(isForeignPost({ text: '@Blue_ArchiveJPをフォロー', language: 'ja' }), true);
   const opts = { provider: 'deepseek', model: 'deepseek-flash', apiKey: 'test-key' };
   let body;
   const result = await requestTranslation('Hello #BlueArchive', { ...opts, fetch: async (_, init) => {
