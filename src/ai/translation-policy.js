@@ -1,6 +1,10 @@
 const { isDeepSeekPeak } = require('./peak-hours');
 const meter = require('./rate-limiter');
-const { AI_FREE_DAILY_LIMIT, AI_OWNER_DAILY_LIMIT, DEEPSEEK_PREMIUM_GUILD_IDS } = require('../config');
+const { AI_OWNER_DAILY_LIMIT } = require('../config');
+
+// Separate persistent rows keep translation independent of chat and its whitelist.
+const TRANSLATION_DAILY_LIMIT = 5;
+function translationUsageKey(guildId) { return `__translation__:${guildId}`; }
 
 const KEY_NAMES = { deepseek: 'DEEPSEEK_API_KEY', openai: 'OPENAI_API_KEY', gateway: 'AI_GATEWAY_API_KEY', gemini: 'GEMINI_API_KEY' };
 function hasKey(route, env) { return Boolean(env[KEY_NAMES[route.provider]]); }
@@ -29,18 +33,17 @@ function reserveTranslation(guildId, deps = {}) {
   const env = deps.env || process.env;
   const now = deps.now ?? Date.now();
   const usage = deps.meter || meter;
-  const guildLimit = deps.guildLimit ?? AI_FREE_DAILY_LIMIT;
+  const guildLimit = TRANSLATION_DAILY_LIMIT;
+  const usageKey = translationUsageKey(guildId);
   const ownerLimit = deps.ownerLimit ?? AI_OWNER_DAILY_LIMIT;
-  const whitelist = deps.whitelist || DEEPSEEK_PREMIUM_GUILD_IDS;
   if (ownerLimit > 0 && usage.getUsage(meter.OWNER_TOTAL_KEY, now).count >= ownerLimit) throw new Error('Translation owner limit');
-  const exempt = whitelist.includes(guildId);
-  let exhausted = !exempt && guildLimit > 0 && usage.getUsage(guildId, now).count >= guildLimit;
+  let exhausted = usage.getUsage(usageKey, now).count >= guildLimit;
   let route = selectTranslationRoute({ exhausted, now, env });
   if (!hasKey(route, env)) throw new Error('Translation provider unavailable');
   // One synchronous reservation before I/O: concurrent clicks at the limit
   // cannot both consume the last standard slot. Failed calls also consume it,
   // matching the existing chat meter, since an API attempt may incur cost.
-  if (!exempt && !exhausted && !usage.checkAndIncrement(guildId, guildLimit, now).allowed) {
+  if (!exhausted && !usage.checkAndIncrement(usageKey, guildLimit, now).allowed) {
     exhausted = true;
     route = selectTranslationRoute({ exhausted, now, env });
     if (!hasKey(route, env)) throw new Error('Translation provider unavailable');
@@ -49,4 +52,4 @@ function reserveTranslation(guildId, deps = {}) {
   return route;
 }
 
-module.exports = { selectTranslationRoute, translationAvailable, reserveTranslation };
+module.exports = { selectTranslationRoute, translationAvailable, reserveTranslation, TRANSLATION_DAILY_LIMIT, translationUsageKey };
