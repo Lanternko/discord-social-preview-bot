@@ -1,6 +1,6 @@
 # X 貼文翻譯測試（2026-10-03）
 
-目前測試版 `auto` 路由採額度內 GPT-6 Luna、超額 Qwen；DeepSeek離峰切換已實作但預設關閉，因真實資料補測仍有意思反轉。已加入台版人物詞表與換行處理，詳見文件末節。未部署或啟用正式bot。以下按時間保留測試歷史：初輪六筆合成文曾推薦DeepSeek，再推薦Luna、Qwen；真實50篇評測推翻了直接採用Qwen的結論。這不是全市場排名或大型翻譯品質認證。
+目前測試版 `auto` 路由採額度內 GPT-6 Luna、超額 Qwen；DeepSeek離峰切換已實作但預設關閉，因真實資料補測仍有意思反轉。已加入台版人物詞表與換行處理，詳見文件末節。已於2026-10-04部署並啟用；目前每公會每天有獨立5次Luna翻譯額度，超額Qwen，不扣聊天額度。以下按時間保留測試歷史：初輪六筆合成文曾推薦DeepSeek，再推薦Luna、Qwen；真實50篇評測推翻了直接採用Qwen的結論。這不是全市場排名或大型翻譯品質認證。
 
 ## 實際 API 比較
 
@@ -57,7 +57,7 @@ TRANSLATION_MODEL=
 TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED=false
 ```
 
-沿用provider既有API key，不使用Discord token呼叫模型。翻譯獨立於persona／聊天記憶，現行路由與聊天共用每日配額；使用每人五秒冷卻、全程序四個同時請求與十分鐘公會內快取，最多200筆。原文切換或快取命中不再花費模型費用；驗證失敗最多同模型重試一次，不將超額公會升回較貴模型。
+沿用provider既有API key，不使用Discord token呼叫模型。翻譯獨立於persona／聊天記憶，現行路由每公會每日獨立5次Luna翻譯配額，不扣聊天配額；使用每人五秒冷卻、全程序四個同時請求與十分鐘公會內快取，最多200筆。原文切換或快取命中不再花費模型費用；驗證失敗最多同模型重試一次，不將超額公會升回較貴模型。
 
 ## 官方價格來源
 
@@ -268,7 +268,7 @@ Luna沒有重現這八個重大問題。此表只比較這八個案例，不表�
 TRANSLATION_EVAL_CASES_FILE=docs/translation-real-tweets-2026-10-04.json TRANSLATION_EVAL_MODELS=gpt-6-luna TRANSLATION_EVAL_ENV_FILE=/path/to/local/.env npm run eval:translation
 ```
 
-## 2026-10-04：專名策略、DeepSeek補測與公會配額路由
+## 2026-10-04：專名策略、DeepSeek補測與公會配額路由（初版歷史，額度已由末節更新）
 
 ### Kazusa名稱更正
 
@@ -331,3 +331,12 @@ Kei／Hikari無法從該快照核對，列為原名保留；ナコトコイン�
 - 最後新增專名保護後，各9篇：`docs/translation-eval-strategy-v3-targeted-2026-10-04.json`。
 - 最終Qwen實際重試：`docs/translation-eval-qwen-runtime-retry-2026-10-04.json`。
 - 名稱資料：`src/ai/translation-glossary.json`；路由：`src/ai/translation-policy.js`；啟用範例：`.env.example`。
+
+
+## 2026-10-04：翻譯獨立每日五次 Luna 額度
+
+每個公會每天前5次未命中快取的新翻譯使用Luna，第6次起使用Qwen；依台北午夜重置。翻譯與聊天額度分開，不受聊天額度是否用完影響，也不消耗聊天額度。聊天付費／白名單公會同樣適用5次翻譯限制。
+
+翻譯計數使用既有持久化檔案 `data/ai-daily-usage.json` 的 `__translation__:<guildId>` 獨立列，重啟不重置；舊聊天列不遷移到新翻譯額度。所有新翻譯（含Qwen）仍受既有owner每日總量上限限制。失敗的API嘗試仍計次，同模型驗證重試最多一次並包含在同一次計數中。公會內10分鐘快取、切回原文不計次；翻譯仍僅點擊者可見，不覆蓋公開訊息。
+
+驗證涵蓋五次Luna／第六次Qwen、聊天耗盡仍有翻譯額度、翻譯不更改聊天列、白名單不能繞過、不同公會與台北午夜重置；既有快取與私人回覆測試保留。

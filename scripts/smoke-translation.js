@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { MessageFlags } = require('discord.js');
 const { requestTranslation, requestTranslationWithRetry, protectTokens, normalizeTranslationOutput } = require('../src/ai/translation');
-const { selectTranslationRoute, reserveTranslation } = require('../src/ai/translation-policy');
+const { selectTranslationRoute, reserveTranslation, translationUsageKey } = require('../src/ai/translation-policy');
 const { isForeignPost, addTranslationButton, renderPrivateCard, handleTranslationInteraction } = require('../src/translation-preview');
 
 async function main() {
@@ -51,15 +51,19 @@ async function main() {
     checkAndIncrement(id, limit, now) { const count = this.getUsage(id, now).count; if (limit > 0 && count >= limit) return { allowed: false }; usage.set(id, { count: count + 1, date: todayString(now) }); return { allowed: true }; },
     checkAndIncrementOwnerTotal(limit, now) { return this.checkAndIncrement(OWNER_TOTAL_KEY, limit, now); },
   };
-  const policyDeps = { env, meter: fakeMeter, guildLimit: 2, ownerLimit: 10, whitelist: [], now: Date.parse('2026-10-08T15:59:59Z') };
-  assert.equal(reserveTranslation('guild-a', policyDeps).provider, 'openai');
-  assert.equal(reserveTranslation('guild-a', policyDeps).provider, 'openai');
-  assert.equal(reserveTranslation('guild-a', policyDeps).provider, 'gateway');
+  const policyDeps = { env, meter: fakeMeter, ownerLimit: 100, now: Date.parse('2026-10-08T15:59:59Z') };
+  // Exhausted chat does not consume the independent five translation slots.
+  fakeMeter.checkAndIncrement('guild-a', 1, policyDeps.now);
+  for (let i = 0; i < 5; i++) assert.equal(reserveTranslation('guild-a', policyDeps).model, 'gpt-6-luna');
+  assert.equal(reserveTranslation('guild-a', policyDeps).model, 'alibaba/qwen3.7-flash');
+  assert.equal(reserveTranslation('guild-a', { ...policyDeps, whitelist: ['guild-a'] }).provider, 'gateway');
+  assert.equal(fakeMeter.getUsage(translationUsageKey('guild-a'), policyDeps.now).count, 5);
+  assert.equal(fakeMeter.getUsage('guild-a', policyDeps.now).count, 1);
   assert.equal(reserveTranslation('guild-b', policyDeps).provider, 'openai');
-  assert.equal(fakeMeter.getUsage('guild-a', policyDeps.now).count, 2);
+  assert.equal(fakeMeter.getUsage('guild-b', policyDeps.now).count, 0);
   assert.equal(reserveTranslation('guild-a', { ...policyDeps, now: Date.parse('2026-10-08T16:00:00Z') }).provider, 'openai');
-  assert.equal(reserveTranslation('guild-a', { ...policyDeps, whitelist: ['guild-a'] }).provider, 'openai');
-  assert.throws(() => reserveTranslation('guild-c', { ...policyDeps, ownerLimit: 1 }), /owner limit/);
+  assert.equal(fakeMeter.getUsage(translationUsageKey('guild-a'), Date.parse('2026-10-08T16:00:00Z')).count, 1);
+  assert.throws(() => reserveTranslation('guild-c', { ...policyDeps, now: Date.parse('2026-10-08T16:00:00Z'), ownerLimit: 1 }), /owner limit/);
   let retryCalls = 0;
   await requestTranslationWithRetry('text', { provider: 'gateway', model: 'alibaba/qwen3.7-flash', request: async (_, options) => {
     assert.equal(options.provider, 'gateway'); assert.equal(options.model, 'alibaba/qwen3.7-flash');
