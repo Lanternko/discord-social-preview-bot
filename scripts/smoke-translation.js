@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { MessageFlags } = require('discord.js');
 const { requestTranslation, requestTranslationWithRetry, protectTokens, normalizeTranslationOutput } = require('../src/ai/translation');
 const { selectTranslationRoute, reserveTranslation, translationUsageKey } = require('../src/ai/translation-policy');
-const { isForeignPost, addTranslationButton, renderPrivateCard, handleTranslationInteraction } = require('../src/translation-preview');
+const { isForeignPost, addTranslationButton, renderInPlace, handleTranslationInteraction } = require('../src/translation-preview');
 
 async function main() {
   assert.equal(isForeignPost({ text: '今天活動開始，記得登入領取獎勵！ #BlueArchive https://example.com' }), false);
@@ -129,48 +129,70 @@ async function main() {
   let reservations = 0;
   const deps = { fetchTweetMeta: async () => meta, reserveTranslation: () => { reservations++; return { provider: 'openai', model: 'gpt-6-luna' }; }, requestTranslation: async (_, route) => { assert.equal(route.model, 'gpt-6-luna'); calls++; return { text: '更新不會重置你的進度。' }; } };
   const client = { user: { id: 'bot' } };
-  function interaction(user, action = 'translate', privateMessage = false) {
+  const { EmbedBuilder } = require('discord.js');
+  const linkMessage = { content: 'https://fxtwitter.com/i/status/123456789', embeds: [] };
+  const cardMessage = { content: '', embeds: [
+    new EmbedBuilder().setURL('https://x.com/a/status/123456789').setDescription(meta.text).setFooter({ text: 'X (Twitter)' }).toJSON(),
+    new EmbedBuilder().setURL('https://x.com/a/status/123456789').setImage('https://pbs.twimg.com/media/2.jpg').toJSON(),
+  ] };
+  function interaction(user, action = 'translate', { privateMessage = false, message = linkMessage } = {}) {
     const events = [];
-    return { events, guildId: 'guild-a', user: { id: user }, isButton: () => true, customId: `xtranslate:${action}:123456789`,
-      message: { author: { id: 'bot' }, flags: { has: flag => flag === MessageFlags.Ephemeral && privateMessage },
-        edit: () => { throw new Error('Public message edited!'); }, delete: () => { throw new Error('Public message deleted!'); } },
+    return { events, guildId: 'guild-a', user: { id: user }, isButton: () => true, customId: `xtranslate:${action}:${'123456789'}`,
+      message: { ...message, author: { id: 'bot' }, flags: { has: flag => flag === MessageFlags.Ephemeral && privateMessage },
+        edit: () => { throw new Error('Edit goes through the interaction'); }, delete: () => { throw new Error('Public message deleted!'); } },
       deferReply: async data => events.push(['deferReply', data]), deferUpdate: async () => events.push(['deferUpdate']),
       editReply: async data => events.push(['editReply', data]), reply: async data => events.push(['reply', data]),
+      followUp: async data => events.push(['followUp', data]),
     };
   }
+  // Link card: translation is quoted under the link, in the same public message.
   for (const user of ['alice', 'bob']) {
     const i = interaction(user);
     assert.equal(await handleTranslationInteraction(i, client, deps), true);
-    assert.equal(i.events[0][0], 'deferReply');
-    assert.equal(i.events[0][1].flags, MessageFlags.Ephemeral);
-    assert.equal(i.events[1][1].embeds[0].toJSON().description, '更新不會重置你的進度。');
+    assert.deepEqual(i.events.map(e => e[0]), ['deferUpdate', 'editReply']);
+    assert.equal(i.events[1][1].content, 'https://fxtwitter.com/i/status/123456789\n-# 繁體中文翻譯\n> 更新不會重置你的進度。');
     assert.equal(i.events[1][1].components[0].toJSON().components[0].label, '查看原文');
+    assert.equal(i.events[1][1].embeds, undefined); // the unfurl is left alone
   }
-  assert.equal(calls, 1); // Shared result cache; display stays private per user.
-  assert.equal(reservations, 1); // Cached toggles/users do not spend quota.
+  assert.equal(calls, 1); // Shared result cache.
+  assert.equal(reservations, 1); // Cached clicks do not spend quota.
   assert.equal(JSON.stringify(payload), sourceBefore);
-  const original = interaction('alice', 'original', true);
+  const translatedLink = { content: 'https://fxtwitter.com/i/status/123456789\n-# 繁體中文翻譯\n> 更新不會重置你的進度。', embeds: [] };
+  const original = interaction('alice', 'original', { message: translatedLink });
   await handleTranslationInteraction(original, client, deps);
-  assert.equal(original.events[0][0], 'deferUpdate');
-  assert.equal(original.events[1][1].embeds[0].toJSON().description, meta.text);
+  assert.equal(original.events[1][1].content, 'https://fxtwitter.com/i/status/123456789');
+  assert.equal(original.events[1][1].components[0].toJSON().components[0].label, '翻譯成繁體中文');
   assert.equal(calls, 1);
-  const translatedAgain = interaction('alice', 'translate', true);
-  await handleTranslationInteraction(translatedAgain, client, deps);
-  assert.equal(translatedAgain.events[1][1].embeds[0].toJSON().description, '更新不會重置你的進度。');
-  assert.equal(calls, 1);
-  const forged = interaction('charlie', 'original');
-  await handleTranslationInteraction(forged, client, deps);
-  assert.equal(forged.events[0][0], 'reply');
-  assert.equal(forged.events[0][1].flags, MessageFlags.Ephemeral);
+  // Bot-built card: the post text is swapped, gallery embeds stay, and it toggles back.
+  const card = interaction('carol', 'translate', { message: cardMessage });
+  await handleTranslationInteraction(card, client, deps);
+  const [lead, gallery] = card.events[1][1].embeds.map(e => e.toJSON ? e.toJSON() : e);
+  assert.equal(lead.description, '更新不會重置你的進度。');
+  assert.equal(lead.footer.text, 'X (Twitter) · 繁體中文翻譯');
+  assert.equal(gallery.image.url, 'https://pbs.twimg.com/media/2.jpg');
+  assert.equal(card.events[1][1].content, undefined);
+  const back = interaction('carol', 'original', { message: { content: '', embeds: [lead, gallery] } });
+  await handleTranslationInteraction(back, client, deps);
+  assert.equal(back.events[1][1].embeds[0].toJSON().description, meta.text);
+  assert.equal(back.events[1][1].embeds[0].toJSON().footer.text, 'X (Twitter)');
+  // Long translations are cut to fit Discord's 2000-char message limit.
+  const long = renderInPlace(linkMessage, meta, '長'.repeat(3000), true);
+  assert.ok(long.content.length <= 2000 && long.content.endsWith('完整內容請開原文）'));
+  // Retired ephemeral cards and forged buttons get a private notice only.
+  const stale = interaction('charlie', 'original', { privateMessage: true });
+  await handleTranslationInteraction(stale, client, deps);
+  assert.equal(stale.events[0][0], 'reply');
+  assert.equal(stale.events[0][1].flags, MessageFlags.Ephemeral);
+  // Failure: public preview untouched, error goes to the clicker privately.
   const failed = interaction('david');
   await handleTranslationInteraction(failed, client, { fetchTweetMeta: async () => null });
-  assert.equal(failed.events[1][1].components.length, 0);
+  assert.deepEqual(failed.events.map(e => e[0]), ['deferUpdate', 'followUp']);
+  assert.equal(failed.events[1][1].flags, MessageFlags.Ephemeral);
   const otherGuild = interaction('erin');
   otherGuild.guildId = 'guild-b';
   await handleTranslationInteraction(otherGuild, client, deps);
   assert.equal(calls, 2); // Separate guild cache, no premium quota borrowing.
   assert.equal(reservations, 2);
-  assert.equal(renderPrivateCard({ ...meta, sensitive: true }, '敏感內容', true).embeds[0].toJSON().image, undefined);
-  console.log('Translation smoke passed: language gating, token preservation, errors, private replies, two-user isolation, cache, original toggle, sensitive media.');
+  console.log('Translation smoke passed: language gating, token preservation, errors, in-place edits (link + card), cache, original toggle, length cap, private failures.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
