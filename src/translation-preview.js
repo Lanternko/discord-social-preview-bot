@@ -39,9 +39,33 @@ function buttons(id, action = 'translate') {
     .setLabel(action === 'original' ? '查看原文' : '翻譯成繁體中文'))];
 }
 
+// The native-embed check stays on: when Discord's own card shows up, the bot
+// posts no preview (a second copy of the image whenever it can't suppress the
+// original), only a button-only stub — see buildTranslationStub.
 function addTranslationButton(payload, meta) {
   if (!enabled() || !isForeignPost(meta)) return payload;
-  return { ...payload, components: buttons(meta.statusId), nativeEmbedCheck: null };
+  const stub = payload.nativeEmbedCheck ? { translationStub: { statusId: meta.statusId, handle: meta.authorHandle || '' } } : {};
+  return { ...payload, components: buttons(meta.statusId), ...stub };
+}
+
+// Text-only reply that carries the translate button under Discord's own card.
+// No link and no embed, so it can't duplicate the post; clicking quotes the
+// translation into it through the same renderInPlace link path.
+function buildTranslationStub({ statusId, handle }) {
+  const who = handle ? `@${handle} 的貼文` : '這則貼文';
+  return { content: `-# ${who}是外文，可以翻譯`, components: buttons(statusId), allowedMentions: { parse: [], repliedUser: false } };
+}
+
+async function sendTranslationStubs(message, payloads) {
+  for (const payload of payloads) {
+    if (!payload?.translationStub) continue;
+    try {
+      await message.reply(buildTranslationStub(payload.translationStub));
+      console.log(`[translate] native card kept, stub sent status=${payload.translationStub.statusId}`);
+    } catch (error) {
+      console.warn(`[translate] stub send failed status=${payload.translationStub.statusId}: ${error.message}`);
+    }
+  }
 }
 
 // The translation goes INTO the public preview — no extra message, private or
@@ -128,4 +152,4 @@ async function handleTranslationInteraction(interaction, client, deps = {}) {
   return true;
 }
 
-module.exports = { isForeignPost, addTranslationButton, renderInPlace, handleTranslationInteraction };
+module.exports = { isForeignPost, addTranslationButton, buildTranslationStub, sendTranslationStubs, renderInPlace, handleTranslationInteraction };
