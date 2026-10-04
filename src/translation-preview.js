@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const { fetchTweetMeta } = require('./platforms/twitter');
 const { requestTranslationWithRetry, PROMPT_VERSION } = require('./ai/translation');
 const { translationAvailable, reserveTranslation } = require('./ai/translation-policy');
+const { trimDescription } = require('./utils');
 
 const cache = new Map();
 const cooldowns = new Map();
@@ -43,17 +44,42 @@ function addTranslationButton(payload, meta) {
   return { ...payload, components: buttons(meta.statusId), nativeEmbedCheck: null };
 }
 
-function renderPrivateCard(meta, text, translated) {
-  const url = `https://x.com/i/status/${meta.statusId}`;
-  const embed = new EmbedBuilder().setColor(0x1da1f2).setURL(url)
-    .setTitle(translated ? 'X 貼文 · 繁體中文翻譯' : 'X 貼文 · 原文')
-    .setDescription(text.length > 3900 ? `${text.slice(0, 3850)}\n\n（內容較長，請開啟原文查看完整貼文）` : text)
-    .setFooter({ text: '只有你看得到' });
-  const author = [meta.authorName, meta.authorHandle && `@${meta.authorHandle}`].filter(Boolean).join(' ');
-  if (author) embed.setAuthor({ name: author.slice(0, 256), url });
-  // Sensitive media stays hidden. Videos are opened through the original URL.
-  if (!meta.sensitive && meta.photos?.[0]) embed.setImage(meta.photos[0]);
-  return { content: '', embeds: [embed], components: buttons(meta.statusId, translated ? 'original' : 'translate'), allowedMentions: { parse: [] } };
+// The translation goes INTO the public preview — no extra message, private or
+// not. A bot-built X card (gallery / spoilered) gets its post text swapped; a
+// fixer link card can't be rewritten (Discord owns the unfurl), so the
+// translation rides below the link as a quote. Both are reversible by the
+// 查看原文 button, which restores the post text without another model call.
+const LINK_MARK = '\n-# 繁體中文翻譯\n';
+const CARD_MARK = ' · 繁體中文翻譯';
+const CONTENT_LIMIT = 2000;
+
+function isBotCard(message, statusId) {
+  const lead = message.embeds?.[0];
+  return !/https?:\/\//.test(message.content || '')
+    && Boolean(lead?.footer?.text?.startsWith('X (Twitter)'))
+    && Boolean(lead.url?.includes(statusId));
+}
+
+function quote(text, budget) {
+  const quoted = text.trim().split('\n').map(line => `> ${line}`).join('\n');
+  if (quoted.length <= budget) return quoted;
+  const tail = '\n> …（太長了，完整內容請開原文）';
+  return quoted.slice(0, Math.max(0, budget - tail.length)) + tail;
+}
+
+function renderInPlace(message, meta, text, translated) {
+  const components = buttons(meta.statusId, translated ? 'original' : 'translate');
+  if (isBotCard(message, meta.statusId)) {
+    const [lead, ...rest] = message.embeds;
+    const footer = lead.footer.text.split(CARD_MARK)[0];
+    const embed = EmbedBuilder.from(lead)
+      .setDescription(trimDescription(text, translated ? 4000 : 1024))
+      .setFooter({ text: translated ? footer + CARD_MARK : footer, iconURL: lead.footer.iconURL || undefined });
+    return { embeds: [embed, ...rest], components, allowedMentions: { parse: [] } };
+  }
+  const base = (message.content || '').split(LINK_MARK)[0];
+  const content = translated ? base + LINK_MARK + quote(text, CONTENT_LIMIT - base.length - LINK_MARK.length) : base;
+  return { content, components, allowedMentions: { parse: [] } };
 }
 
 async function translateCached(text, deps, userId, guildId) {
@@ -82,25 +108,24 @@ async function translateCached(text, deps, userId, guildId) {
 async function handleTranslationInteraction(interaction, client, deps = {}) {
   if (!interaction.isButton?.() || !interaction.customId?.startsWith(PREFIX)) return false;
   const match = /^xtranslate:(translate|original):(\d{5,25})$/.exec(interaction.customId);
+  // Ephemeral cards are the retired private-card design; their buttons are dead.
   const privateMessage = Boolean(interaction.message?.flags?.has(MessageFlags.Ephemeral));
-  if (!match || !enabled() || interaction.message?.author?.id !== client.user.id || (match[1] === 'original' && !privateMessage)) {
+  if (!match || !enabled() || interaction.message?.author?.id !== client.user.id || privateMessage) {
     await interaction.reply({ content: '這個翻譯按鈕目前無法使用。', flags: MessageFlags.Ephemeral });
     return true;
   }
-  // deferReply creates a separate ephemeral card. deferUpdate is ONLY allowed
-  // on that private card; never update/edit/delete the public preview.
-  if (privateMessage) await interaction.deferUpdate();
-  else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferUpdate();
   try {
     const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${match[2]}`);
     if (!meta?.text || meta.text.length > 12000) throw new Error('Post unavailable');
     const translated = match[1] === 'translate';
     const result = translated ? await translateCached(meta.text, deps, interaction.user.id, interaction.guildId) : { text: meta.text };
-    await interaction.editReply(renderPrivateCard(meta, result.text, translated));
+    await interaction.editReply(renderInPlace(interaction.message, meta, result.text, translated));
   } catch {
-    await interaction.editReply({ content: '目前無法翻譯，請稍後再試或開啟原文。', embeds: [], components: [], allowedMentions: { parse: [] } });
+    // Only the failure is private: the public preview stays as it was.
+    await interaction.followUp({ content: '目前無法翻譯，請稍後再試或開啟原文。', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
   }
   return true;
 }
 
-module.exports = { isForeignPost, addTranslationButton, renderPrivateCard, handleTranslationInteraction };
+module.exports = { isForeignPost, addTranslationButton, renderInPlace, handleTranslationInteraction };
