@@ -79,6 +79,11 @@ const {
 } = require("./observation-extractor");
 const { recordAliasContext, maybeExtractAliases } = require("./alias-extractor");
 const {
+  detectGroupCompareIntent,
+  selectCompareCandidates,
+  buildGroupCompareBlock,
+} = require("./group-compare");
+const {
   getGuildProfile,
   buildGuildProfileBlock,
   appendPendingContext,
@@ -808,6 +813,8 @@ async function generateAIReply(message, userText, options = {}) {
   let targetCtxSize = 0;
   let targetBlock = "";
   let imitationActive = false;
+  let compareBlock = "";
+  let compareCtxSize = 0;
   if (includeContext && message.channel) {
     imitationActive = detectImitationIntent(userText);
     const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
@@ -844,6 +851,20 @@ async function generateAIReply(message, userText, options = {}) {
       });
       if (targetBlock) targetCtxSize = targets.length;
     }
+
+    // 「群組裡誰最…／給出排名」: the question is about the whole group, which
+    // neither the speaker profile nor target resolution covers. See
+    // group-compare.js. People already in the target block are skipped.
+    if (AI_LONG_TERM_MEMORY_ENABLED && !imitationActive && detectGroupCompareIntent(userText)) {
+      const people = selectCompareCandidates({
+        roster,
+        groupEntries: groupContextLines,
+        profileTextFor: (userId) => profileTextOf(getUserProfile(message.guildId, userId)),
+        excludeIds: targets.map((t) => t.userId),
+      });
+      compareBlock = buildGroupCompareBlock(people);
+      if (compareBlock) compareCtxSize = people.length;
+    }
   }
 
   // Reply context (the reference itself was resolved at the top of the call).
@@ -878,6 +899,9 @@ async function generateAIReply(message, userText, options = {}) {
   // story draws on, while the group context is the immediate scene.
   if (extraUserContext) {
     turns = [{ role: "user", content: extraUserContext }, ...turns];
+  }
+  if (compareBlock) {
+    turns.splice(turns.length - 1, 0, { role: "user", content: compareBlock });
   }
   if (targetBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
@@ -919,7 +943,7 @@ async function generateAIReply(message, userText, options = {}) {
     }
     const isPremium = isGuildKeyUsable(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} compare_ctx=${compareCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {
