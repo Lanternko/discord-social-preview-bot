@@ -1,6 +1,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { mergeEvidenceNewest, STABLE_TIME_GAP_MS } = require("./user-profile-store");
+const {
+  mergeEvidenceNewest,
+  STABLE_TIME_GAP_MS,
+  capByPriority,
+  carryObservations,
+} = require("./user-profile-store");
 
 const STORE_PATH = path.join(__dirname, "..", "data", "guild-profiles.json");
 const BAK_PATH = STORE_PATH + ".bak";
@@ -168,6 +173,7 @@ function appendObservations(guildId, guildName, observations) {
       existing.evidence = mergeEvidenceNewest(existing.evidence || [], evidence);
       existing.confidence = Math.max(clampConfidence(existing.confidence), clampConfidence(obs.confidence));
       existing.at = now;
+      delete existing.carried;
       continue;
     }
     entry.observations.push({
@@ -238,9 +244,8 @@ function sanitizeGuildItems(items) {
         lastSeenAt: typeof it.lastSeenAt === "number" ? it.lastSeenAt : now,
         tentative: Boolean(it.tentative),
       });
-      if (kept.length >= f.max) break;
     }
-    out[f.key] = kept;
+    out[f.key] = capByPriority(kept, f.max, isGuildStableEvidence);
   }
   return out;
 }
@@ -271,8 +276,9 @@ function guildProfileTextOf(entry, now = Date.now()) {
   return entry.profile || "";
 }
 
-// Observations are consumed: their evidence now lives on the items citing them.
-function setGuildProfileItems(guildId, items) {
+// Cited observations are consumed (their evidence now lives on the items
+// citing them); uncited ones carry over — see carryObservations.
+function setGuildProfileItems(guildId, items, consumed = null) {
   if (!guildId) return;
   const data = load();
   const entry = data[guildId];
@@ -282,7 +288,7 @@ function setGuildProfileItems(guildId, items) {
   entry.items = clean;
   entry.profile = renderGuildProfileText(clean, now) || null;
   entry.profileAt = now;
-  entry.observations = [];
+  entry.observations = carryObservations(entry.observations, consumed);
   entry.updatedAt = now;
   save();
 }
