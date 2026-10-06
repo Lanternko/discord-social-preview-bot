@@ -58,7 +58,6 @@
 | `/memory show\|guild\|forget-me\|forget-user` | 查看 / 刪除西寶的記憶 | `forget-user` 需管理員 |
 | `/schedule add\|list\|remove` | 每日排程（床邊故事 / 早安問候 / 今日回顧） | 管理伺服器 |
 | `/voice` | 讓西寶用語音回答 | 所有人 |
-| `/debug-perms` | 檢查 bot 在此頻道的權限 | 所有人 |
 | `/servers` | bot 加入了幾個伺服器 | 所有人 |
 
 ### AI 方案

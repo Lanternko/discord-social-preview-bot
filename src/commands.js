@@ -1,5 +1,4 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
-const { getMissingChannelPermissions } = require("./discord-io");
 const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
 const { getGuildLanguage, setGuildLanguage } = require("./language-store");
@@ -69,11 +68,6 @@ const SERVER_COUNT_COMMAND = {
 const HELP_COMMAND = {
   name: "help",
   description: "認識西寶的功能、指令與伺服器設定方式",
-};
-
-const DEBUG_PERMS_COMMAND = {
-  name: "debug-perms",
-  description: "檢查目前頻道裡機器人的權限",
 };
 
 const TIER_COMMAND = {
@@ -305,7 +299,6 @@ async function ensureApplicationCommands(client) {
   const expectedCommands = [
     HELP_COMMAND,
     SERVER_COUNT_COMMAND,
-    DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
     LANGUAGE_COMMAND,
     AI_CHAT_COMMAND,
@@ -359,7 +352,6 @@ function buildHelpMessage() {
     "- `/ai-chat`：查看聊天觸發方式；管理員可關閉，關閉後只有直接 `@西寶` 才會回（回覆我的訊息、@everyone 不算）",
     "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
     "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
-    "- `/debug-perms`：檢查目前頻道的機器人權限",
     "- `/servers`：查看西寶加入的伺服器數量",
     "",
     "**伺服器設定**",
@@ -370,34 +362,6 @@ function buildHelpMessage() {
     "",
     "小技巧：訊息包含 `nopreview`、`previewignore` 或 `fxignore`，我就不會產生預覽。",
   ].join("\n");
-}
-
-function buildPermissionDebugMessage(interaction) {
-  if (!interaction.inGuild() || !interaction.guild) {
-    return "這個指令只能在伺服器頻道內使用。";
-  }
-
-  const missingPermissions = getMissingChannelPermissions(interaction);
-  const me = interaction.guild.members.me;
-  const permissions = me ? interaction.channel.permissionsFor(me) : null;
-  const hasManageMessages = permissions?.has(
-    PermissionsBitField.Flags.ManageMessages,
-  );
-
-  const lines = [
-    `伺服器：${interaction.guild.name}`,
-    `頻道：${"name" in interaction.channel && interaction.channel.name ? `#${interaction.channel.name}` : interaction.channelId}`,
-  ];
-
-  if (missingPermissions.length === 0) {
-    lines.push("必要權限：都已具備");
-  } else {
-    lines.push(`缺少必要權限：${missingPermissions.join(", ")}`);
-  }
-
-  lines.push(`ManageMessages：${hasManageMessages ? "有" : "沒有"}`);
-
-  return lines.join("\n");
 }
 
 function getTierModelLabel(tierKey) {
@@ -1170,14 +1134,6 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
-  if (interaction.commandName === DEBUG_PERMS_COMMAND.name) {
-    await interaction.reply({
-      content: buildPermissionDebugMessage(interaction),
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
   if (interaction.commandName === TIER_COMMAND.name) {
     await handleTierCommand(interaction);
     return;
@@ -1216,7 +1172,6 @@ async function handleInteraction(interaction, client) {
 module.exports = {
   HELP_COMMAND,
   SERVER_COUNT_COMMAND,
-  DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
   LANGUAGE_COMMAND,
   AI_CHAT_COMMAND,
@@ -1228,7 +1183,6 @@ module.exports = {
   VOICE_COMMAND,
   ensureApplicationCommands,
   buildHelpMessage,
-  buildPermissionDebugMessage,
   handleTierCommand,
   handleLanguageCommand,
   handleScheduleCommand,
