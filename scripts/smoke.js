@@ -215,8 +215,9 @@ it("registers /help with a discoverable description", () => {
 it("explains features, commands, setup, and preview opt-out", () => {
   const help = buildHelpMessage();
   assert.match(help, /主要功能/);
-  assert.match(help, /可用指令/);
+  assert.match(help, /大家都能用/);
   assert.match(help, /伺服器設定/);
+  assert.match(help, /安裝設定/);
   assert.match(help, /\/ai-key set/);
   assert.doesNotMatch(help, /\/debug-perms/);
   assert.match(help, /nopreview/);
