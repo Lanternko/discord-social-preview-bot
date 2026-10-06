@@ -120,7 +120,6 @@ const {
 const {
   HELP_COMMAND,
   buildHelpMessage,
-  buildPermissionDebugMessage,
 } = require("../src/commands");
 const {
   getMissingChannelPermissions,
@@ -216,10 +215,11 @@ it("registers /help with a discoverable description", () => {
 it("explains features, commands, setup, and preview opt-out", () => {
   const help = buildHelpMessage();
   assert.match(help, /主要功能/);
-  assert.match(help, /可用指令/);
+  assert.match(help, /大家都能用/);
   assert.match(help, /伺服器設定/);
+  assert.match(help, /安裝設定/);
   assert.match(help, /\/ai-key set/);
-  assert.match(help, /\/debug-perms/);
+  assert.doesNotMatch(help, /\/debug-perms/);
   assert.match(help, /nopreview/);
   assert.ok(help.length <= 2000, `help message is ${help.length} characters`);
 });
@@ -1826,24 +1826,7 @@ console.log("system-text: fixed bot text follows /language");
 }
 
 console.log("");
-console.log("debug-perms null-guild guard");
-it("buildPermissionDebugMessage returns DM message when not in guild", () => {
-  const msg = buildPermissionDebugMessage({ inGuild: () => false });
-  assert.match(msg, /只能在伺服器/);
-});
-it("buildPermissionDebugMessage handles inGuild()=true with guild=null without throwing", () => {
-  // Reproduces the prod crash: Discord delivered an interaction whose
-  // guildId was set (so inGuild() returns true) but the bot's cache had
-  // no entry for that guild, so .guild was null. Reading .guild.members
-  // used to throw and bring the whole process down.
-  const msg = buildPermissionDebugMessage({
-    inGuild: () => true,
-    guild: null,
-    guildId: "999",
-    channelId: "888",
-  });
-  assert.match(msg, /只能在伺服器/);
-});
+console.log("getMissingChannelPermissions null-guild guard");
 it("getMissingChannelPermissions returns sentinel when guild is null", () => {
   const result = getMissingChannelPermissions({
     inGuild: () => true,

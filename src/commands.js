@@ -1,5 +1,4 @@
 const { MessageFlags, PermissionsBitField, ChannelType } = require("discord.js");
-const { getMissingChannelPermissions } = require("./discord-io");
 const { isAuthorizedToDelete } = require("./reaction-delete");
 const { getGuildTier, setGuildTier, isValidTier } = require("./tier-store");
 const { getGuildLanguage, setGuildLanguage } = require("./language-store");
@@ -70,11 +69,6 @@ const SERVER_COUNT_COMMAND = {
 const HELP_COMMAND = {
   name: "help",
   description: "認識西寶的功能、指令與伺服器設定方式",
-};
-
-const DEBUG_PERMS_COMMAND = {
-  name: "debug-perms",
-  description: "檢查目前頻道裡機器人的權限",
 };
 
 const TIER_COMMAND = {
@@ -306,7 +300,6 @@ async function ensureApplicationCommands(client) {
   const expectedCommands = [
     HELP_COMMAND,
     SERVER_COUNT_COMMAND,
-    DEBUG_PERMS_COMMAND,
     TIER_COMMAND,
     LANGUAGE_COMMAND,
     AI_CHAT_COMMAND,
@@ -351,19 +344,21 @@ function buildHelpMessage() {
     "- 自動移除常見追蹤參數、避免短時間內重複預覽",
     "- 對西寶的訊息按 🗑️，或右鍵選「Apps → 刪除西寶訊息」即可請我刪除",
     "",
-    "**可用指令**",
+    "**大家都能用**",
     "- `/help`：顯示這份說明",
     "- `/voice`：讓西寶用語音回答",
-    "- `/memory show`、`forget-me`、`guild`：查看或管理記憶；管理員可用 `forget-user` 刪除指定使用者的記憶",
-    "- `/ai-tier`：查看 AI 方案；管理員可切換方案",
-    "- `/language`：查看西寶回覆用的語言；管理員可切換（繁體／简体／日本語／English）",
-    "- `/ai-chat`：查看聊天觸發方式；管理員可關閉，關閉後只有直接 `@西寶` 才會回（回覆我的訊息、@everyone 不算）",
-    "- `/ai-key status`：查看 AI 狀態；管理員可用 `set` / `remove` 管理 DeepSeek 金鑰",
-    "- `/schedule add`、`list`、`remove`：管理每日定時任務（需管理伺服器權限）",
-    "- `/debug-perms`：檢查目前頻道的機器人權限",
+    "- `/memory show`、`guild`、`forget-me`：查看我記得你／這個群什麼，或叫我忘掉你",
     "- `/servers`：查看西寶加入的伺服器數量",
     "",
-    "**伺服器設定**",
+    "**伺服器設定**（任何人都能查看，更改需「管理伺服器」權限）",
+    "- `/ai-tier`：AI 方案",
+    "- `/ai-key status`、`set`、`remove`：DeepSeek 金鑰",
+    "- `/ai-chat`：關閉後只有直接 `@西寶` 才會回（回覆我的訊息、@everyone 不算）",
+    "- `/language`：回覆語言（繁體／简体／日本語／English）",
+    "- `/schedule add`、`list`、`remove`：每日定時任務",
+    "- `/memory forget-user`：刪除指定使用者的記憶",
+    "",
+    "**安裝設定**",
     "1. 邀請時啟用 `bot` 與 `applications.commands` scopes。",
     "2. 授予查看頻道、傳送訊息、讀取歷史訊息與嵌入連結權限。",
     "3. 建議加上「管理訊息」，讓我能收起原始連結預覽。",
@@ -371,34 +366,6 @@ function buildHelpMessage() {
     "",
     "小技巧：訊息包含 `nopreview`、`previewignore` 或 `fxignore`，我就不會產生預覽。",
   ].join("\n");
-}
-
-function buildPermissionDebugMessage(interaction) {
-  if (!interaction.inGuild() || !interaction.guild) {
-    return "這個指令只能在伺服器頻道內使用。";
-  }
-
-  const missingPermissions = getMissingChannelPermissions(interaction);
-  const me = interaction.guild.members.me;
-  const permissions = me ? interaction.channel.permissionsFor(me) : null;
-  const hasManageMessages = permissions?.has(
-    PermissionsBitField.Flags.ManageMessages,
-  );
-
-  const lines = [
-    `伺服器：${interaction.guild.name}`,
-    `頻道：${"name" in interaction.channel && interaction.channel.name ? `#${interaction.channel.name}` : interaction.channelId}`,
-  ];
-
-  if (missingPermissions.length === 0) {
-    lines.push("必要權限：都已具備");
-  } else {
-    lines.push(`缺少必要權限：${missingPermissions.join(", ")}`);
-  }
-
-  lines.push(`ManageMessages：${hasManageMessages ? "有" : "沒有"}`);
-
-  return lines.join("\n");
 }
 
 function getTierModelLabel(tierKey) {
@@ -1193,14 +1160,6 @@ async function handleInteraction(interaction, client) {
     return;
   }
 
-  if (interaction.commandName === DEBUG_PERMS_COMMAND.name) {
-    await interaction.reply({
-      content: buildPermissionDebugMessage(interaction),
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
   if (interaction.commandName === TIER_COMMAND.name) {
     await handleTierCommand(interaction);
     return;
@@ -1239,7 +1198,6 @@ async function handleInteraction(interaction, client) {
 module.exports = {
   HELP_COMMAND,
   SERVER_COUNT_COMMAND,
-  DEBUG_PERMS_COMMAND,
   TIER_COMMAND,
   LANGUAGE_COMMAND,
   AI_CHAT_COMMAND,
@@ -1251,7 +1209,6 @@ module.exports = {
   VOICE_COMMAND,
   ensureApplicationCommands,
   buildHelpMessage,
-  buildPermissionDebugMessage,
   handleTierCommand,
   handleLanguageCommand,
   handleScheduleCommand,
