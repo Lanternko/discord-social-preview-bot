@@ -1352,6 +1352,51 @@ async function main() {
     assert.equal(chain[0].label, `deepseek:${DEEPSEEK_VISION_MODEL}:vision`);
   });
 
+  it("puts Luna's vision entry right behind DeepSeek's", () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const images = [{ url: "https://cdn/cat.png", type: "image/png" }];
+    const { chain } = buildGuildChain("luna-vision-guild", briefTier, {}, PEAK, images);
+    assert.equal(chain[1].label, `openai:${process.env.OPENAI_MODEL}:vision`);
+    assert.equal(chain[1].options.timeoutMs, VISION_TIMEOUT_MS);
+    assert.ok(!chain.slice(2).some((e) => e.label.endsWith(":vision")), "blind layers stay behind");
+  });
+
+  await itAsync("sends image_url blocks to Luna, not to the blind layers", async () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const images = [
+      { url: "https://cdn/cat.png", type: "image/png", dataUrl: "data:image/png;base64,AQID" },
+    ];
+    const { chain } = buildGuildChain("luna-call-guild", briefTier, {}, OFF_PEAK, images);
+    const luna = chain.find((e) => e.label === `openai:${process.env.OPENAI_MODEL}:vision`);
+    const blind = chain.find((e) => e.label === `openai:${process.env.OPENAI_MODEL}`);
+    const originalFetch = global.fetch;
+    const bodies = [];
+    global.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({ choices: [{ message: { content: "是貓咪…" }, finish_reason: "stop" }] }),
+      };
+    };
+    try {
+      const turns = [{ role: "user", content: buildUserTurn({ author: { username: "阿翔" } }, "這張是什麼", buildImageNote(1)) }];
+      assert.equal((await luna.call(turns, "persona", 180)).ok, true);
+      assert.equal((await blind.call(turns, "persona", 180)).ok, true);
+      const seen = bodies[0].messages.at(-1).content;
+      assert.ok(Array.isArray(seen), "Luna's vision turn must be a content-block array");
+      assert.equal(seen.at(-1).image_url.url, "data:image/png;base64,AQID");
+      assert.ok(!seen[0].text.includes("看不到"));
+      assert.equal(typeof bodies[1].messages.at(-1).content, "string", "blind Luna gets no image");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("adds no vision entry when the message has no image", () => {
     resetKeyCache();
     resetRateLimiter();

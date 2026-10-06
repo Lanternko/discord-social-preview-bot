@@ -296,16 +296,22 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
   // max_completion_tokens as well, so without headroom a thinking model can
   // spend the entire budget before emitting a single visible character.
   const headroom = overrides.reasoningHeadroom ?? OPENAI_REASONING_HEADROOM;
+  // Same override-only image path as callDeepSeek: `turns` stays plain strings
+  // so the blind layers below this one never see array content.
+  const images = overrides.images || [];
   const body = {
     model,
-    messages: buildOpenAIMessages(turns, persona),
+    messages: buildOpenAIMessages(attachImagesToTurns(turns, images), persona),
     max_completion_tokens: maxTokens + headroom,
   };
   const effort = overrides.reasoningEffort ?? OPENAI_REASONING_EFFORT;
   if (effort) body.reasoning_effort = effort;
-  const label = `openai:${model}`;
+  const label = overrides.label || `openai:${model}`;
 
   const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;
+  if (images.length > 0) {
+    console.log(`[vision] openai model=${model} images=${images.length}`);
+  }
   return withAbortTimeout(timeoutMs, label, async (signal) => {
     const response = await fetch(url, {
       method: "POST",

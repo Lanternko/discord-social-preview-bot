@@ -532,6 +532,10 @@ module.exports = {
   // DeepSeek fetches the Discord CDN URL itself before it can answer, so a
   // vision call is structurally slower than the 8 s text budget allows.
   VISION_TIMEOUT_MS: parsePositiveIntEnv("VISION_TIMEOUT_MS", 25000),
+  // Luna is the second pair of eyes: when DeepSeek's vision entry fails (a
+  // guild's dead key, a timeout) the picture used to reach only blind layers.
+  OPENAI_VISION_ENABLED:
+    (process.env.OPENAI_VISION_ENABLED || "true").toLowerCase() === "true",
   AI_FREE_DAILY_LIMIT: parsePositiveIntEnv("AI_FREE_DAILY_LIMIT", 20),
   // Fuse on the owner's total bill: owner-paid replies (free + whitelisted
   // guilds) across every guild per Taipei day. Guilds on their own key are

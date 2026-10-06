@@ -77,6 +77,7 @@
 | `VISION_TOTAL_MAX_BYTES` | `16777216` | 一次呼叫所有圖的總上限（base64 會膨脹 4/3，DeepSeek request body 上限 48 MiB） |
 | `VISION_FETCH_TIMEOUT_MS` | `10000` | 我們去 Discord CDN 抓圖的逾時 |
 | `VISION_TIMEOUT_MS` | `25000` | vision 呼叫本身的逾時，比文字的 `AI_TIMEOUT_MS` 長 |
+| `OPENAI_VISION_ENABLED` | `true` | DeepSeek vision 失敗時由 Luna（`OPENAI_MODEL`）帶圖再看一次；label `openai:<model>:vision`，用 owner 的 `OPENAI_API_KEY`。`false` = 只有 DeepSeek 看得到圖 |
 | `STORY_FLASH_MODEL` | `deepseek-flash` | 睡前故事鏈的第一層（思考開）。2026-09-26 同素材實測：一篇約 15–25 s、思考 2–4k tokens，品質不輸 v4-pro，成本約 1/4 |
 | `STORY_FLASH_TIMEOUT_MS` | `120000` | 上面那層的逾時；失敗就掉到 v4-pro |
 | `STORY_DEEPSEEK_MODEL` | `deepseek-v4-pro` | 睡前故事鏈的第二層（思考開）。兩輪盲測（2026-09-25）唯一沒有爛篇的模型，但錢幾乎都花在思考（3–9k tokens 寫 ~200 tokens 的故事）；一篇約 40–60 s |
