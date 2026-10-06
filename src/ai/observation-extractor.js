@@ -12,6 +12,8 @@ const {
   mergeEvidenceNewest,
   fieldByKeyOrLabel,
   sanitizeItems,
+  capByPriority,
+  freshObservations,
   PROFILE_FIELDS,
   ITEM_TEXT_MAX_LEN,
   STABLE_MIN_DISTINCT_MESSAGES,
@@ -259,6 +261,7 @@ ${FIELD_LIST_TEXT}
 - 既有條目裡帶評價、且沒有觀察支持的（例：強詞奪理、靈魂人物），改寫成具體行為或刪掉
 - 【新觀察 O*】可以新增條目，也可以補強既有條目（from 同時填 I 和 O）
 - 「證據不足」的觀察也可以寫，程式會自動標成「或許」——**不要自己在 text 裡寫「或許」「有時」**
+- 欄位裝不下時，留下佐證最多、最近還在出現的；「舊版摘要轉入，無個別佐證」的舊條目最先讓位給有佐證的新觀察
 
 ## 規則
 - 每條 text 是一個短句，不超過 ${ITEM_TEXT_MAX_LEN} 字、只講一件事；不要把一串話題塞進同一條
@@ -278,7 +281,7 @@ ${FIELD_LIST_TEXT}
 
 function shouldConsolidate(guildId, userId) {
   const entry = getUserProfile(guildId, userId);
-  const obs = entry?.observations ?? [];
+  const obs = freshObservations(entry?.observations);
   if (obs.length === 0) return false;
 
   if (obs.length >= CONSOLIDATE_MIN_COUNT) return true;
@@ -444,8 +447,12 @@ const USER_ITEM_SCHEMA = {
   sanitize: sanitizeItems,
 };
 
-function resolveConsolidatedItems(parsed, sources, now = Date.now(), schema = USER_ITEM_SCHEMA) {
-  if (!Array.isArray(parsed)) return null;
+// Resolves the model's answer into items AND reports which offered
+// observations made it into a surviving item (`cited`, by text) — the rest
+// are carried to the next consolidation instead of silently discarded.
+function selectConsolidatedItems(parsed, sources, now = Date.now(), schema = USER_ITEM_SCHEMA) {
+  const offered = [...sources.values()].filter((s) => s.kind === "obs").map((s) => s.text);
+  if (!Array.isArray(parsed)) return { items: null, offered, cited: [] };
   const out = {};
   for (const f of schema.fields) out[f.key] = [];
 
@@ -476,16 +483,37 @@ function resolveConsolidatedItems(parsed, sources, now = Date.now(), schema = US
     const sourceTentative = (c) => (c.kind === "obs" ? !c.stable : Boolean(c.tentative));
     const tentative = !schema.isStable(evidence) && cited.every(sourceTentative);
 
-    out[field.key].push({ text: it.text, evidence, firstAt, lastSeenAt, tentative });
+    out[field.key].push({
+      text: it.text, evidence, firstAt, lastSeenAt, tentative,
+      obsTexts: obsCited.map((o) => o.text),
+    });
+  }
+
+  // Cap here (same rule sanitize applies) so we know which items — and so
+  // which observations — actually survive.
+  const cited = new Set();
+  for (const f of schema.fields) {
+    out[f.key] = capByPriority(out[f.key], f.max, schema.isStable);
+    for (const it of out[f.key]) for (const t of it.obsTexts) cited.add(t);
   }
 
   const clean = schema.sanitize(out);
   const total = schema.fields.reduce((n, f) => n + clean[f.key].length, 0);
-  return total > 0 ? clean : null;
+  return { items: total > 0 ? clean : null, offered, cited: [...cited] };
 }
 
-// Single consolidation pass: build → call → resolve. Returns the items map or
-// null. Shared with scripts/redistill-profiles.js.
+function resolveConsolidatedItems(parsed, sources, now = Date.now(), schema = USER_ITEM_SCHEMA) {
+  return selectConsolidatedItems(parsed, sources, now, schema).items;
+}
+
+function describeConsumed(consumed) {
+  if (!consumed) return "";
+  return ` cited=${consumed.cited.length}/${consumed.offered.length} obs`;
+}
+
+// Single consolidation pass: build → call → resolve. Returns the items map (or
+// null) plus `consumed` = { offered, cited } observation texts for
+// setProfileItems. Shared with scripts/redistill-profiles.js.
 async function runConsolidation(entry, runChain, extraTurns = []) {
   const now = Date.now();
   const sources = collectConsolidationSources(entry, now);
@@ -493,11 +521,14 @@ async function runConsolidation(entry, runChain, extraTurns = []) {
   let result = null;
   for (let attempt = 1; attempt <= CONSOLIDATE_ATTEMPTS; attempt++) {
     result = await runChain(turns, CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
-    if (!result) return { result: null, items: null };
+    if (!result) return { result: null, items: null, consumed: null };
     const parsed = parseConsolidationResult(result.text);
-    if (parsed) return { result, items: resolveConsolidatedItems(parsed, sources, now) };
+    if (parsed) {
+      const { items, offered, cited } = selectConsolidatedItems(parsed, sources, now);
+      return { result, items, consumed: { offered, cited } };
+    }
   }
-  return { result, items: null };
+  return { result, items: null, consumed: null };
 }
 
 function countItems(items) {
@@ -516,18 +547,18 @@ async function maybeConsolidateProfile(guildId, userId, runChain) {
     const entry = getUserProfile(guildId, userId);
     if (!entry || (entry.observations?.length ?? 0) === 0) return;
 
-    const { result, items } = await runConsolidation(entry, runChain);
+    const { result, items, consumed } = await runConsolidation(entry, runChain);
     if (!result) {
       console.warn("[consolidate] chain exhausted, skipping consolidation");
       return;
     }
 
     console.log(
-      `[consolidate] user=${userId} provider=${result.provider.label} items=${countItems(items)} from=${entry.observations.length} obs`,
+      `[consolidate] user=${userId} provider=${result.provider.label} items=${countItems(items)} from=${entry.observations.length} obs${describeConsumed(consumed)}`,
     );
 
     if (items) {
-      setProfileItems(guildId, userId, items);
+      setProfileItems(guildId, userId, items, consumed);
     }
   } catch (err) {
     console.warn(`[consolidate] error: ${err.message}`);
@@ -689,7 +720,7 @@ function attachGuildEvidence(observations, lines) {
 
 function shouldGuildConsolidate(guildId) {
   const entry = getGuildProfile(guildId);
-  const obs = entry?.observations ?? [];
+  const obs = freshObservations(entry?.observations);
   if (obs.length === 0) return false;
 
   if (obs.length >= GUILD_CONSOLIDATE_MIN_COUNT) return true;
@@ -806,14 +837,20 @@ async function runGuildConsolidation(entry, runChain, extraTurns = [], guildId =
   let result = null;
   for (let attempt = 1; attempt <= CONSOLIDATE_ATTEMPTS; attempt++) {
     result = await runChain(turns, GUILD_CONSOLIDATION_PERSONA, CONSOLIDATE_MAX_TOKENS);
-    if (!result) return { result: null, items: null };
+    if (!result) return { result: null, items: null, consumed: null };
     const parsed = parseConsolidationResult(result.text);
     if (parsed) {
-      const items = resolveConsolidatedItems(parsed, sources, now, GUILD_ITEM_SCHEMA);
-      return { result, items: dropDisallowedGuildItems(items, knownMemberNames(guildId)) };
+      // Observations cited only by a disallowed item still count as cited:
+      // re-offering them would just re-produce the same disallowed item.
+      const { items, offered, cited } = selectConsolidatedItems(parsed, sources, now, GUILD_ITEM_SCHEMA);
+      return {
+        result,
+        items: dropDisallowedGuildItems(items, knownMemberNames(guildId)),
+        consumed: { offered, cited },
+      };
     }
   }
-  return { result, items: null };
+  return { result, items: null, consumed: null };
 }
 
 function countGuildItems(items) {
@@ -870,18 +907,18 @@ async function maybeGuildConsolidate(guildId, runChain) {
     const entry = getGuildProfile(guildId);
     if (!entry || (entry.observations?.length ?? 0) === 0) return;
 
-    const { result, items } = await runGuildConsolidation(entry, runChain, [], guildId);
+    const { result, items, consumed } = await runGuildConsolidation(entry, runChain, [], guildId);
     if (!result) {
       console.warn("[guild-consolidate] chain exhausted, skipping");
       return;
     }
 
     console.log(
-      `[guild-consolidate] guild=${guildId} provider=${result.provider.label} items=${countGuildItems(items)} from=${entry.observations.length} obs`,
+      `[guild-consolidate] guild=${guildId} provider=${result.provider.label} items=${countGuildItems(items)} from=${entry.observations.length} obs${describeConsumed(consumed)}`,
     );
 
     if (items) {
-      setGuildProfileItems(guildId, items);
+      setGuildProfileItems(guildId, items, consumed);
     }
   } catch (err) {
     console.warn(`[guild-consolidate] error: ${err.message}`);
@@ -958,6 +995,7 @@ module.exports = {
   CONSOLIDATION_PERSONA,
   collectConsolidationSources,
   resolveConsolidatedItems,
+  selectConsolidatedItems,
   runConsolidation,
   countItems,
   STABLE_MIN_DISTINCT_MESSAGES,

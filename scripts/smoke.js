@@ -2394,6 +2394,7 @@ const {
   CONSOLIDATION_PERSONA,
   collectConsolidationSources,
   resolveConsolidatedItems,
+  selectConsolidatedItems,
   runConsolidation,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
@@ -3052,6 +3053,86 @@ it("setProfileItems caps each field and history length", () => {
     const p = profileStore.getUserProfile("g1", "u1");
     assert.equal(p.items.style.length, 3);
     assert.equal(p.profileHistory.length, profileStore.PROFILE_HISTORY_MAX);
+  });
+});
+it("a full field keeps evidence-backed items over unsupported legacy ones", () => {
+  const legacy = (t) => ({ text: t, evidence: [], lastSeenAt: 50 });
+  const kept = profileStore.capByPriority(
+    [legacy("舊1"), legacy("舊2"), legacy("舊3"), { text: "新", evidence: [evAt("m1", 900)], lastSeenAt: 900 }],
+    3,
+  );
+  assert.deepEqual(kept.map((i) => i.text), ["舊1", "舊2", "新"], "newest echo-last item survives, order kept");
+  const stableFirst = profileStore.capByPriority(
+    [
+      { text: "單則", evidence: [evAt("a", 10)], lastSeenAt: 999 },
+      { text: "穩定", evidence: [evAt("b", 1), evAt("c", 2), evAt("d", 3)], lastSeenAt: 3 },
+    ],
+    1,
+  );
+  assert.deepEqual(stableFirst.map((i) => i.text), ["穩定"]);
+});
+it("selectConsolidatedItems reports which observations survived into items", () => {
+  const now = 1000 * DAY_MS;
+  const legacy = (id, t) => [id, { kind: "item", field: "style", text: t, evidence: [], firstAt: 5, lastSeenAt: 50, legacy: true }];
+  const sources = new Map([
+    legacy("I1", "舊1"), legacy("I2", "舊2"), legacy("I3", "舊3"),
+    ["O1", { kind: "obs", text: "愛用顏文字", stable: false, evidence: [evAt("m1", 900)] }],
+    ["O2", { kind: "obs", text: "被略過", stable: false, evidence: [evAt("m2", 901)] }],
+  ]);
+  const { items, offered, cited } = selectConsolidatedItems(
+    [
+      { field: "style", text: "舊1", from: ["I1"] },
+      { field: "style", text: "舊2", from: ["I2"] },
+      { field: "style", text: "舊3", from: ["I3"] },
+      { field: "style", text: "愛用顏文字", from: ["O1"] },
+    ],
+    sources,
+    now,
+  );
+  assert.ok(items.style.some((i) => i.text === "愛用顏文字"), "new item not cut by echo order");
+  assert.equal(items.style.length, 3);
+  assert.ok(!("obsTexts" in items.style[0]), "bookkeeping field not persisted");
+  assert.deepEqual(offered, ["愛用顏文字", "被略過"]);
+  assert.deepEqual(cited, ["愛用顏文字"]);
+});
+it("setProfileItems carries uncited observations a bounded number of times", () => {
+  withProfileStore(() => {
+    const ev = (id) => [evAt(id, Date.now())];
+    profileStore.appendObservations("g1", "u1", "A", [
+      { text: "被採用", evidence: ev("m1") },
+      { text: "沒被採用", evidence: ev("m2") },
+      { text: "沒出處", evidence: [] },
+    ]);
+    const offered = ["被採用", "沒被採用", "沒出處"];
+    // Arrives while the consolidation call is in flight: never offered.
+    profileStore.appendObservations("g1", "u1", "A", [{ text: "途中新增", evidence: ev("m3") }]);
+    profileStore.setProfileItems("g1", "u1", { style: [{ text: "x" }] }, { offered, cited: ["被採用"] });
+    let obs = profileStore.getUserProfile("g1", "u1").observations;
+    assert.deepEqual(obs.map((o) => [o.text, o.carried]), [["沒被採用", 1], ["途中新增", undefined]]);
+    assert.deepEqual(profileStore.freshObservations(obs).map((o) => o.text), ["途中新增"]);
+
+    const again = { offered: ["沒被採用", "途中新增"], cited: [] };
+    profileStore.setProfileItems("g1", "u1", { style: [{ text: "x" }] }, again);
+    profileStore.setProfileItems("g1", "u1", { style: [{ text: "x" }] }, again);
+    obs = profileStore.getUserProfile("g1", "u1").observations;
+    assert.deepEqual(obs.map((o) => o.text), ["途中新增"], `dropped after ${profileStore.OBSERVATION_MAX_CARRY} carries`);
+    assert.equal(obs[0].carried, 2);
+    profileStore.appendObservations("g1", "u1", "A", [{ text: "途中新增", evidence: ev("m4") }]);
+    obs = profileStore.getUserProfile("g1", "u1").observations;
+    assert.equal(obs[0].carried, undefined, "re-extracted → fresh again");
+
+    profileStore.setProfileItems("g1", "u1", { style: [{ text: "x" }] });
+    assert.equal(profileStore.getUserProfile("g1", "u1").observations.length, 0, "no consumed info → all consumed");
+  });
+});
+it("setGuildProfileItems carries uncited observations too", () => {
+  withGuildStore(() => {
+    guildStore.appendObservations("g1", "G", [
+      { text: "常聊動漫", evidence: [{ messageId: "m1", at: 1 }] },
+      { text: "接龍", evidence: [{ messageId: "m2", at: 2 }] },
+    ]);
+    guildStore.setGuildProfileItems("g1", { topics: [{ text: "動漫" }] }, { offered: ["常聊動漫", "接龍"], cited: ["常聊動漫"] });
+    assert.deepEqual(guildStore.getGuildProfile("g1").observations.map((o) => [o.text, o.carried]), [["接龍", 1]]);
   });
 });
 const memoryAsyncCases = [];

@@ -25,6 +25,10 @@ const PROFILE_FIELDS = [
 const ITEM_TEXT_MAX_LEN = 40;
 const ITEM_STALE_MS = 120 * 24 * 60 * 60 * 1000;
 const PROFILE_HISTORY_MAX = 5;
+// An observation no consolidation chose to cite is offered again next time,
+// at most this many times — then it's dropped, so a trait the model keeps
+// passing over can't linger as a perpetual re-consolidation trigger.
+const OBSERVATION_MAX_CARRY = 2;
 
 // The bar an observation (or item) must clear before it may be stated as a
 // fact: at least 3 distinct source messages, or 2 distinct messages far
@@ -224,7 +228,29 @@ function sanitizeItemText(text) {
   return clean.slice(0, ITEM_TEXT_MAX_LEN);
 }
 
-// Normalises an items map: known fields only, per-field cap, text dedup.
+function distinctEvidenceCount(evidence) {
+  return new Set((evidence || []).map((e) => e?.messageId).filter(Boolean)).size;
+}
+
+// Trims a field to `max` by priority, not by list position: stable evidence
+// first, then more distinct messages, then most recently confirmed. Models
+// echo the old items before adding new ones, so cutting by position always
+// sacrificed the newest, best-supported items to unsupported legacy ones —
+// a full field could never change. Survivors keep their original order.
+function capByPriority(list, max, isStable = isStableEvidence) {
+  if (list.length <= max) return list;
+  const ranked = list
+    .map((it, idx) => ({ it, idx }))
+    .sort((a, b) =>
+      Number(isStable(b.it.evidence)) - Number(isStable(a.it.evidence))
+      || distinctEvidenceCount(b.it.evidence) - distinctEvidenceCount(a.it.evidence)
+      || (b.it.lastSeenAt ?? 0) - (a.it.lastSeenAt ?? 0)
+      || a.idx - b.idx);
+  const keep = new Set(ranked.slice(0, max).map((r) => r.idx));
+  return list.filter((_, idx) => keep.has(idx));
+}
+
+// Normalises an items map: known fields only, text dedup, per-field cap.
 function sanitizeItems(items) {
   const out = {};
   for (const f of PROFILE_FIELDS) {
@@ -243,9 +269,8 @@ function sanitizeItems(items) {
         lastSeenAt: typeof it.lastSeenAt === "number" ? it.lastSeenAt : now,
         tentative: Boolean(it.tentative),
       });
-      if (kept.length >= f.max) break;
     }
-    out[f.key] = kept;
+    out[f.key] = capByPriority(kept, f.max);
   }
   return out;
 }
@@ -305,6 +330,7 @@ function appendObservations(guildId, userId, displayName, observations) {
         clampConfidence(obs.confidence),
       );
       existing.at = now;
+      delete existing.carried;
       continue;
     }
     entry.observations.push({
@@ -343,11 +369,41 @@ function setConsolidatedProfile(guildId, userId, profileText) {
   save();
 }
 
+// What happens to observations after a consolidation. Without `offered`,
+// all are consumed (the redistill scripts' whole-profile rewrite). With it:
+// cited ones are consumed (their evidence now lives on the items citing
+// them); offered-but-uncited ones are carried to the next pass, up to
+// OBSERVATION_MAX_CARRY times, if they have evidence to ever build on;
+// ones appended while the consolidation call was in flight are untouched.
+function carryObservations(observations, consumed) {
+  if (!consumed?.offered) return [];
+  const offered = new Set(consumed.offered);
+  const cited = new Set(consumed.cited || []);
+  const out = [];
+  for (const o of observations || []) {
+    if (!offered.has(o.text)) {
+      out.push(o);
+      continue;
+    }
+    if (cited.has(o.text)) continue;
+    const carried = (o.carried ?? 0) + 1;
+    if (carried > OBSERVATION_MAX_CARRY || (o.evidence?.length ?? 0) === 0) continue;
+    out.push({ ...o, carried });
+  }
+  return out;
+}
+
+// Observations a consolidation hasn't seen yet — carried ones were already
+// offered once, so they shouldn't by themselves trigger another pass.
+function freshObservations(observations) {
+  return (observations || []).filter((o) => !o.carried);
+}
+
 // Replaces the profile with a structured items map. The previous rendering is
 // pushed onto profileHistory first, so drift between consolidations can be
-// audited (which "plank" got swapped, and when). Observations are consumed:
-// their evidence now lives on the items that cite them.
-function setProfileItems(guildId, userId, items) {
+// audited (which "plank" got swapped, and when). `consumed` = { offered,
+// cited } observation texts; see carryObservations.
+function setProfileItems(guildId, userId, items, consumed = null) {
   if (!guildId || !userId) return;
   const data = load();
   const entry = data[guildId]?.[userId];
@@ -366,7 +422,7 @@ function setProfileItems(guildId, userId, items) {
   entry.items = clean;
   entry.profile = nextText || null;
   entry.profileAt = now;
-  entry.observations = [];
+  entry.observations = carryObservations(entry.observations, consumed);
   entry.updatedAt = now;
   save();
 }
@@ -619,6 +675,7 @@ module.exports = {
   ITEM_TEXT_MAX_LEN,
   ITEM_STALE_MS,
   PROFILE_HISTORY_MAX,
+  OBSERVATION_MAX_CARRY,
   STABLE_MIN_DISTINCT_MESSAGES,
   STABLE_TIME_GAP_MS,
   isStableEvidence,
@@ -626,6 +683,9 @@ module.exports = {
   mergeEvidenceNewest,
   fieldByKeyOrLabel,
   sanitizeItems,
+  capByPriority,
+  carryObservations,
+  freshObservations,
   renderProfileText,
   profileTextOf,
   setProfileItems,
