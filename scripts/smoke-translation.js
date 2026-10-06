@@ -163,7 +163,8 @@ async function main() {
   const sourceBefore = JSON.stringify(payload);
   let calls = 0;
   let reservations = 0;
-  const deps = { fetchTweetMeta: async () => meta, reserveTranslation: () => { reservations++; return { provider: 'openai', model: 'gpt-6-luna' }; }, requestTranslation: async (_, route) => { assert.equal(route.model, 'gpt-6-luna'); calls++; return { text: '更新不會重置你的進度。' }; } };
+  let fetches = 0;
+  const deps = { fetchTweetMeta: async () => { fetches++; return meta; }, reserveTranslation: () => { reservations++; return { provider: 'openai', model: 'gpt-6-luna' }; }, requestTranslation: async (_, route) => { assert.equal(route.model, 'gpt-6-luna'); calls++; return { text: '更新不會重置你的進度。' }; } };
   const client = { user: { id: 'bot' } };
   const { EmbedBuilder } = require('discord.js');
   const linkMessage = { content: 'https://fxtwitter.com/i/status/123456789', embeds: [] };
@@ -171,9 +172,9 @@ async function main() {
     new EmbedBuilder().setURL('https://x.com/a/status/123456789').setDescription(meta.text).setFooter({ text: 'X (Twitter)' }).toJSON(),
     new EmbedBuilder().setURL('https://x.com/a/status/123456789').setImage('https://pbs.twimg.com/media/2.jpg').toJSON(),
   ] };
-  function interaction(user, action = 'translate', { privateMessage = false, message = linkMessage } = {}) {
+  function interaction(user, action = 'translate', { privateMessage = false, message = linkMessage, statusId = '123456789' } = {}) {
     const events = [];
-    return { events, guildId: 'guild-a', user: { id: user }, isButton: () => true, customId: `xtranslate:${action}:${'123456789'}`,
+    return { events, guildId: 'guild-a', user: { id: user }, isButton: () => true, customId: `xtranslate:${action}:${statusId}`,
       message: { ...message, author: { id: 'bot' }, flags: { has: flag => flag === MessageFlags.Ephemeral && privateMessage },
         edit: () => { throw new Error('Edit goes through the interaction'); }, delete: () => { throw new Error('Public message deleted!'); } },
       deferReply: async data => events.push(['deferReply', data]), deferUpdate: async () => events.push(['deferUpdate']), update: async data => events.push(['update', data]),
@@ -224,7 +225,9 @@ async function main() {
   assert.equal(stale.events[0][0], 'reply');
   assert.equal(stale.events[0][1].flags, MessageFlags.Ephemeral);
   // Failure: public preview untouched, error goes to the clicker privately.
-  const failed = interaction('david');
+  // Every toggle above reused one fetch of the post (translate, original, card, back).
+  assert.equal(fetches, 1);
+  const failed = interaction('david', 'translate', { statusId: '987654321' });
   await handleTranslationInteraction(failed, client, { fetchTweetMeta: async () => null });
   assert.deepEqual(failed.events.map(e => e[0]), ['update', 'editReply', 'followUp']);
   assert.equal(failed.events[1][1].components[0].toJSON().components[0].label, '翻譯成繁體中文');

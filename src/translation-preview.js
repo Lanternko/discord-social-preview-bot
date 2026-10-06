@@ -5,7 +5,14 @@ const { requestTranslationWithRetry, PROMPT_VERSION } = require('./ai/translatio
 const { translationAvailable, reserveTranslation } = require('./ai/translation-policy');
 const { trimDescription } = require('./utils');
 
+// Both caches live a day: a big server keeps clicking an old post long after
+// the first translation, and every repeat within the day should cost nothing.
+// Entries are small (≤12k chars of text), so 500 each stays a few MB; a hit
+// moves to the back, so the cap evicts the least recently clicked post.
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_MAX = 500;
 const cache = new Map();
+const metaCache = new Map();
 const cooldowns = new Map();
 let active = 0;
 const PREFIX = 'xtranslate:';
@@ -128,6 +135,33 @@ function renderInPlace(message, meta, text, translated) {
   return { content, components, allowedMentions: { parse: [] } };
 }
 
+function recall(map, key, now) {
+  const hit = map.get(key);
+  if (!hit) return null;
+  map.delete(key);
+  if (hit.expires <= now) return null;
+  map.set(key, hit);
+  return hit;
+}
+
+function remember(map, key, entry, now) {
+  map.delete(key);
+  if (map.size >= CACHE_MAX) map.delete(map.keys().next().value);
+  map.set(key, { ...entry, expires: now + CACHE_TTL_MS });
+}
+
+// The message alone can't give the original back: a translated card shows the
+// translation, a card's own text is cut at 1024 chars, and a stub has none.
+// So the post is fetched by id once and reused for every later toggle.
+async function originalPost(statusId, deps) {
+  const now = Date.now();
+  const hit = recall(metaCache, statusId, now);
+  if (hit) return hit.meta;
+  const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${statusId}`);
+  if (meta?.text) remember(metaCache, statusId, { meta }, now);
+  return meta;
+}
+
 async function translateCached(text, deps, userId, guildId) {
   const policy = [process.env.TRANSLATION_PROVIDER || 'auto', process.env.TRANSLATION_MODEL || '', process.env.TRANSLATION_DEEPSEEK_OFFPEAK_ENABLED || 'false'].join('|');
   // Keep caches within a guild: an exhausted guild cannot borrow a premium
@@ -135,17 +169,16 @@ async function translateCached(text, deps, userId, guildId) {
   // its quota or the peak window changed after the original API call.
   const key = createHash('sha256').update(`${guildId}|${policy}|${PROMPT_VERSION}|${text}`).digest('hex');
   const now = Date.now();
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.has(key)) return cache.get(key).promise;
+  const hit = recall(cache, key, now);
+  if (hit) return hit.promise;
   if (now - (cooldowns.get(userId) || 0) < 5000) throw new Error('Translation cooldown');
   if (active >= 4) throw new Error('Translation busy');
   if (cooldowns.size >= 1000) cooldowns.delete(cooldowns.keys().next().value);
   const route = (deps.reserveTranslation || reserveTranslation)(guildId);
   cooldowns.set(userId, now);
-  if (cache.size >= 200) cache.delete(cache.keys().next().value);
   active++;
   const promise = Promise.resolve().then(() => (deps.requestTranslation || requestTranslationWithRetry)(text, route));
-  cache.set(key, { promise, expires: now + 10 * 60 * 1000 });
+  remember(cache, key, { promise }, now);
   try { return await promise; }
   catch (error) { cache.delete(key); throw error; }
   finally { active--; }
@@ -167,7 +200,7 @@ async function handleTranslationInteraction(interaction, client, deps = {}) {
   if (translated) await interaction.update({ components: buttons(match[2], 'busy') });
   else await interaction.deferUpdate();
   try {
-    const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${match[2]}`);
+    const meta = await originalPost(match[2], deps);
     if (!meta?.text || meta.text.length > 12000) throw new Error('Post unavailable');
     const result = translated ? await translateCached(meta.text, deps, interaction.user.id, interaction.guildId) : { text: meta.text };
     await interaction.editReply(renderInPlace(interaction.message, meta, result.text, translated));
