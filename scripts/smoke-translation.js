@@ -173,7 +173,7 @@ async function main() {
     return { events, guildId: 'guild-a', user: { id: user }, isButton: () => true, customId: `xtranslate:${action}:${'123456789'}`,
       message: { ...message, author: { id: 'bot' }, flags: { has: flag => flag === MessageFlags.Ephemeral && privateMessage },
         edit: () => { throw new Error('Edit goes through the interaction'); }, delete: () => { throw new Error('Public message deleted!'); } },
-      deferReply: async data => events.push(['deferReply', data]), deferUpdate: async () => events.push(['deferUpdate']),
+      deferReply: async data => events.push(['deferReply', data]), deferUpdate: async () => events.push(['deferUpdate']), update: async data => events.push(['update', data]),
       editReply: async data => events.push(['editReply', data]), reply: async data => events.push(['reply', data]),
       followUp: async data => events.push(['followUp', data]),
     };
@@ -182,7 +182,10 @@ async function main() {
   for (const user of ['alice', 'bob']) {
     const i = interaction(user);
     assert.equal(await handleTranslationInteraction(i, client, deps), true);
-    assert.deepEqual(i.events.map(e => e[0]), ['deferUpdate', 'editReply']);
+    assert.deepEqual(i.events.map(e => e[0]), ['update', 'editReply']);
+    const busy = i.events[0][1].components[0].toJSON().components[0];
+    assert.equal(busy.label, '⏳ 翻譯中…');
+    assert.equal(busy.disabled, true);
     assert.equal(i.events[1][1].content, 'https://fxtwitter.com/i/status/123456789\n-# 繁體中文翻譯\n> 更新不會重置你的進度。');
     assert.equal(i.events[1][1].components[0].toJSON().components[0].label, '查看原文');
     assert.equal(i.events[1][1].embeds, undefined); // the unfurl is left alone
@@ -193,6 +196,7 @@ async function main() {
   const translatedLink = { content: 'https://fxtwitter.com/i/status/123456789\n-# 繁體中文翻譯\n> 更新不會重置你的進度。', embeds: [] };
   const original = interaction('alice', 'original', { message: translatedLink });
   await handleTranslationInteraction(original, client, deps);
+  assert.equal(original.events[0][0], 'deferUpdate'); // no model call, no busy state
   assert.equal(original.events[1][1].content, 'https://fxtwitter.com/i/status/123456789');
   assert.equal(original.events[1][1].components[0].toJSON().components[0].label, '翻譯成繁體中文');
   assert.equal(calls, 1);
@@ -219,8 +223,10 @@ async function main() {
   // Failure: public preview untouched, error goes to the clicker privately.
   const failed = interaction('david');
   await handleTranslationInteraction(failed, client, { fetchTweetMeta: async () => null });
-  assert.deepEqual(failed.events.map(e => e[0]), ['deferUpdate', 'followUp']);
-  assert.equal(failed.events[1][1].flags, MessageFlags.Ephemeral);
+  assert.deepEqual(failed.events.map(e => e[0]), ['update', 'editReply', 'followUp']);
+  assert.equal(failed.events[1][1].components[0].toJSON().components[0].label, '翻譯成繁體中文');
+  assert.equal(failed.events[1][1].components[0].toJSON().components[0].disabled, false);
+  assert.equal(failed.events[2][1].flags, MessageFlags.Ephemeral);
   const otherGuild = interaction('erin');
   otherGuild.guildId = 'guild-b';
   await handleTranslationInteraction(otherGuild, client, deps);

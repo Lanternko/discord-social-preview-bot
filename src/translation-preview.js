@@ -32,11 +32,16 @@ function enabled() {
   return translationAvailable();
 }
 
+const LABELS = { translate: '翻譯成繁體中文', original: '查看原文', busy: '⏳ 翻譯中…' };
+
+// `busy` is the locked placeholder shown while the model runs; disabled, so
+// its id never reaches the handler.
 function buttons(id, action = 'translate') {
   return [new ActionRowBuilder().addComponents(new ButtonBuilder()
     .setCustomId(`${PREFIX}${action}:${id}`)
     .setStyle(ButtonStyle.Secondary)
-    .setLabel(action === 'original' ? '查看原文' : '翻譯成繁體中文'))];
+    .setLabel(LABELS[action])
+    .setDisabled(action === 'busy'))];
 }
 
 // The native-embed check stays on: when Discord's own card shows up, the bot
@@ -156,15 +161,20 @@ async function handleTranslationInteraction(interaction, client, deps = {}) {
     await interaction.reply({ content: '這個翻譯按鈕目前無法使用。', flags: MessageFlags.Ephemeral });
     return true;
   }
-  await interaction.deferUpdate();
+  const translated = match[1] === 'translate';
+  // A translation takes seconds and deferUpdate shows nothing, so the button
+  // itself turns into a locked 翻譯中… right away (also stops double clicks).
+  // 查看原文 needs no model call and stays a plain ack.
+  if (translated) await interaction.update({ components: buttons(match[2], 'busy') });
+  else await interaction.deferUpdate();
   try {
     const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${match[2]}`);
     if (!meta?.text || meta.text.length > 12000) throw new Error('Post unavailable');
-    const translated = match[1] === 'translate';
     const result = translated ? await translateCached(meta.text, deps, interaction.user.id, interaction.guildId) : { text: meta.text };
     await interaction.editReply(renderInPlace(interaction.message, meta, result.text, translated));
   } catch {
-    // Only the failure is private: the public preview stays as it was.
+    // Only the failure is private: the public preview goes back to how it was.
+    if (translated) await interaction.editReply({ components: buttons(match[2]) }).catch(() => {});
     await interaction.followUp({ content: '目前無法翻譯，請稍後再試或開啟原文。', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
   }
   return true;
