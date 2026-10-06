@@ -72,7 +72,7 @@ owner 付錢的回覆（免費 guild＋白名單）**每則回覆計一次**，�
 
 DeepSeek 2026-08-21 開的那個實驗性 endpoint `deepseek-v4-flash-vision-exp` 已經下架（2026-09-21 查 `/models` 只剩兩個 id），現在吃圖的是 **`deepseek-flash`**（V4.1-Flash；`deepseek-v4-pro` 純文字不吃圖）。實測 `thinking:{type:"disabled"}` 在 flash 上照樣有效，15 個 token 就正確描述完一張圖。（[docs](https://api-docs.deepseek.com/guides/vision/)）實作在 [src/ai/vision.js](../src/ai/vision.js)，鏈的組裝在 `buildVisionEntry`（[chain.js](../src/ai/chain.js)）。
 
-**vision 是插在鏈頭，不是取代鏈。** 只有這個 endpoint 看得到圖，底下每一層都是瞎的，所以：
+**vision 是插在鏈頭，不是取代鏈。** 鏈頭依序是 DeepSeek vision → **Luna vision**（`openai:<OPENAI_MODEL>:vision`，2026-10-07 加；之前 DeepSeek vision 一失敗——guild 金鑰 401、25 s 逾時——圖就只剩瞎的層能接，bot.log 有 33 則附圖訊息是 Luna 盲回的）。這兩層之後每一層都是瞎的，所以：
 
 - 圖片以 OpenAI 相容的 content block（`{type:"image_url", image_url:{url}}`）掛在**最後一個 user turn** 上，而且只用 `overrides.images` 傳進 `callDeepSeek`——`turns` 本身永遠是純字串，否則同一個陣列丟給下游純文字 endpoint 會直接 400。
 - **我們自己下載圖，送 base64 data URL，不把連結丟給 DeepSeek。** DeepSeek 是支援外部 URL，但它得自己去抓：實測（2026-09-10）連一個普通的公開圖片 URL 都回 `Failed to download image`，而 Discord CDN 連結還多了簽章與過期。連結路徑會用我們看不到也重試不了的方式壞掉。下載失敗 → 那張不送 → 全部失敗就等於沒有圖，退回瞎的文字鏈。

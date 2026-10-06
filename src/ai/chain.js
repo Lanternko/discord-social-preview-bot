@@ -36,6 +36,7 @@ const {
   DEEPSEEK_VISION_MODEL,
   VISION_ENABLED,
   VISION_TIMEOUT_MS,
+  OPENAI_VISION_ENABLED,
   RECAP_KIMI_TIMEOUT_MS,
   RECAP_DEEPSEEK_TIMEOUT_MS,
   RECAP_DEEPSEEK_REASONING_HEADROOM,
@@ -530,9 +531,9 @@ function buildTextGuildChain(
   };
 }
 
-// Vision rides in FRONT of the text chain, not instead of it. Only DeepSeek's
-// experimental multimodal endpoint can see the picture; everything below stays
-// blind and answers from the「附了 N 張圖片」note, so a dead/renamed vision model
+// Vision rides in FRONT of the text chain, not instead of it. DeepSeek's
+// multimodal entry looks first, Luna's second (buildLunaVisionEntry); everything
+// below stays blind and answers from the「附了 N 張圖片」note, so a dead/renamed vision model
 // costs 西寶 her eyes for that reply, never her voice.
 //
 // It stays at the head even inside DeepSeek's peak window (where owner-key text
@@ -578,6 +579,26 @@ function buildVisionEntry(guildId, images) {
   };
 }
 
+// Second vision entry, right behind DeepSeek's. Before this, a DeepSeek vision
+// miss dropped the picture on the floor: 33 image replies in bot.log were
+// answered by Luna blind (dead guild key 401s, 25 s vision timeouts). Always
+// the owner's key — Luna is already the owner-paid fallback for every guild.
+function buildLunaVisionEntry(images) {
+  if (!VISION_ENABLED || !OPENAI_VISION_ENABLED) return null;
+  if (!Array.isArray(images) || images.length === 0) return null;
+  const only = AI_PROVIDER_FORCE;
+  if (only && only !== "openai" && only !== "luna") return null;
+  if (!OPENAI_API_KEY) return null;
+
+  const label = `openai:${OPENAI_MODEL}:vision`;
+  const options = { images, label, timeoutMs: VISION_TIMEOUT_MS };
+  return {
+    label,
+    options,
+    call: (turns, persona, maxTokens) => callOpenAI(turns, persona, maxTokens, options),
+  };
+}
+
 function buildGuildChain(
   guildId,
   tierConfig,
@@ -590,9 +611,10 @@ function buildGuildChain(
   // A metered-out reply makes no call at all, pictures included.
   if (result.rateLimited) return result;
 
-  const vision = buildVisionEntry(guildId, images);
-  if (!vision) return result;
-  return { ...result, chain: [vision, ...result.chain], vision: true };
+  const vision = [buildVisionEntry(guildId, images), buildLunaVisionEntry(images)]
+    .filter(Boolean);
+  if (vision.length === 0) return result;
+  return { ...result, chain: [...vision, ...result.chain], vision: true };
 }
 
 // The circuit is keyed per credential, not per label: every guild that brings
