@@ -142,10 +142,13 @@ async function main() {
   const ownTranslated = renderInPlace({ content: '', embeds: [ownEmbed] }, meta, '更新不會重置你的進度。', true);
   assert.equal(ownTranslated.content, undefined);
   assert.equal(ownTranslated.embeds[0].toJSON().description, '更新不會重置你的進度。');
+  // No permission: the native-card wait still runs on the fixer payload, but
+  // the self card is kept for when the native card doesn't show.
   const [kept] = preferSelfCards([withCard], false);
-  assert.equal(kept.selfCard, undefined);
+  assert.equal(kept, withCard);
   assert.equal(kept.content, payload.content);
   assert.deepEqual(kept.translationStub, { statusId: '123456789' });
+  assert.equal(preferSelfCards([kept], true)[0], withCard.selfCard);
   assert.equal(preferSelfCards([payload], true)[0], payload);
   const stub = buildTranslationStub({ statusId: '123456789' });
   assert.equal(stub.content, '-# 🌐');

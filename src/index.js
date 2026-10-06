@@ -240,7 +240,7 @@ async function onMessageCreate(message) {
       await sendTranslationStubs(message, payloads);
       return;
     }
-    const sent = await sendPreviews(message, payloads);
+    const sent = await sendPreviews(message, preferSelfCards(payloads, true));
     if (!sent) return;
 
     const hasUrlOnly = sent.some((s) => s.isUrlOnly);
