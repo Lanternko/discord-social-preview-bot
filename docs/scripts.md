@@ -77,7 +77,7 @@ Covered:
 ## What none of these cover
 
 - Real network calls (DeepSeek / Groq / Gemini, fixer hosts, Discord gateway).
-- Discord permission edge cases — exercised manually via the `/debug-perms` command.
+- Discord permission edge cases — exercised manually in a test channel.
 - Playwright probe behaviour against real Threads / Bahamut / PTT pages — exercised manually before merging probe changes.
 
 ## scripts/app-emoji.js — 素材庫管理（not a test）

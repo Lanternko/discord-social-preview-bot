@@ -48,18 +48,25 @@
 
 ## 指令
 
-| 指令 | 用途 | 權限 |
-|---|---|---|
-| `/help` | 功能與設定說明 | 所有人 |
-| `/ai-tier` | 查看 / 切換 AI 方案 | 切換需「管理伺服器」 |
-| `/ai-key set\|status\|remove` | 管理本伺服器的 DeepSeek 金鑰 | 管理伺服器 |
-| `/ai-chat` | 開關「回覆／@everyone 叫出西寶」 | 切換需「管理伺服器」 |
-| `/language` | 西寶的回覆語言 | 切換需「管理伺服器」 |
-| `/memory show\|guild\|forget-me\|forget-user` | 查看 / 刪除西寶的記憶 | `forget-user` 需管理員 |
-| `/schedule add\|list\|remove` | 每日排程（床邊故事 / 早安問候 / 今日回顧） | 管理伺服器 |
-| `/voice` | 讓西寶用語音回答 | 所有人 |
-| `/debug-perms` | 檢查 bot 在此頻道的權限 | 所有人 |
-| `/servers` | bot 加入了幾個伺服器 | 所有人 |
+**大家都能用**
+
+| 指令 | 用途 |
+|---|---|
+| `/help` | 功能與設定說明 |
+| `/voice` | 讓西寶用語音回答 |
+| `/memory show\|guild\|forget-me` | 查看 / 刪除西寶對你、對這個群的記憶 |
+| `/servers` | bot 加入了幾個伺服器 |
+
+**伺服器設定**（任何人都能查看，更改需「管理伺服器」）
+
+| 指令 | 用途 |
+|---|---|
+| `/ai-tier` | AI 方案 |
+| `/ai-key set\|status\|remove` | 本伺服器的 DeepSeek 金鑰 |
+| `/ai-chat` | 開關「回覆／@everyone 叫出西寶」 |
+| `/language` | 西寶的回覆語言 |
+| `/schedule add\|list\|remove` | 每日排程（床邊故事 / 早安問候 / 今日回顧） |
+| `/memory forget-user` | 刪除指定使用者的記憶（需管理員） |
 
 ### AI 方案
 
