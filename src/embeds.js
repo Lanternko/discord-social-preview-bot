@@ -144,6 +144,15 @@ function buildTwitterPostEmbed(url, metadata, footerText = "X (Twitter)") {
   return embed;
 }
 
+// A text-only or single-image X post as the bot's own card. Used instead of
+// Discord's native card only when the bot can suppress that native card, so
+// the translate button edits the preview itself rather than a side message.
+function buildTwitterCardEmbed(url, metadata) {
+  const embed = buildTwitterPostEmbed(url, metadata);
+  if (metadata.photos?.[0]) embed.setImage(metadata.photos[0]);
+  return embed;
+}
+
 // The card for a sensitive X post: no link unfurl, no engagement counts — the
 // images ride below as spoilered attachments, so nothing explicit renders
 // until someone chooses to look.
@@ -224,6 +233,7 @@ module.exports = {
   buildPixivSpoilerEmbed,
   buildPixivCarouselEmbeds,
   buildTwitterCarouselEmbeds,
+  buildTwitterCardEmbed,
   buildThreadsCompactEmbed,
   buildThreadsMediaEmbed,
   buildThreadsCarouselEmbeds,

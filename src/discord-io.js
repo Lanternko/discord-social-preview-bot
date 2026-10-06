@@ -113,12 +113,21 @@ function inferMissingPermissionsFromError(error) {
   return [...new Set(missing)];
 }
 
+function canSuppressEmbeds(message) {
+  if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild?.()) return false;
+  const me = message.guild?.members.me;
+  if (!me) return false;
+  return Boolean(
+    message.channel.permissionsFor(me)?.has(
+      PermissionsBitField.Flags.ManageMessages,
+    ),
+  );
+}
+
 async function suppressOriginalEmbeds(message) {
   if (!SUPPRESS_ORIGINAL_EMBEDS || !message.inGuild()) return;
-  const me = message.guild.members.me;
-  if (!me) return;
-  const permissions = message.channel.permissionsFor(me);
-  if (!permissions?.has(PermissionsBitField.Flags.ManageMessages)) {
+  if (!message.guild.members.me) return;
+  if (!canSuppressEmbeds(message)) {
     console.warn(
       `[permissions] missing=ManageMessages ${describeMessageLocation(message)} while suppressing embeds`,
     );
@@ -810,6 +819,7 @@ module.exports = {
   logMissingChannelPermissions,
   inferMissingPermissionsFromError,
   suppressOriginalEmbeds,
+  canSuppressEmbeds,
   isUsefulThreadsViewerEmbed,
   isUsefulInstagramViewerEmbed,
   isUsefulTwitterViewerEmbed,
