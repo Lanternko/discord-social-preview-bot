@@ -30,6 +30,20 @@ const PROFILE_HISTORY_MAX = 5;
 // passing over can't linger as a perpetual re-consolidation trigger.
 const OBSERVATION_MAX_CARRY = 2;
 
+// Two-tier memory: the items above are the OUTLINE (always in the prompt,
+// 12 slots). Every observation is also kept in a per-person DETAIL pool —
+// the long tail that doesn't fit the outline (a game they play, a trip they
+// took). Details only enter the prompt when relevant to the current message
+// or when someone asks what 西寶 remembers (see ai/memory-details.js), and
+// consolidation distills the outline from them. No LLM call maintains the
+// pool: it's upserted as a side effect of appendObservations.
+const DETAIL_MAX = 40;
+const DETAIL_STALE_MS = 180 * 24 * 60 * 60 * 1000;
+// Bigram-Jaccard at or above this = the same trait re-worded by a later
+// extraction; its evidence is pooled into the existing detail instead of
+// taking a second slot.
+const DETAIL_MERGE_SIMILARITY = 0.6;
+
 // The bar an observation (or item) must clear before it may be stated as a
 // fact: at least 3 distinct source messages, or 2 distinct messages far
 // enough apart in time that it wasn't one burst of the same moment.
@@ -250,6 +264,87 @@ function capByPriority(list, max, isStable = isStableEvidence) {
   return list.filter((_, idx) => keep.has(idx));
 }
 
+// Text → set of CJK bigrams + lowercase ascii words. Shared by the detail
+// near-dup merge here and relevance retrieval in ai/memory-details.js.
+function textTokens(text) {
+  const out = new Set();
+  const t = String(text || "").normalize("NFC").toLowerCase();
+  for (const w of t.match(/[a-z0-9][a-z0-9_.+-]*/g) || []) {
+    if (w.length >= 2) out.add(w);
+  }
+  for (const run of t.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]+/g) || []) {
+    if (run.length === 1) continue;
+    for (let i = 0; i < run.length - 1; i++) out.add(run.slice(i, i + 2));
+  }
+  return out;
+}
+
+function tokenSimilarity(a, b) {
+  const ta = textTokens(a);
+  const tb = textTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let inter = 0;
+  for (const x of ta) if (tb.has(x)) inter++;
+  return inter / (ta.size + tb.size - inter);
+}
+
+function isDetailStale(d, now = Date.now()) {
+  return now - (typeof d?.lastSeenAt === "number" ? d.lastSeenAt : 0) >= DETAIL_STALE_MS;
+}
+
+function sanitizeDetail(d, now = Date.now()) {
+  const text = sanitizeObservationText(d?.text);
+  if (!text) return null;
+  const evidence = sanitizeEvidence(d.evidence);
+  const latest = Math.max(0, ...evidence.map((e) => e.at ?? 0));
+  return {
+    text,
+    evidence,
+    firstAt: typeof d.firstAt === "number" ? d.firstAt : now,
+    lastSeenAt: typeof d.lastSeenAt === "number" ? d.lastSeenAt : (latest || now),
+    confidence: clampConfidence(d.confidence),
+  };
+}
+
+// Folds observations into a detail list: near-duplicates pool evidence,
+// new traits get their own row, stale rows drop, and the pool is capped by
+// the same priority as outline items (evidence first, then recency).
+function upsertDetails(details, observations, now = Date.now()) {
+  const list = (details || []).map((d) => sanitizeDetail(d, now)).filter(Boolean);
+  for (const obs of observations || []) {
+    const incoming = sanitizeDetail(obs, now);
+    if (!incoming) continue;
+    const latest = Math.max(0, ...incoming.evidence.map((e) => e.at ?? 0));
+    const seenAt = latest || (typeof obs.at === "number" ? obs.at : now);
+    const match = list.find((d) => d.text === incoming.text
+      || tokenSimilarity(d.text, incoming.text) >= DETAIL_MERGE_SIMILARITY);
+    if (match) {
+      match.evidence = mergeEvidenceNewest(match.evidence, incoming.evidence);
+      match.lastSeenAt = Math.max(match.lastSeenAt, seenAt);
+      match.confidence = Math.max(match.confidence, incoming.confidence);
+      continue;
+    }
+    list.push({ ...incoming, firstAt: seenAt, lastSeenAt: seenAt });
+  }
+  return capByPriority(list.filter((d) => !isDetailStale(d, now)), DETAIL_MAX);
+}
+
+// The detail pool, seeded on first read for profiles that predate it:
+// evidence-backed outline items + pending observations. Read-only — the seed
+// is persisted by the next appendObservations.
+function detailsOf(entry, now = Date.now()) {
+  if (!entry) return [];
+  if (Array.isArray(entry.details)) return entry.details.filter((d) => !isDetailStale(d, now));
+  const seed = [];
+  for (const f of PROFILE_FIELDS) {
+    for (const it of entry.items?.[f.key] || []) {
+      if ((it?.evidence?.length ?? 0) === 0) continue;
+      seed.push({ text: it.text, evidence: it.evidence, at: it.lastSeenAt, confidence: it.tentative ? 0.5 : 0.7 });
+    }
+  }
+  return upsertDetails([], [...seed, ...(entry.observations || [])], now);
+}
+
 // Normalises an items map: known fields only, text dedup, per-field cap.
 function sanitizeItems(items) {
   const out = {};
@@ -315,6 +410,9 @@ function appendObservations(guildId, userId, displayName, observations) {
   if (displayName) entry.name = sanitizeName(displayName);
 
   const now = Date.now();
+  // Read (and, for an old profile, seed) the pool before this batch lands in
+  // entry.observations, so the batch isn't folded in twice.
+  const baseDetails = detailsOf(entry, now);
   for (const obs of observations) {
     const text = sanitizeObservationText(obs.text);
     if (!text) continue;
@@ -340,6 +438,7 @@ function appendObservations(guildId, userId, displayName, observations) {
       evidence,
     });
   }
+  entry.details = upsertDetails(baseDetails, observations, now);
 
   entry.updatedAt = now;
   data[guildId][userId] = entry;
@@ -676,6 +775,13 @@ module.exports = {
   ITEM_STALE_MS,
   PROFILE_HISTORY_MAX,
   OBSERVATION_MAX_CARRY,
+  DETAIL_MAX,
+  DETAIL_STALE_MS,
+  textTokens,
+  tokenSimilarity,
+  upsertDetails,
+  detailsOf,
+  isDetailStale,
   STABLE_MIN_DISTINCT_MESSAGES,
   STABLE_TIME_GAP_MS,
   isStableEvidence,

@@ -84,6 +84,12 @@ const {
   buildGroupCompareBlock,
 } = require("./group-compare");
 const {
+  detectMemoryRecallIntent,
+  pickDetails,
+  buildMemoryDetailsBlock,
+  topDetailsText,
+} = require("./memory-details");
+const {
   getGuildProfile,
   buildGuildProfileBlock,
   appendPendingContext,
@@ -815,6 +821,8 @@ async function generateAIReply(message, userText, options = {}) {
   let imitationActive = false;
   let compareBlock = "";
   let compareCtxSize = 0;
+  let detailBlock = "";
+  let detailCtxSize = 0;
   if (includeContext && message.channel) {
     imitationActive = detectImitationIntent(userText);
     const knownProfiles = AI_LONG_TERM_MEMORY_ENABLED
@@ -859,11 +867,41 @@ async function generateAIReply(message, userText, options = {}) {
       const people = selectCompareCandidates({
         roster,
         groupEntries: groupContextLines,
-        profileTextFor: (userId) => profileTextOf(getUserProfile(message.guildId, userId)),
+        profileTextFor: (userId) => {
+          const entry = getUserProfile(message.guildId, userId);
+          const outline = profileTextOf(entry);
+          const extra = topDetailsText(entry, 2, outline);
+          return extra ? `${outline}\n細節：${extra}` : outline;
+        },
         excludeIds: targets.map((t) => t.userId),
       });
       compareBlock = buildGroupCompareBlock(people);
       if (compareBlock) compareCtxSize = people.length;
+    }
+
+    // Second memory tier: details from the speaker's (and any target's)
+    // detail pool that this message touches — or all of them when the
+    // message asks what 西寶 remembers. See memory-details.js.
+    if (AI_LONG_TERM_MEMORY_ENABLED && !imitationActive) {
+      const recall = detectMemoryRecallIntent(userText);
+      const authorId = message.author?.id;
+      const people = [];
+      const seen = new Set();
+      const add = (userId, name, self) => {
+        if (!userId || seen.has(userId)) return;
+        seen.add(userId);
+        const entry = getUserProfile(message.guildId, userId);
+        if (!entry) return;
+        // On a recall question about someone else, the speaker's own pool
+        // stays relevance-only.
+        const full = recall && (!self || targets.every((t) => t.userId === authorId));
+        const details = pickDetails(entry, userText, { recall: full, outlineText: profileTextOf(entry) });
+        people.push({ name: name || entry.name, details, recall: full, self });
+      };
+      for (const t of targets) add(t.userId, t.displayName, t.userId === authorId);
+      add(authorId, message.member?.displayName || message.author?.username, true);
+      detailBlock = buildMemoryDetailsBlock(people);
+      if (detailBlock) detailCtxSize = people.reduce((n, p) => n + p.details.length, 0);
     }
   }
 
@@ -906,6 +944,9 @@ async function generateAIReply(message, userText, options = {}) {
   if (targetBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: targetBlock });
   }
+  if (detailBlock) {
+    turns.splice(turns.length - 1, 0, { role: "user", content: detailBlock });
+  }
   if (replyBlock) {
     turns.splice(turns.length - 1, 0, { role: "user", content: replyBlock });
   }
@@ -943,7 +984,7 @@ async function generateAIReply(message, userText, options = {}) {
     }
     const isPremium = isGuildKeyUsable(message.guildId) || DEEPSEEK_PREMIUM_GUILD_IDS.includes(message.guildId);
     console.log(
-      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} compare_ctx=${compareCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
+      `[ai] used ${result.provider.label} tier=${tierConfig.tier} premium=${isPremium} len=${result.text.length} history_before=${history.length} group_ctx=${groupContextSize} target_ctx=${targetCtxSize} compare_ctx=${compareCtxSize} details=${detailCtxSize} reply_ctx=${replyBlock ? 1 : 0} images=${images.length} roster=${roster.length} profile=${profileBlock ? 1 : 0} extra_ctx=${extraUserContext ? extraUserContext.length : 0}`,
     );
 
     if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {

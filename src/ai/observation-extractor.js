@@ -14,6 +14,8 @@ const {
   sanitizeItems,
   capByPriority,
   freshObservations,
+  detailsOf,
+  tokenSimilarity,
   PROFILE_FIELDS,
   ITEM_TEXT_MAX_LEN,
   STABLE_MIN_DISTINCT_MESSAGES,
@@ -260,6 +262,7 @@ ${FIELD_LIST_TEXT}
 - 新觀察和既有條目矛盾時，**以新觀察為準**：刪掉或改寫舊條目
 - 既有條目裡帶評價、且沒有觀察支持的（例：強詞奪理、靈魂人物），改寫成具體行為或刪掉
 - 【新觀察 O*】可以新增條目，也可以補強既有條目（from 同時填 I 和 O）
+- 【細節 D*】是這個人長期累積的細節庫（大綱放不下的都在這裡，不會因為沒進大綱就消失）：不用硬塞；但某個細節佐證多、最近還在出現、比現有條目更能代表這個人時，可以拿它新增條目、補強或取代既有條目
 - 「證據不足」的觀察也可以寫，程式會自動標成「或許」——**不要自己在 text 裡寫「或許」「有時」**
 - 欄位裝不下時，留下佐證最多、最近還在出現的；「舊版摘要轉入，無個別佐證」的舊條目最先讓位給有佐證的新觀察
 
@@ -342,6 +345,18 @@ function legacySourceItems(entry) {
   return out;
 }
 
+// The outline is distilled from the detail pool too: the best-supported
+// details not already on the table as a new observation. Capped so a big pool
+// can't balloon the consolidation prompt.
+const DETAIL_CONSOLIDATION_OFFER = 12;
+
+function detailCandidates(entry, now = Date.now()) {
+  const obsTexts = (entry?.observations || []).map((o) => o.text);
+  const fresh = detailsOf(entry, now).filter((d) =>
+    !obsTexts.some((t) => t === d.text || tokenSimilarity(t, d.text) >= 0.6));
+  return capByPriority(fresh, DETAIL_CONSOLIDATION_OFFER);
+}
+
 // Numbered sources the consolidation model may cite: live items as I1…, new
 // observations as O1…. Stale items are left out entirely — not showing them is
 // how they get dropped.
@@ -362,6 +377,9 @@ function collectConsolidationSources(entry, now = Date.now()) {
   (entry?.observations || []).forEach((o, i) => {
     byId.set(`O${i + 1}`, { kind: "obs", ...o, stable: isStableObservation(o) });
   });
+  detailCandidates(entry, now).forEach((d, i) => {
+    byId.set(`D${i + 1}`, { kind: "detail", ...d, stable: isStableEvidence(d.evidence) });
+  });
   return byId;
 }
 
@@ -373,8 +391,11 @@ function buildConsolidationTurns(entry, now = Date.now()) {
   const itemLines = [];
   const stableLines = [];
   const weakLines = [];
+  const detailLines = [];
   for (const [id, src] of sources) {
-    if (src.kind === "item") {
+    if (src.kind === "detail") {
+      detailLines.push(`[${id}] ${src.text}（${describeObservationEvidence(src)}，最後出現 ${formatDay(src.lastSeenAt)}）`);
+    } else if (src.kind === "item") {
       const support = src.legacy
         ? `舊版摘要轉入，無個別佐證${src.tentative ? "；原本就只是推測" : ""}`
         : `${new Set((src.evidence || []).map((e) => e?.messageId).filter(Boolean)).size} 則佐證，最後確認 ${formatDay(src.lastSeenAt)}`;
@@ -394,6 +415,9 @@ function buildConsolidationTurns(entry, now = Date.now()) {
   }
   if (weakLines.length > 0) {
     parts.push(`## 新觀察：證據不足（寫進檔案會被標成「或許」）\n${weakLines.join("\n")}`);
+  }
+  if (detailLines.length > 0) {
+    parts.push(`## 細節庫 D*（長期累積，挑真正有代表性的進大綱）\n${detailLines.join("\n")}`);
   }
   return [
     {
@@ -464,23 +488,26 @@ function selectConsolidatedItems(parsed, sources, now = Date.now(), schema = USE
 
     const evidence = mergeEvidenceNewest(...cited.map((c) => c.evidence || []));
     const obsCited = cited.filter((c) => c.kind === "obs");
+    // Observations and details both carry real message evidence, so either
+    // can re-confirm an item; re-citing an old item cannot.
+    const evCited = cited.filter((c) => c.kind !== "item");
     const itemCited = cited.filter((c) => c.kind === "item");
 
     let lastSeenAt;
-    if (obsCited.length > 0) {
+    if (evCited.length > 0) {
       lastSeenAt = Math.max(
-        ...obsCited.map((o) => latestEvidenceAt(o.evidence) ?? (typeof o.at === "number" ? o.at : now)),
+        ...evCited.map((o) => latestEvidenceAt(o.evidence) ?? o.lastSeenAt ?? (typeof o.at === "number" ? o.at : now)),
       );
     } else {
       lastSeenAt = Math.max(...itemCited.map((c) => c.lastSeenAt ?? 0));
     }
     const firstCandidates = [
       ...itemCited.map((c) => c.firstAt),
-      ...obsCited.map((o) => earliestEvidenceAt(o.evidence) ?? o.at),
+      ...evCited.map((o) => earliestEvidenceAt(o.evidence) ?? o.firstAt ?? o.at),
     ].filter((v) => typeof v === "number");
     const firstAt = firstCandidates.length > 0 ? Math.min(...firstCandidates) : now;
 
-    const sourceTentative = (c) => (c.kind === "obs" ? !c.stable : Boolean(c.tentative));
+    const sourceTentative = (c) => (c.kind === "item" ? Boolean(c.tentative) : !c.stable);
     const tentative = !schema.isStable(evidence) && cited.every(sourceTentative);
 
     out[field.key].push({

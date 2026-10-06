@@ -34,6 +34,7 @@ CommonJS modules under `src/`. Entry point is [src/index.js](../src/index.js); e
 - [group-context.js](../src/ai/group-context.js) — fetches recent non-bot messages and formats them into a `## 最近群組對話` user-role context turn for 標準 / 精細 plans.
 - [emoji-resolver.js](../src/ai/emoji-resolver.js) — guild + application-owned custom emoji: name→id map, the prompt table (with meaning inference and the 30-day 【新】 tag), and `:name:` → `<:name:id>` post-processing.
 - [sticker-resolver.js](../src/ai/sticker-resolver.js) — pure sticker prompt table + `[貼圖:名字]` extraction. No discord.js, no fs.
+- [memory-details.js](../src/ai/memory-details.js) — second memory tier: picks which detail-pool entries a reply sees (message overlap, or the whole pool on a 「你記得我什麼」 recall question). See [ai-providers.md](ai-providers.md).
 - [chain.js](../src/ai/chain.js) — `buildAIProviderChain` + `runProviderChain` + `generateAIReply`. Single entry point for `@西寶` AI replies.
 
 ## src/ tree (full)
@@ -62,6 +63,7 @@ src/
 ├── ai/
 │   ├── persona.js        # AI_PERSONA + buildUserTurn + message format helpers
 │   ├── memory.js         # Per-channel conversation history + sweep timer
+│   ├── memory-details.js # Long-term memory tier 2: relevant / recall details
 │   ├── providers.js      # callDeepSeek/callGroq/callGemini + ok/fail/parseRetryAfterMs
 │   ├── circuit.js        # Per-provider cooldown state (isProviderAvailable / recordProviderFailure)
 │   ├── group-context.js  # Recent non-bot messages → user-role context turn (standard/detailed)
