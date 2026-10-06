@@ -69,6 +69,27 @@ function withReplyContext(metadata) {
   return { ...metadata, description };
 }
 
+// What the card's description shows — the reply quoted under its ancestors —
+// and so what the translate button translates and 查看原文 restores.
+function threadsCardText(metadata) {
+  return withReplyContext(metadata)?.description || null;
+}
+
+// The translate button's post ref. Its id carries the author along with the
+// shortcode, so a click can rebuild the post URL without any stored state.
+// Foreign-language detection reads the raw texts, not the card text, so the
+// Chinese reply labels don't dilute it.
+function threadsPostRef(url, metadata) {
+  const author = threadsAuthorFromUrl(url);
+  const code = new URL(url).pathname.match(/\/post\/([A-Za-z0-9_-]+)/)?.[1];
+  if (!author || !code || !/^[A-Za-z0-9._]{1,64}$/.test(author)) return null;
+  const texts = [
+    ...(metadata.ancestors || []).map((ancestor) => ancestor?.text),
+    metadata.postText || metadata.description,
+  ].filter(Boolean);
+  return { source: "threads", id: `${author}/${code}`, text: texts.join("\n") };
+}
+
 function buildThreadsViewerUrls(url) {
   return THREADS_VIEWER_HOSTS.map((host) => replaceHostFixer(url, host));
 }
@@ -159,6 +180,114 @@ function buildThreadsLocalFallback(
   return { embeds: [embed] };
 }
 
+// Picks the card for a fetched post — see the routing order note inside.
+function buildThreadsCardPayload(canonicalUrl, rawMetadata, viewerUrls) {
+  const metadata = withReplyContext(rawMetadata);
+  if (metadata !== rawMetadata) {
+    console.log(
+      `[preview] threads-reply-context ancestors=${rawMetadata.ancestors.length} ${canonicalUrl}`,
+    );
+  }
+  const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
+  const isTextOnly = !metadata.image && !hasVideo;
+
+  if (isTextOnly || metadata.twitterCard === "summary") {
+    const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
+    console.log(
+      `[preview] ${logLabel} ${metadata.twitterCard} ${canonicalUrl}`,
+    );
+    return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
+  }
+
+  // This order is load-bearing: a mixed multi-image/video post retains its
+  // carousel while also attempting the direct video attachment.
+  if (metadata.imageCount > 1) {
+    const videoAttachment = hasVideo ? metadata.video : undefined;
+    const allImages =
+      metadata.images && metadata.images.length > 1
+        ? metadata.images.slice(0, 10)
+        : null;
+
+    if (allImages) {
+      const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
+      const hiddenImages = Math.max(
+        0,
+        (metadata.imageCount || allImages.length) - previewImages.length,
+      );
+      const tailHint = buildTailHint(hiddenImages, false);
+      console.log(
+        `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${tailHint ? `"${tailHint}"` : "none"} ${canonicalUrl}`,
+      );
+      // Equal-size image-only slides may be one wide picture split up;
+      // discord-io stitches them if the seams line up (all slides, not just
+      // the previewed ones), and keeps this carousel otherwise.
+      const panorama =
+        !hasVideo &&
+        allImages.length === metadata.imageCount &&
+        isPanoramaCandidate(metadata.imageSizes);
+      if (panorama) console.log(`[preview] threads panorama? ${canonicalUrl}`);
+      return {
+        ...(videoAttachment ? { videoAttachment } : {}),
+        ...(panorama ? { panoramaImages: allImages } : {}),
+        embeds: buildThreadsCarouselEmbeds(
+          canonicalUrl,
+          metadata,
+          previewImages,
+          tailHint,
+        ),
+      };
+    }
+
+    const fallbackEmbed = buildThreadsMediaEmbed(canonicalUrl, metadata);
+    const fallbackHint = buildTailHint(
+      Math.max(0, (metadata.imageCount || 1) - 1),
+      false,
+    );
+    if (fallbackHint) {
+      const existing = fallbackEmbed.data?.description;
+      fallbackEmbed.setDescription(
+        existing ? `${existing}\n\n${fallbackHint}` : fallbackHint,
+      );
+    }
+    console.log(
+      `[preview] threads-multi-image fallback hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${fallbackHint ? `"${fallbackHint}"` : "none"} ${canonicalUrl}`,
+    );
+    return {
+      ...(videoAttachment ? { videoAttachment } : {}),
+      embeds: [fallbackEmbed],
+    };
+  }
+
+  if (metadata.video || metadata.videoCount > 0) {
+    console.log(`[preview] threads-video ${canonicalUrl}`);
+    const videoEmbed = buildThreadsCompactEmbed(canonicalUrl, metadata);
+    if (!metadata.title) videoEmbed.setTitle(t("threads.videoPost"));
+    return {
+      ...(metadata.video ? { videoAttachment: metadata.video } : {}),
+      videoAttachmentEmbeds: [videoEmbed],
+      content: viewerUrls[0],
+      fallbackContents: viewerUrls.slice(1),
+      viewerValidation: "threads",
+      embedFallback: buildThreadsLocalFallback(canonicalUrl, metadata, true),
+      sourceUrl: canonicalUrl,
+    };
+  }
+
+  if (
+    metadata.twitterCard === "summary_large_image" &&
+    metadata.image &&
+    metadata.imageCount <= 1
+  ) {
+    console.log(`[preview] threads-single-image ${canonicalUrl}`);
+    return { embeds: [buildThreadsMediaEmbed(canonicalUrl, metadata)] };
+  }
+
+  console.log(
+    `[preview] threads-generic ${metadata.twitterCard} ${canonicalUrl}`,
+  );
+  return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
+}
+
 async function buildThreadsPayload(url) {
   const canonicalUrl = await resolveThreadsUrl(url);
   const viewerUrls = buildThreadsViewerUrls(canonicalUrl);
@@ -166,110 +295,12 @@ async function buildThreadsPayload(url) {
 
   try {
     const rawMetadata = await fetchThreadsMetadata(canonicalUrl);
-    const metadata = withReplyContext(rawMetadata);
-    if (metadata !== rawMetadata) {
-      console.log(
-        `[preview] threads-reply-context ancestors=${rawMetadata.ancestors.length} ${canonicalUrl}`,
-      );
-    }
-    const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
-    const isTextOnly = !metadata.image && !hasVideo;
-
-    if (isTextOnly || metadata.twitterCard === "summary") {
-      const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
-      console.log(
-        `[preview] ${logLabel} ${metadata.twitterCard} ${canonicalUrl}`,
-      );
-      return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
-    }
-
-    // This order is load-bearing: a mixed multi-image/video post retains its
-    // carousel while also attempting the direct video attachment.
-    if (metadata.imageCount > 1) {
-      const videoAttachment = hasVideo ? metadata.video : undefined;
-      const allImages =
-        metadata.images && metadata.images.length > 1
-          ? metadata.images.slice(0, 10)
-          : null;
-
-      if (allImages) {
-        const previewImages = allImages.slice(0, MULTI_IMAGE_PREVIEW_COUNT);
-        const hiddenImages = Math.max(
-          0,
-          (metadata.imageCount || allImages.length) - previewImages.length,
-        );
-        const tailHint = buildTailHint(hiddenImages, false);
-        console.log(
-          `[preview] threads-multi-image carousel count=${previewImages.length}/${allImages.length} hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${tailHint ? `"${tailHint}"` : "none"} ${canonicalUrl}`,
-        );
-        // Equal-size image-only slides may be one wide picture split up;
-        // discord-io stitches them if the seams line up (all slides, not just
-        // the previewed ones), and keeps this carousel otherwise.
-        const panorama =
-          !hasVideo &&
-          allImages.length === metadata.imageCount &&
-          isPanoramaCandidate(metadata.imageSizes);
-        if (panorama) console.log(`[preview] threads panorama? ${canonicalUrl}`);
-        return {
-          ...(videoAttachment ? { videoAttachment } : {}),
-          ...(panorama ? { panoramaImages: allImages } : {}),
-          embeds: buildThreadsCarouselEmbeds(
-            canonicalUrl,
-            metadata,
-            previewImages,
-            tailHint,
-          ),
-        };
-      }
-
-      const fallbackEmbed = buildThreadsMediaEmbed(canonicalUrl, metadata);
-      const fallbackHint = buildTailHint(
-        Math.max(0, (metadata.imageCount || 1) - 1),
-        false,
-      );
-      if (fallbackHint) {
-        const existing = fallbackEmbed.data?.description;
-        fallbackEmbed.setDescription(
-          existing ? `${existing}\n\n${fallbackHint}` : fallbackHint,
-        );
-      }
-      console.log(
-        `[preview] threads-multi-image fallback hasVideo=${Boolean(hasVideo)} videoAttach=${Boolean(videoAttachment)} hint=${fallbackHint ? `"${fallbackHint}"` : "none"} ${canonicalUrl}`,
-      );
-      return {
-        ...(videoAttachment ? { videoAttachment } : {}),
-        embeds: [fallbackEmbed],
-      };
-    }
-
-    if (metadata.video || metadata.videoCount > 0) {
-      console.log(`[preview] threads-video ${canonicalUrl}`);
-      const videoEmbed = buildThreadsCompactEmbed(canonicalUrl, metadata);
-      if (!metadata.title) videoEmbed.setTitle(t("threads.videoPost"));
-      return {
-        ...(metadata.video ? { videoAttachment: metadata.video } : {}),
-        videoAttachmentEmbeds: [videoEmbed],
-        content: viewerUrls[0],
-        fallbackContents: viewerUrls.slice(1),
-        viewerValidation: "threads",
-        embedFallback: buildThreadsLocalFallback(canonicalUrl, metadata, true),
-        sourceUrl: canonicalUrl,
-      };
-    }
-
-    if (
-      metadata.twitterCard === "summary_large_image" &&
-      metadata.image &&
-      metadata.imageCount <= 1
-    ) {
-      console.log(`[preview] threads-single-image ${canonicalUrl}`);
-      return { embeds: [buildThreadsMediaEmbed(canonicalUrl, metadata)] };
-    }
-
-    console.log(
-      `[preview] threads-generic ${metadata.twitterCard} ${canonicalUrl}`,
-    );
-    return { embeds: [buildThreadsCompactEmbed(canonicalUrl, metadata)] };
+    const post = threadsPostRef(canonicalUrl, rawMetadata);
+    const payload = buildThreadsCardPayload(canonicalUrl, rawMetadata, viewerUrls);
+    if (!post) return payload;
+    // Lazy: translation-preview reads threadsCardText from this module.
+    const { addTranslationButton } = require("../translation-preview");
+    return addTranslationButton(payload, post);
   } catch (error) {
     console.warn(
       `Could not fetch Threads metadata for ${canonicalUrl}:`,
@@ -303,5 +334,7 @@ module.exports = {
   buildThreadsViewerUrls,
   buildThreadsLocalFallback,
   threadsAuthorFromUrl,
+  threadsCardText,
+  threadsPostRef,
   resetThreadsAvatarCacheForTests: () => avatarCache.clear(),
 };
