@@ -3408,17 +3408,56 @@ memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records alias
         at: Date.now() - 1000 + i,
       });
     }
-    aliasEx.recordAliasContext("g1", rows.slice(0, 5));
-    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    aliasEx.recordAliasContext("g1", rows.slice(0, 5), "c1");
+    await aliasEx.maybeExtractAliases("g1", "c1", fakeChain);
     assert.equal(calls, 0, "waits for enough new lines");
-    aliasEx.recordAliasContext("g1", rows);
-    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    aliasEx.recordAliasContext("g1", rows, "c1");
+    await aliasEx.maybeExtractAliases("g1", "c1", fakeChain);
     assert.equal(calls, 1);
     const entry = profileStore.getUserProfile("g1", "u1");
     assert.deepEqual(entry.aliases.map((a) => a.alias), ["峰哥"], "hallucinated alias rejected");
     assert.deepEqual(profileStore.confirmedAliases(entry), ["峰哥"]);
-    await aliasEx.maybeExtractAliases("g1", fakeChain);
+    await aliasEx.maybeExtractAliases("g1", "c1", fakeChain);
     assert.equal(calls, 1, "counter resets after a batch");
+  } finally {
+    profileStore.resetCacheForTests();
+    aliasEx.resetAliasBuffersForTests();
+    restoreFile(storePath, snap);
+    restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
+
+memoryAsyncCases.push(["passive alias feed: per-channel buffers, guild gate, per-guild interval", async () => {
+  const storePath = profileStore.STORE_PATH;
+  const snap = snapshotFile(storePath);
+  const bakSnap = snapshotFile(`${storePath}.bak`);
+  profileStore.resetCacheForTests();
+  aliasEx.resetAliasBuffersForTests();
+  try {
+    let calls = 0;
+    const fakeChain = async (turns) => {
+      calls++;
+      assert.doesNotMatch(turns[0].content, /另一頻道/, "channels are never interleaved");
+      return { provider: { label: "fake" }, text: '{"aliases":[]}' };
+    };
+    const msg = (id, channelId, content, guildId = "g1") => ({
+      id, guildId, channelId, content, createdTimestamp: 1000 + Number(id.replace(/\D/g, "")),
+      author: { id: "u2", bot: false, username: "萱萱" }, member: null, mentions: {},
+    });
+    assert.equal(aliasEx.recordPassiveMessage(msg("p0", "c1", "峰哥早")), 0, "guild 西寶 never talked in: skipped");
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "阿峰", [{ messageId: "seed", at: Date.now(), speakerId: "u2" }]);
+    assert.equal(aliasEx.recordPassiveMessage({ ...msg("p0", "c1", "x"), author: { id: "b", bot: true } }), 0, "bots skipped");
+    for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+      assert.equal(aliasEx.recordPassiveMessage(msg(`p${i}`, "c1", `峰哥早 ${i}`)), 1);
+      aliasEx.recordPassiveMessage(msg(`q${i}`, "c2", `另一頻道 ${i}`));
+    }
+    const t0 = Date.now();
+    await aliasEx.maybeExtractAliases("g1", "c1", fakeChain, t0);
+    assert.equal(calls, 1);
+    await aliasEx.maybeExtractAliases("g1", "c2", async () => { calls++; return null; }, t0 + 1000);
+    assert.equal(calls, 1, "same guild inside the interval waits");
+    await aliasEx.maybeExtractAliases("g1", "c2", async () => { calls++; return null; }, t0 + 60 * 60 * 1000);
+    assert.equal(calls, 2, "after the interval the other channel runs");
   } finally {
     profileStore.resetCacheForTests();
     aliasEx.resetAliasBuffersForTests();

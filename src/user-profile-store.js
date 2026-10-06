@@ -720,6 +720,11 @@ function deleteUserProfile(guildId, userId) {
   return true;
 }
 
+function hasGuildProfiles(guildId) {
+  if (!guildId) return false;
+  return Object.keys(load()[guildId] || {}).length > 0;
+}
+
 function listUserProfiles(guildId) {
   if (!guildId) return [];
   const data = load();
@@ -814,6 +819,7 @@ module.exports = {
   appendObservations,
   setConsolidatedProfile,
   deleteUserProfile,
+  hasGuildProfiles,
   listUserProfiles,
   buildUserProfileBlock,
   flush,

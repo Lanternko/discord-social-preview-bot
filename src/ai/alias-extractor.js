@@ -3,16 +3,33 @@
 // poor proxy — they carry jokes and decorations, and the name friends actually
 // use often isn't in them at all.
 //
-// Source = the group-context rows chain.js already fetched for a reply (no
-// extra Discord fetch). Rows accumulate in a per-guild in-memory buffer; once
-// ALIAS_EXTRACT_MIN_NEW unseen messages pile up, one LLM call reads the
-// buffer and proposes { person, alias, evidence }. The model only proposes —
+// Two feeds, one per-channel in-memory buffer (channels are kept apart so the
+// model never reads two conversations interleaved):
+//   - the group-context rows chain.js already fetched for a reply, and
+//   - passively, every human message in a guild 西寶 already keeps memory for
+//     (recordPassiveMessage, from index.js). Replies alone saw ~15 lines per
+//     @mention — 11 batches in the bot's whole life, so nicknames that the
+//     group uses all day never reached the extractor.
+// Once ALIAS_EXTRACT_MIN_NEW unseen messages pile up in a channel, one LLM call
+// reads the buffer and proposes { person, alias, evidence }. Passive feed makes
+// that frequent, so extraction is throttled per guild (min interval) and
+// globally (daily cap, Taipei day). The model only proposes —
 // resolveAliasCandidates keeps an alias only when a DIFFERENT person's message
 // literally contains it, and user-profile-store confirms it only after it shows
-// up in ≥2 distinct messages. Buffer is in-memory: a restart just delays the
-// next batch; confirmed aliases persist in user-profiles.json.
+// up in ≥2 distinct messages. Buffer is in-memory on purpose — raw chat of
+// people who never talked to 西寶 is not written to disk; a restart just delays
+// the next batch. Confirmed aliases persist in user-profiles.json.
 
-const { getUserProfile, recordAliasEvidence, sanitizeAlias } = require("../user-profile-store");
+const {
+  ALIAS_EXTRACT_MIN_INTERVAL_MS,
+  ALIAS_EXTRACT_DAILY_MAX,
+} = require("../config");
+const {
+  getUserProfile,
+  hasGuildProfiles,
+  recordAliasEvidence,
+  sanitizeAlias,
+} = require("../user-profile-store");
 const { sanitizeName } = require("../utils");
 
 const ALIAS_BUFFER_MAX = 80;
@@ -59,20 +76,42 @@ const ALIAS_PERSONA = `你是一個群組稱呼紀錄助手。你的工作是從
 ## 輸出（只輸出 JSON）
 {"aliases":[{"person":"P1","alias":"峰哥","evidence":["L3","L7"]}]}`;
 
-const buffers = new Map(); // guildId -> { lines: Map<messageId, row>, newCount }
-const inFlight = new Set();
+const buffers = new Map(); // "guildId:channelId" -> { lines: Map<messageId, row>, newCount }
+const inFlight = new Set(); // guildIds
+const lastExtractAt = new Map(); // guildId -> ms
+const daily = { day: null, count: 0 };
 
-function bufferFor(guildId) {
-  if (!buffers.has(guildId)) buffers.set(guildId, { lines: new Map(), newCount: 0 });
-  return buffers.get(guildId);
+function bufferKey(guildId, channelId) {
+  return `${guildId}:${channelId || ""}`;
+}
+
+function bufferFor(guildId, channelId) {
+  const key = bufferKey(guildId, channelId);
+  if (!buffers.has(key)) buffers.set(key, { lines: new Map(), newCount: 0 });
+  return buffers.get(key);
+}
+
+function taipeiDay(now) {
+  return new Date(now).toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
+}
+
+// Cost gate shared by both feeds: one batch per guild per interval, and a
+// global daily ceiling so a chatty day can't run up the owner's bill.
+function extractionAllowed(guildId, now) {
+  if (now - (lastExtractAt.get(guildId) ?? 0) < ALIAS_EXTRACT_MIN_INTERVAL_MS) return false;
+  if (daily.day !== taipeiDay(now)) {
+    daily.day = taipeiDay(now);
+    daily.count = 0;
+  }
+  return daily.count < ALIAS_EXTRACT_DAILY_MAX;
 }
 
 // entries = fetchGroupContext rows. Only real people's own text is kept —
 // link previews and empty (sticker/attachment-only) messages can't carry an
 // alias. Dedup by messageId: the same row re-fetched by the next reply isn't new.
-function recordAliasContext(guildId, entries) {
+function recordAliasContext(guildId, entries, channelId = null) {
   if (!guildId || !Array.isArray(entries)) return 0;
-  const buf = bufferFor(guildId);
+  const buf = bufferFor(guildId, channelId);
   let added = 0;
   for (const e of entries) {
     const content = typeof e?.content === "string" ? e.content.trim() : "";
@@ -96,6 +135,22 @@ function recordAliasContext(guildId, entries) {
     }
   }
   return added;
+}
+
+// One live gateway message → a buffer row. Only guilds where 西寶 already has
+// memory: an alias for someone in a guild she never talks in is never read,
+// and it would create a profile for a person who never met her.
+function recordPassiveMessage(message) {
+  if (!message?.guildId || message.author?.bot || message.system) return 0;
+  if (!hasGuildProfiles(message.guildId)) return 0;
+  return recordAliasContext(message.guildId, [{
+    userId: message.author?.id,
+    displayName: message.member?.displayName || message.author?.globalName || message.author?.username || null,
+    messageId: message.id,
+    content: message.content || "",
+    at: message.createdTimestamp,
+    replyToUserId: message.mentions?.repliedUser?.id ?? null,
+  }], message.channelId);
 }
 
 // Numbered roster + lines. People who were only replied to (never spoke in the
@@ -178,11 +233,14 @@ function resolveAliasCandidates(proposals, { people, rows }) {
   return out;
 }
 
-async function maybeExtractAliases(guildId, runChain) {
+async function maybeExtractAliases(guildId, channelId, runChain, now = Date.now()) {
   if (!guildId || !runChain || inFlight.has(guildId)) return;
-  const buf = buffers.get(guildId);
+  const buf = buffers.get(bufferKey(guildId, channelId));
   if (!buf || buf.newCount < ALIAS_EXTRACT_MIN_NEW) return;
+  if (!extractionAllowed(guildId, now)) return;
   inFlight.add(guildId);
+  lastExtractAt.set(guildId, now);
+  daily.count++;
   // Reset before the call: a failed batch waits for the next 30 new lines
   // instead of retrying on every reply.
   buf.newCount = 0;
@@ -197,7 +255,7 @@ async function maybeExtractAliases(guildId, runChain) {
       recordAliasEvidence(guildId, a.userId, a.displayName, a.alias, a.evidence);
     }
     console.log(
-      `[alias] guild=${guildId} lines=${rows.length} proposed=${proposals?.length ?? 0} accepted=${accepted.length}${accepted.length ? ` (${accepted.map((a) => `${a.displayName}=${a.alias}`).join(", ")})` : ""} provider=${result.provider?.label}`,
+      `[alias] guild=${guildId} channel=${channelId} lines=${rows.length} proposed=${proposals?.length ?? 0} accepted=${accepted.length}${accepted.length ? ` (${accepted.map((a) => `${a.displayName}=${a.alias}`).join(", ")})` : ""} provider=${result.provider?.label}`,
     );
   } catch (err) {
     console.warn(`[alias] extraction failed: ${err.message}`);
@@ -209,6 +267,9 @@ async function maybeExtractAliases(guildId, runChain) {
 function resetAliasBuffersForTests() {
   buffers.clear();
   inFlight.clear();
+  lastExtractAt.clear();
+  daily.day = null;
+  daily.count = 0;
 }
 
 module.exports = {
@@ -216,6 +277,7 @@ module.exports = {
   ALIAS_EXTRACT_MIN_NEW,
   ALIAS_PERSONA,
   recordAliasContext,
+  recordPassiveMessage,
   buildAliasPrompt,
   parseAliasResult,
   resolveAliasCandidates,

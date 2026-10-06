@@ -7,6 +7,8 @@ const {
   AI_TIMEOUT_MS,
   APP_EMOJI_ENABLED,
   STICKER_REPLY_ENABLED,
+  ALIAS_PASSIVE_ENABLED,
+  AI_LONG_TERM_MEMORY_ENABLED,
 } = require("./config");
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
 const { buildPreviewPayloads } = require("./preview");
@@ -31,7 +33,8 @@ const { sendGuildWelcome } = require("./guild-welcome");
 const { loadStickerLibrary } = require("./stickers");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { runInGuildLanguage, t } = require("./system-text");
-const { AI_PROVIDER_CHAIN } = require("./ai/chain");
+const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const { recordPassiveMessage, maybeExtractAliases } = require("./ai/alias-extractor");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
 const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
 const { startScheduler, stopScheduler } = require("./scheduler");
@@ -185,6 +188,18 @@ client.on("messageCreate", (message) =>
   runInGuildLanguage(message.guildId, () => onMessageCreate(message)),
 );
 
+// Nickname learning off ordinary chat (alias-extractor.js). No message
+// context to meter against, so it runs on the default owner chain; the
+// extractor's interval + daily cap bound the spend.
+const runAliasChain = (turns, persona, maxTokens) =>
+  runProviderChain(AI_PROVIDER_CHAIN, turns, persona, maxTokens);
+
+function observeChatForAliases(message) {
+  if (!ALIAS_PASSIVE_ENABLED || !AI_LONG_TERM_MEMORY_ENABLED) return;
+  if (recordPassiveMessage(message) === 0) return;
+  maybeExtractAliases(message.guildId, message.channelId, runAliasChain).catch(() => {});
+}
+
 async function onMessageCreate(message) {
   // Tally per-guild speaking count for any human message, regardless of
   // ignore markers — nopreview/fxignore suppress the preview feature, not
@@ -195,6 +210,7 @@ async function onMessageCreate(message) {
       message.author?.globalName ||
       message.author?.username;
     recordFamiliarityMessage(message.guildId, message.author.id, displayName);
+    observeChatForAliases(message);
   }
 
   if (shouldIgnoreMessage(message)) return;
