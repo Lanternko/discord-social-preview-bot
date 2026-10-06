@@ -11,7 +11,7 @@ const {
 const { shouldIgnoreMessage, extractSupportedUrls } = require("./url-routing");
 const { buildPreviewPayloads } = require("./preview");
 const { nativeEmbedsCover } = require("./native-embed");
-const { sendTranslationStubs } = require("./translation-preview");
+const { sendTranslationStubs, preferSelfCards } = require("./translation-preview");
 const {
   inFlightReplies,
   recentReplies,
@@ -22,6 +22,7 @@ const {
   describeMessageLocation,
   sendPreviews,
   suppressOriginalEmbeds,
+  canSuppressEmbeds,
   checkAndHandleEmptyEmbeds,
 } = require("./discord-io");
 const { shouldHandleMention, handleMention } = require("./mention");
@@ -230,7 +231,10 @@ async function onMessageCreate(message) {
   markRecentReplies(message, urls);
 
   try {
-    const payloads = await buildPreviewPayloads(urls);
+    const payloads = preferSelfCards(
+      await buildPreviewPayloads(urls),
+      canSuppressEmbeds(message),
+    );
     if (await nativeEmbedsCover(message, payloads)) {
       console.log(`[native] discord embed ok, skip ${urls.join(" ")}`);
       await sendTranslationStubs(message, payloads);

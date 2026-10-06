@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const { MessageFlags } = require('discord.js');
 const { requestTranslation, requestTranslationWithRetry, protectTokens, normalizeTranslationOutput } = require('../src/ai/translation');
 const { selectTranslationRoute, reserveTranslation, translationUsageKey } = require('../src/ai/translation-policy');
-const { isForeignPost, addTranslationButton, buildTranslationStub, sendTranslationStubs, renderInPlace, handleTranslationInteraction } = require('../src/translation-preview');
+const { isForeignPost, addTranslationButton, preferSelfCards, buildTranslationStub, sendTranslationStubs, renderInPlace, handleTranslationInteraction } = require('../src/translation-preview');
 
 async function main() {
   assert.equal(isForeignPost({ text: '今天活動開始，記得登入領取獎勵！ #BlueArchive https://example.com' }), false);
@@ -124,11 +124,31 @@ async function main() {
   const outgoing = addTranslationButton(payload, meta);
   // Native check survives: if Discord's own card shows, only a stub is sent.
   assert.deepEqual(outgoing.nativeEmbedCheck, { statusId: '123456789' });
-  assert.deepEqual(outgoing.translationStub, { statusId: '123456789', handle: '' });
+  assert.deepEqual(outgoing.translationStub, { statusId: '123456789' });
   assert.equal(outgoing.components[0].toJSON().components[0].custom_id, 'xtranslate:translate:123456789');
   assert.equal(addTranslationButton({ embeds: [] }, meta).translationStub, undefined); // bot-built cards never defer
-  const stub = buildTranslationStub({ statusId: '123456789', handle: 'allumer99' });
-  assert.equal(stub.content, '-# @allumer99 的貼文是外文，可以翻譯');
+  // With ManageMessages the bot's own card replaces the native one, button on
+  // the card itself; without it the fixer payload goes on unchanged.
+  const { buildTwitterCardEmbed } = require('../src/embeds');
+  const cardUrl = 'https://x.com/a/status/123456789';
+  const withCard = addTranslationButton(payload, meta, { embeds: [buildTwitterCardEmbed(cardUrl, meta)], sourceUrl: cardUrl });
+  assert.equal(addTranslationButton(payload, { ...meta, text: '今天天氣很好喔大家' }, { embeds: [] }).selfCard, undefined);
+  const [own] = preferSelfCards([withCard], true);
+  assert.equal(own.content, undefined);
+  assert.equal(own.nativeEmbedCheck, undefined);
+  assert.equal(own.components[0].toJSON().components[0].custom_id, 'xtranslate:translate:123456789');
+  const ownEmbed = own.embeds[0].toJSON();
+  assert.equal(ownEmbed.image.url, meta.photos[0]);
+  const ownTranslated = renderInPlace({ content: '', embeds: [ownEmbed] }, meta, '更新不會重置你的進度。', true);
+  assert.equal(ownTranslated.content, undefined);
+  assert.equal(ownTranslated.embeds[0].toJSON().description, '更新不會重置你的進度。');
+  const [kept] = preferSelfCards([withCard], false);
+  assert.equal(kept.selfCard, undefined);
+  assert.equal(kept.content, payload.content);
+  assert.deepEqual(kept.translationStub, { statusId: '123456789' });
+  assert.equal(preferSelfCards([payload], true)[0], payload);
+  const stub = buildTranslationStub({ statusId: '123456789' });
+  assert.equal(stub.content, '-# 🌐');
   assert.equal(stub.embeds, undefined);
   assert.equal(stub.components[0].toJSON().components[0].custom_id, 'xtranslate:translate:123456789');
   const replies = [];

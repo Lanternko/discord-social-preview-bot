@@ -23,6 +23,7 @@ const { isPanoramaCandidate } = require("./panorama");
 const {
   buildTwitterSpoilerEmbed,
   buildTwitterCarouselEmbeds,
+  buildTwitterCardEmbed,
   buildPixivSpoilerEmbed,
   buildPixivCarouselEmbeds,
 } = require("./embeds");
@@ -91,14 +92,18 @@ async function buildTwitterPayload(url) {
     return addTranslationButton(buildTwitterCarouselPayload(url, meta), meta);
   }
   const payload = buildSimpleFixerPayload(url, RECOVER_PROFILES.twitter);
+  const nativeEmbedCheck = buildTwitterNativeCheck(meta);
+  const selfCard = nativeEmbedCheck
+    ? { embeds: [buildTwitterCardEmbed(url, meta)], sourceUrl: url }
+    : null;
   return addTranslationButton({
     ...payload,
-    nativeEmbedCheck: buildTwitterNativeCheck(meta),
+    nativeEmbedCheck,
     fallbackContents: [secondaryUrl],
     viewerValidation: "twitter",
     viewerRequiresMedia: meta ? meta.hasMedia : null,
     recoverUrls: [secondaryUrl, ...payload.recoverUrls],
-  }, meta);
+  }, meta, selfCard);
 }
 
 // Text-only and single-image posts unfurl fine natively (full text, full-size

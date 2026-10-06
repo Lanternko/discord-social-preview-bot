@@ -41,19 +41,37 @@ function buttons(id, action = 'translate') {
 
 // The native-embed check stays on: when Discord's own card shows up, the bot
 // posts no preview (a second copy of the image whenever it can't suppress the
-// original), only a button-only stub — see buildTranslationStub.
-function addTranslationButton(payload, meta) {
+// original), only a button-only stub — see buildTranslationStub. A foreign
+// post also carries `selfCard`, the bot's own card, which preferSelfCards
+// swaps in when the bot CAN suppress the native card.
+function addTranslationButton(payload, meta, selfCard = null) {
   if (!enabled() || !isForeignPost(meta)) return payload;
-  const stub = payload.nativeEmbedCheck ? { translationStub: { statusId: meta.statusId, handle: meta.authorHandle || '' } } : {};
-  return { ...payload, components: buttons(meta.statusId), ...stub };
+  const components = buttons(meta.statusId);
+  const deferred = payload.nativeEmbedCheck ? {
+    translationStub: { statusId: meta.statusId },
+    ...(selfCard ? { selfCard: { ...selfCard, components } } : {}),
+  } : {};
+  return { ...payload, components, ...deferred };
 }
 
-// Text-only reply that carries the translate button under Discord's own card.
-// No link and no embed, so it can't duplicate the post; clicking quotes the
-// translation into it through the same renderInPlace link path.
-function buildTranslationStub({ statusId, handle }) {
-  const who = handle ? `@${handle} 的貼文` : '這則貼文';
-  return { content: `-# ${who}是外文，可以翻譯`, components: buttons(statusId), allowedMentions: { parse: [], repliedUser: false } };
+// With ManageMessages the native card can be suppressed, so a foreign post
+// goes out as the bot's own card: one message, translated in place. Without
+// it the native card stays and the stub carries the button.
+function preferSelfCards(payloads, canSuppress) {
+  return payloads.map((payload) => {
+    if (!payload?.selfCard) return payload;
+    const { selfCard, ...rest } = payload;
+    return canSuppress ? selfCard : rest;
+  });
+}
+
+// Reply that carries the translate button under Discord's own card. No link
+// and no embed, so it can't duplicate the post; the reply reference already
+// points at the post and the button says what it does, so the text is only
+// the minimum a non-V2 message needs. Clicking quotes the translation into it
+// through the same renderInPlace link path.
+function buildTranslationStub({ statusId }) {
+  return { content: '-# 🌐', components: buttons(statusId), allowedMentions: { parse: [], repliedUser: false } };
 }
 
 async function sendTranslationStubs(message, payloads) {
@@ -152,4 +170,4 @@ async function handleTranslationInteraction(interaction, client, deps = {}) {
   return true;
 }
 
-module.exports = { isForeignPost, addTranslationButton, buildTranslationStub, sendTranslationStubs, renderInPlace, handleTranslationInteraction };
+module.exports = { isForeignPost, addTranslationButton, preferSelfCards, buildTranslationStub, sendTranslationStubs, renderInPlace, handleTranslationInteraction };
