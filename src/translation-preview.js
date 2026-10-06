@@ -47,8 +47,7 @@ function buttons(id, action = 'translate') {
 // The native-embed check stays on: when Discord's own card shows up, the bot
 // posts no preview (a second copy of the image whenever it can't suppress the
 // original), only a button-only stub — see buildTranslationStub. A foreign
-// post also carries `selfCard`, the bot's own card, which preferSelfCards
-// swaps in when the bot CAN suppress the native card.
+// post also carries `selfCard`, the bot's own card — see preferSelfCards.
 function addTranslationButton(payload, meta, selfCard = null) {
   if (!enabled() || !isForeignPost(meta)) return payload;
   const components = buttons(meta.statusId);
@@ -59,15 +58,15 @@ function addTranslationButton(payload, meta, selfCard = null) {
   return { ...payload, components, ...deferred };
 }
 
-// With ManageMessages the native card can be suppressed, so a foreign post
-// goes out as the bot's own card: one message, translated in place. Without
-// it the native card stays and the stub carries the button.
-function preferSelfCards(payloads, canSuppress) {
-  return payloads.map((payload) => {
-    if (!payload?.selfCard) return payload;
-    const { selfCard, ...rest } = payload;
-    return canSuppress ? selfCard : rest;
-  });
+// Whenever the bot posts the preview itself, a foreign post goes out as the
+// bot's own card, never the fixer link: Discord owns a fixer unfurl, so the
+// translation could only be quoted under the link instead of edited into the
+// card. With ManageMessages that happens up front (the native card gets
+// suppressed); without it only once the native card failed to show — if it
+// does show, the stub carries the button instead.
+function preferSelfCards(payloads, swap) {
+  if (!swap) return payloads;
+  return payloads.map((payload) => payload?.selfCard || payload);
 }
 
 // Reply that carries the translate button under Discord's own card. No link
