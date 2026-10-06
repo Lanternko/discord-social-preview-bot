@@ -2398,6 +2398,7 @@ const {
   runConsolidation,
   resetForTests: resetExtractorForTests,
 } = require("../src/ai/observation-extractor");
+const memoryDetails = require("../src/ai/memory-details");
 
 console.log("observation-extractor");
 it("shouldExtract false when no pending", () => {
@@ -3134,6 +3135,93 @@ it("setGuildProfileItems carries uncited observations too", () => {
     guildStore.setGuildProfileItems("g1", { topics: [{ text: "動漫" }] }, { offered: ["常聊動漫", "接龍"], cited: ["常聊動漫"] });
     assert.deepEqual(guildStore.getGuildProfile("g1").observations.map((o) => [o.text, o.carried]), [["接龍", 1]]);
   });
+});
+it("detail pool keeps every observation, pooling re-worded duplicates", () => {
+  withProfileStore(() => {
+    const t = Date.now();
+    profileStore.appendObservations("g1", "u1", "A", [
+      { text: "常玩 Valorant 打排位", evidence: [evAt("m1", t)] },
+      { text: "去過大阪旅遊", evidence: [evAt("m2", t)] },
+    ]);
+    profileStore.appendObservations("g1", "u1", "A", [
+      { text: "常玩 Valorant 打排位賽", evidence: [evAt("m3", t + 1)] },
+    ]);
+    const details = profileStore.detailsOf(profileStore.getUserProfile("g1", "u1"));
+    assert.equal(details.length, 2, "near-duplicate merged, not a new row");
+    const valo = details.find((d) => d.text.includes("Valorant"));
+    assert.deepEqual(valo.evidence.map((e) => e.messageId).sort(), ["m1", "m3"]);
+
+    // Consolidation consumes observations; the details stay.
+    profileStore.setProfileItems("g1", "u1", { topics: [{ text: "Valorant" }] });
+    assert.equal(profileStore.getUserProfile("g1", "u1").observations.length, 0);
+    assert.equal(profileStore.detailsOf(profileStore.getUserProfile("g1", "u1")).length, 2);
+  });
+});
+it("detail pool is capped by evidence, drops stale rows, seeds old profiles", () => {
+  const now = 1000 * DAY_MS;
+  const many = Array.from({ length: profileStore.DETAIL_MAX + 5 }, (_, i) => ({
+    text: `細節${String.fromCharCode(0x4e00 + i * 37)}${String.fromCharCode(0x5000 + i * 41)}`,
+    evidence: [evAt(`m${i}`, now - i)],
+  }));
+  const strong = { text: "很有根據的事", evidence: [evAt("x1", 1), evAt("x2", 2), evAt("x3", 3)].map((e) => ({ ...e, at: now - 50 })) };
+  const pool = profileStore.upsertDetails([], [...many, strong], now);
+  assert.equal(pool.length, profileStore.DETAIL_MAX);
+  assert.ok(pool.some((d) => d.text === "很有根據的事"), "stable evidence survives the cap");
+  const stale = profileStore.upsertDetails([{ text: "很久以前", evidence: [], lastSeenAt: now - profileStore.DETAIL_STALE_MS - 1 }], [], now);
+  assert.equal(stale.length, 0);
+
+  const legacy = {
+    items: { topics: [{ text: "有佐證的條目", evidence: [evAt("a", now)], lastSeenAt: now }, { text: "舊版無佐證", evidence: [], lastSeenAt: now }] },
+    observations: [{ text: "待整理觀察", evidence: [evAt("b", now)] }],
+  };
+  assert.deepEqual(profileStore.detailsOf(legacy, now).map((d) => d.text).sort(), ["待整理觀察", "有佐證的條目"].sort());
+});
+it("consolidation offers the detail pool as D* sources and they re-confirm items", () => {
+  const now = Date.now();
+  const entry = {
+    name: "A",
+    items: { topics: [{ text: "Valorant", evidence: [evAt("m1", now - 10 * DAY_MS)], firstAt: now - 10 * DAY_MS, lastSeenAt: now - 10 * DAY_MS }] },
+    observations: [{ text: "新觀察", evidence: [evAt("m9", now)] }],
+    details: [
+      { text: "新觀察", evidence: [evAt("m9", now)], lastSeenAt: now },
+      { text: "常玩 Valorant 衝分", evidence: [evAt("m2", now - DAY_MS), evAt("m3", now - 2 * DAY_MS), evAt("m4", now)], firstAt: now - 30 * DAY_MS, lastSeenAt: now },
+    ],
+  };
+  const sources = collectConsolidationSources(entry, now);
+  const ids = [...sources.keys()];
+  assert.deepEqual(ids, ["I1", "O1", "D1"], "a detail already offered as an observation is not offered twice");
+  assert.match(buildConsolidationTurns(entry, now)[0].content, /\[D1\] 常玩 Valorant 衝分/);
+  assert.match(CONSOLIDATION_PERSONA, /細節 D\*/);
+  const { items, offered } = selectConsolidatedItems([{ field: "topics", text: "Valorant", from: ["I1", "D1"] }], sources, now);
+  assert.equal(items.topics[0].lastSeenAt, now, "detail evidence moves lastSeenAt forward");
+  assert.equal(items.topics[0].tentative, false);
+  assert.deepEqual(offered, ["新觀察"], "details are not observations: carry bookkeeping untouched");
+});
+it("memory details: recall intent and relevance retrieval", () => {
+  for (const t of ["你記得我嗎", "你對我有什麼印象", "我是怎樣的人", "你記得小翔哪些事"]) {
+    assert.ok(memoryDetails.detectMemoryRecallIntent(t), t);
+  }
+  for (const t of ["記得帶傘喔", "你知道明天要幹嘛", "今天吃什麼"]) {
+    assert.ok(!memoryDetails.detectMemoryRecallIntent(t), t);
+  }
+  const d = [
+    { text: "常玩 Valorant 打排位", lastSeenAt: 1 },
+    { text: "喜歡日本旅遊、去過大阪", lastSeenAt: 2 },
+    { text: "在研究音訊生成模型", lastSeenAt: 3 },
+  ];
+  const pick = (q) => memoryDetails.selectRelevantDetails(d, q).map((x) => x.text);
+  assert.deepEqual(pick("今晚要不要打valorant"), ["常玩 Valorant 打排位"]);
+  assert.deepEqual(pick("大阪好玩嗎"), ["喜歡日本旅遊、去過大阪"]);
+  assert.deepEqual(pick("你喜歡什麼"), [], "stopwords alone never match");
+
+  const entry = { items: { topics: [{ text: "常玩 Valorant 打排位", evidence: [], lastSeenAt: Date.now() }] }, details: d.map((x) => ({ ...x, lastSeenAt: Date.now() })) };
+  const outline = profileStore.profileTextOf(entry);
+  assert.deepEqual(memoryDetails.pickDetails(entry, "valorant", { outlineText: outline }), [], "outline already says it");
+  assert.equal(memoryDetails.pickDetails(entry, "隨便", { recall: true, outlineText: outline }).length, 2);
+  const block = memoryDetails.buildMemoryDetailsBlock([{ name: "A", self: true, recall: true, details: [d[1]] }]);
+  assert.match(block, /他在問你記得什麼/);
+  assert.match(block, /去過大阪/);
+  assert.equal(memoryDetails.buildMemoryDetailsBlock([{ name: "A", details: [] }]), "");
 });
 const memoryAsyncCases = [];
 memoryAsyncCases.push(["runConsolidation wires sources → model → resolved items", async () => {

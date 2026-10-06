@@ -31,6 +31,7 @@ const {
   PROFILE_FIELDS,
   isAliasConfirmed,
   isItemStale,
+  detailsOf,
 } = require("./user-profile-store");
 const {
   getGuildProfile,
@@ -821,6 +822,24 @@ function formatProfileItemsForShow(items, now = Date.now()) {
   return any ? lines : [];
 }
 
+// The detail tier: the long tail behind the outline. Newest first, capped so
+// the ephemeral reply stays under Discord's 2000-char limit.
+const SHOW_DETAILS_MAX = 8;
+const SHOW_DETAIL_TEXT_MAX = 50;
+
+function formatDetailsForShow(details) {
+  if (!Array.isArray(details) || details.length === 0) return [];
+  const newest = [...details].sort((a, b) => (b.lastSeenAt ?? 0) - (a.lastSeenAt ?? 0));
+  const lines = [`\n📚 **細節庫（${details.length} 條，聊到相關話題或問她記得什麼時才會翻）**`];
+  for (const d of newest.slice(0, SHOW_DETAILS_MAX)) {
+    const text = d.text.length > SHOW_DETAIL_TEXT_MAX ? `${d.text.slice(0, SHOW_DETAIL_TEXT_MAX)}…` : d.text;
+    const n = new Set((d.evidence || []).map((e) => e?.messageId).filter(Boolean)).size;
+    lines.push(`- ${text}（${n} 則）`);
+  }
+  if (details.length > SHOW_DETAILS_MAX) lines.push(`…還有 ${details.length - SHOW_DETAILS_MAX} 條`);
+  return lines;
+}
+
 // Unconfirmed aliases are shown too (marked), so people can see what 西寶 is
 // about to start calling them before it sticks.
 function formatAliasesForShow(aliases, now = Date.now()) {
@@ -872,6 +891,8 @@ async function handleMemoryCommand(interaction) {
       lines.push(`\n📝 **人格摘要**\n${profile.profile}`);
     }
 
+    lines.push(...formatDetailsForShow(detailsOf(profile)));
+
     const obs = profile.observations || [];
     if (obs.length > 0) {
       lines.push(`\n🔍 **待整理的觀察（${obs.length} 條）**`);
@@ -889,8 +910,10 @@ async function handleMemoryCommand(interaction) {
       lines.push(`\n⏳ 待萃取互動：${pending.length} 筆`);
     }
 
+    // Outline + detail tier + pending observations can outgrow one message.
+    const content = lines.join("\n");
     await interaction.reply({
-      content: lines.join("\n"),
+      content: content.length > 2000 ? `${content.slice(0, 1990)}\n…（截斷）` : content,
       flags: MessageFlags.Ephemeral,
     });
     return;
