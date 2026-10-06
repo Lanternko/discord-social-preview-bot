@@ -74,6 +74,7 @@ const {
 } = require("../src/ai/group-context");
 const {
   resolveImageType,
+  collectFromEmbeds,
   collectVisionImages,
   loadVisionImages,
   buildImageNote,
@@ -1293,6 +1294,42 @@ async function main() {
     assert.match(note, /2 張圖片/);
     assert.match(note, /看不到/);
     assert.equal(buildImageNote(0), "");
+  });
+
+  it("falls back to a replied-to preview's embed pictures", () => {
+    const preview = {
+      attachments: new Map(),
+      embeds: [
+        { image: { url: "https://pbs.twimg.com/media/a.jpg?name=orig", proxyURL: "https://media.discordapp.net/a.jpg" } },
+        { thumbnail: { url: "https://pbs.twimg.com/media/b?format=png" } },
+        { title: "no media" },
+      ],
+    };
+    const images = collectVisionImages(fakeMessage([]), preview);
+    assert.equal(images.length, 2);
+    assert.equal(images[0].url, "https://media.discordapp.net/a.jpg", "prefer Discord's proxy");
+    assert.equal(images[0].type, "image/jpeg");
+    assert.equal(images[1].type, null, "unknown type resolved at download");
+    // A real attachment on the replied-to message still wins over its embeds.
+    assert.equal(
+      collectVisionImages(fakeMessage([]), { ...preview, attachments: new Map([["0", imageAttachment()]]) })[0].url,
+      imageAttachment().url,
+    );
+    assert.deepEqual(collectFromEmbeds({ embeds: [] }), []);
+  });
+
+  await itAsync("takes an embed picture's type from the download header", async () => {
+    const originalFetch = global.fetch;
+    const headers = (type) => ({ get: (h) => (h === "content-type" ? type : null) });
+    try {
+      global.fetch = async () => ({ ok: true, headers: headers("image/webp"), arrayBuffer: async () => new Uint8Array([1]).buffer });
+      const [img] = await loadVisionImages(fakeMessage([]), { embeds: [{ image: { url: "https://x/y" } }] });
+      assert.equal(img.dataUrl, "data:image/webp;base64,AQ==");
+      global.fetch = async () => ({ ok: true, headers: headers("text/html"), arrayBuffer: async () => new Uint8Array([1]).buffer });
+      assert.deepEqual(await loadVisionImages(fakeMessage([]), { embeds: [{ image: { url: "https://x/y" } }] }), []);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   it("swaps the blind note for the seeing note on the vision turn only", () => {
