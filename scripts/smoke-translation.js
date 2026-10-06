@@ -238,6 +238,45 @@ async function main() {
   await handleTranslationInteraction(otherGuild, client, deps);
   assert.equal(calls, 2); // Separate guild cache, no premium quota borrowing.
   assert.equal(reservations, 2);
-  console.log('Translation smoke passed: language gating, token preservation, errors, in-place edits (link + card), cache, original toggle, length cap, private failures.');
+  // Threads: the button rides on the bot's own card; its id carries the author
+  // so a click can refetch the post, and the card text includes reply context.
+  const { threadsPostRef, threadsCardText } = require('../src/platforms/threads');
+  const threadsUrl = 'https://www.threads.com/@some.user/post/DAbc_12-xy';
+  const threadsMeta = { postText: 'The update does not reset your progress.', description: 'The update does not reset your progress.', ancestors: [{ author: 'root', text: 'Is the event over?' }] };
+  const threadsPost = threadsPostRef(threadsUrl, threadsMeta);
+  assert.deepEqual(threadsPost, { source: 'threads', id: 'some.user/DAbc_12-xy', text: 'Is the event over?\nThe update does not reset your progress.' });
+  assert.equal(addTranslationButton({ embeds: [] }, threadsPostRef(threadsUrl, { postText: '今天天氣很好喔大家' })).components, undefined);
+  const threadsOut = addTranslationButton({ embeds: [] }, threadsPost);
+  assert.equal(threadsOut.components[0].toJSON().components[0].custom_id, 'ttranslate:translate:some.user/DAbc_12-xy');
+  assert.equal(threadsOut.translationStub, undefined);
+  const cardText = threadsCardText(threadsMeta);
+  assert.ok(cardText.includes('**@root**') && cardText.includes('↳ The update'));
+  let threadsFetches = 0;
+  const threadsDeps = { ...deps, fetchThreadsMetadata: async url => { threadsFetches++; assert.equal(url, 'https://www.threads.com/@some.user/post/DAbc_12-xy'); return threadsMeta; },
+    requestTranslation: async text => { assert.equal(text, cardText); calls++; return { text: '> **@root**\n> 活動結束了嗎？\n\n↳ 更新不會重置你的進度。' }; } };
+  const threadsCard = { content: '', embeds: [new EmbedBuilder().setURL(threadsUrl).setDescription(cardText).setFooter({ text: 'Threads' }).toJSON()] };
+  const tClick = interaction('frank', 'translate', { message: threadsCard });
+  tClick.customId = 'ttranslate:translate:some.user/DAbc_12-xy';
+  await handleTranslationInteraction(tClick, client, threadsDeps);
+  assert.deepEqual(tClick.events.map(e => e[0]), ['update', 'editReply']);
+  assert.equal(tClick.events[0][1].components[0].toJSON().components[0].custom_id, 'ttranslate:busy:some.user/DAbc_12-xy');
+  const tLead = tClick.events[1][1].embeds[0].toJSON();
+  assert.ok(tLead.description.endsWith('↳ 更新不會重置你的進度。'));
+  assert.equal(tLead.footer.text, 'Threads · 繁體中文翻譯');
+  assert.equal(tClick.events[1][1].components[0].toJSON().components[0].custom_id, 'ttranslate:original:some.user/DAbc_12-xy');
+  const tBack = interaction('frank', 'original', { message: { content: '', embeds: [tLead] } });
+  tBack.customId = 'ttranslate:original:some.user/DAbc_12-xy';
+  await handleTranslationInteraction(tBack, client, threadsDeps);
+  assert.equal(tBack.events[1][1].embeds[0].toJSON().description, cardText);
+  assert.equal(tBack.events[1][1].embeds[0].toJSON().footer.text, 'Threads');
+  assert.equal(threadsFetches, 1);
+  const forged = interaction('frank', 'translate');
+  forged.customId = 'ttranslate:translate:../../evil';
+  await handleTranslationInteraction(forged, client, threadsDeps);
+  assert.equal(forged.events[0][0], 'reply');
+  const foreign = interaction('frank');
+  foreign.customId = 'other:button';
+  assert.equal(await handleTranslationInteraction(foreign, client, threadsDeps), false);
+  console.log('Translation smoke passed: language gating, token preservation, errors, in-place edits (link + card), cache, original toggle, length cap, private failures, Threads cards.');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

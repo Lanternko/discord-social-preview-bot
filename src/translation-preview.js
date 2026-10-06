@@ -1,6 +1,8 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags } = require('discord.js');
 const { createHash } = require('node:crypto');
 const { fetchTweetMeta } = require('./platforms/twitter');
+const { fetchThreadsMetadata } = require('./probe');
+const { threadsCardText } = require('./platforms/threads');
 const { requestTranslationWithRetry, PROMPT_VERSION } = require('./ai/translation');
 const { translationAvailable, reserveTranslation } = require('./ai/translation-policy');
 const { trimDescription } = require('./utils');
@@ -15,7 +17,55 @@ const cache = new Map();
 const metaCache = new Map();
 const cooldowns = new Map();
 let active = 0;
-const PREFIX = 'xtranslate:';
+
+// Each platform the button works on. `id` is what rides in the button's
+// custom_id (≤100 chars): X needs only the status id; a Threads post needs the
+// author too, since the post URL is /@user/post/<code>. `cardMark` is what the
+// bot's own card URL must contain, `cardLimit` the description length the card
+// was built with, and `fetch` gets the post's full card text back by id.
+const SOURCES = {
+  x: {
+    prefix: 'xtranslate:',
+    id: /^\d{5,25}$/,
+    footer: 'X (Twitter)',
+    cardMark: id => id,
+    cardLimit: 1024,
+    async fetch(id, deps) {
+      const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${id}`);
+      return meta?.text ? { text: meta.text } : null;
+    },
+  },
+  threads: {
+    prefix: 'ttranslate:',
+    id: /^[A-Za-z0-9._]{1,64}\/[A-Za-z0-9_-]{5,40}$/,
+    footer: 'Threads',
+    cardMark: id => `/post/${id.split('/')[1]}`,
+    cardLimit: 4000,
+    async fetch(id, deps) {
+      const [user, code] = id.split('/');
+      const meta = await (deps.fetchThreadsMetadata || fetchThreadsMetadata)(`https://www.threads.com/@${user}/post/${code}`);
+      const text = threadsCardText(meta);
+      return text ? { text } : null;
+    },
+  },
+};
+
+// Callers hand in either a post ref ({ source, id, text, language }) or, for
+// X, the tweet meta itself.
+function toPost(meta) {
+  if (meta?.source) return meta;
+  return { source: 'x', id: meta?.statusId, text: meta?.text, language: meta?.language };
+}
+
+function parseCustomId(customId) {
+  for (const [source, spec] of Object.entries(SOURCES)) {
+    if (!customId?.startsWith(spec.prefix)) continue;
+    const match = /^(translate|original):(.+)$/.exec(customId.slice(spec.prefix.length));
+    if (!match || !spec.id.test(match[2])) return { known: true };
+    return { known: true, action: match[1], post: { source, id: match[2] } };
+  }
+  return { known: false };
+}
 
 function isForeignPost(meta) {
   const text = (meta?.text || '').replace(/https?:\/\/\S+|@[A-Za-z0-9_]+|#[\p{L}\p{N}_]+/gu, '');
@@ -43,9 +93,9 @@ const LABELS = { translate: '翻譯成繁體中文', original: '查看原文', b
 
 // `busy` is the locked placeholder shown while the model runs; disabled, so
 // its id never reaches the handler.
-function buttons(id, action = 'translate') {
+function buttons(post, action = 'translate') {
   return [new ActionRowBuilder().addComponents(new ButtonBuilder()
-    .setCustomId(`${PREFIX}${action}:${id}`)
+    .setCustomId(`${SOURCES[post.source].prefix}${action}:${post.id}`)
     .setStyle(ButtonStyle.Secondary)
     .setLabel(LABELS[action])
     .setDisabled(action === 'busy'))];
@@ -56,10 +106,11 @@ function buttons(id, action = 'translate') {
 // original), only a button-only stub — see buildTranslationStub. A foreign
 // post also carries `selfCard`, the bot's own card — see preferSelfCards.
 function addTranslationButton(payload, meta, selfCard = null) {
-  if (!enabled() || !isForeignPost(meta)) return payload;
-  const components = buttons(meta.statusId);
+  const post = toPost(meta);
+  if (!enabled() || !post.id || !isForeignPost(post)) return payload;
+  const components = buttons(post);
   const deferred = payload.nativeEmbedCheck ? {
-    translationStub: { statusId: meta.statusId },
+    translationStub: { statusId: post.id },
     ...(selfCard ? { selfCard: { ...selfCard, components } } : {}),
   } : {};
   return { ...payload, components, ...deferred };
@@ -82,7 +133,7 @@ function preferSelfCards(payloads, swap) {
 // the minimum a non-V2 message needs. Clicking quotes the translation into it
 // through the same renderInPlace link path.
 function buildTranslationStub({ statusId }) {
-  return { content: '-# 🌐', components: buttons(statusId), allowedMentions: { parse: [], repliedUser: false } };
+  return { content: '-# 🌐', components: buttons({ source: 'x', id: statusId }), allowedMentions: { parse: [], repliedUser: false } };
 }
 
 async function sendTranslationStubs(message, payloads) {
@@ -98,7 +149,8 @@ async function sendTranslationStubs(message, payloads) {
 }
 
 // The translation goes INTO the public preview — no extra message, private or
-// not. A bot-built X card (gallery / spoilered) gets its post text swapped; a
+// not. A bot-built card (X gallery / spoilered, any Threads card) gets its post
+// text swapped; a
 // fixer link card can't be rewritten (Discord owns the unfurl), so the
 // translation rides below the link as a quote. Both are reversible by the
 // 查看原文 button, which restores the post text without another model call.
@@ -106,11 +158,12 @@ const LINK_MARK = '\n-# 繁體中文翻譯\n';
 const CARD_MARK = ' · 繁體中文翻譯';
 const CONTENT_LIMIT = 2000;
 
-function isBotCard(message, statusId) {
+function isBotCard(message, post) {
+  const spec = SOURCES[post.source];
   const lead = message.embeds?.[0];
   return !/https?:\/\//.test(message.content || '')
-    && Boolean(lead?.footer?.text?.startsWith('X (Twitter)'))
-    && Boolean(lead.url?.includes(statusId));
+    && Boolean(lead?.footer?.text?.startsWith(spec.footer))
+    && Boolean(lead.url?.includes(spec.cardMark(post.id)));
 }
 
 function quote(text, budget) {
@@ -121,12 +174,13 @@ function quote(text, budget) {
 }
 
 function renderInPlace(message, meta, text, translated) {
-  const components = buttons(meta.statusId, translated ? 'original' : 'translate');
-  if (isBotCard(message, meta.statusId)) {
+  const post = toPost(meta);
+  const components = buttons(post, translated ? 'original' : 'translate');
+  if (isBotCard(message, post)) {
     const [lead, ...rest] = message.embeds;
     const footer = lead.footer.text.split(CARD_MARK)[0];
     const embed = EmbedBuilder.from(lead)
-      .setDescription(trimDescription(text, translated ? 4000 : 1024))
+      .setDescription(trimDescription(text, translated ? 4000 : SOURCES[post.source].cardLimit))
       .setFooter({ text: translated ? footer + CARD_MARK : footer, iconURL: lead.footer.iconURL || undefined });
     return { embeds: [embed, ...rest], components, allowedMentions: { parse: [] } };
   }
@@ -151,15 +205,16 @@ function remember(map, key, entry, now) {
 }
 
 // The message alone can't give the original back: a translated card shows the
-// translation, a card's own text is cut at 1024 chars, and a stub has none.
+// translation, an X card's own text is cut at 1024 chars, and a stub has none.
 // So the post is fetched by id once and reused for every later toggle.
-async function originalPost(statusId, deps) {
+async function originalPost(post, deps) {
+  const key = `${post.source}:${post.id}`;
   const now = Date.now();
-  const hit = recall(metaCache, statusId, now);
-  if (hit) return hit.meta;
-  const meta = await (deps.fetchTweetMeta || fetchTweetMeta)(`https://x.com/i/status/${statusId}`);
-  if (meta?.text) remember(metaCache, statusId, { meta }, now);
-  return meta;
+  const hit = recall(metaCache, key, now);
+  if (hit) return hit.original;
+  const original = await SOURCES[post.source].fetch(post.id, deps);
+  if (original?.text) remember(metaCache, key, { original }, now);
+  return original;
 }
 
 async function translateCached(text, deps, userId, guildId) {
@@ -185,28 +240,29 @@ async function translateCached(text, deps, userId, guildId) {
 }
 
 async function handleTranslationInteraction(interaction, client, deps = {}) {
-  if (!interaction.isButton?.() || !interaction.customId?.startsWith(PREFIX)) return false;
-  const match = /^xtranslate:(translate|original):(\d{5,25})$/.exec(interaction.customId);
+  if (!interaction.isButton?.()) return false;
+  const { known, action, post } = parseCustomId(interaction.customId);
+  if (!known) return false;
   // Ephemeral cards are the retired private-card design; their buttons are dead.
   const privateMessage = Boolean(interaction.message?.flags?.has(MessageFlags.Ephemeral));
-  if (!match || !enabled() || interaction.message?.author?.id !== client.user.id || privateMessage) {
+  if (!post || !enabled() || interaction.message?.author?.id !== client.user.id || privateMessage) {
     await interaction.reply({ content: '這個翻譯按鈕目前無法使用。', flags: MessageFlags.Ephemeral });
     return true;
   }
-  const translated = match[1] === 'translate';
+  const translated = action === 'translate';
   // A translation takes seconds and deferUpdate shows nothing, so the button
   // itself turns into a locked 翻譯中… right away (also stops double clicks).
   // 查看原文 needs no model call and stays a plain ack.
-  if (translated) await interaction.update({ components: buttons(match[2], 'busy') });
+  if (translated) await interaction.update({ components: buttons(post, 'busy') });
   else await interaction.deferUpdate();
   try {
-    const meta = await originalPost(match[2], deps);
-    if (!meta?.text || meta.text.length > 12000) throw new Error('Post unavailable');
-    const result = translated ? await translateCached(meta.text, deps, interaction.user.id, interaction.guildId) : { text: meta.text };
-    await interaction.editReply(renderInPlace(interaction.message, meta, result.text, translated));
+    const original = await originalPost(post, deps);
+    if (!original?.text || original.text.length > 12000) throw new Error('Post unavailable');
+    const result = translated ? await translateCached(original.text, deps, interaction.user.id, interaction.guildId) : { text: original.text };
+    await interaction.editReply(renderInPlace(interaction.message, post, result.text, translated));
   } catch {
     // Only the failure is private: the public preview goes back to how it was.
-    if (translated) await interaction.editReply({ components: buttons(match[2]) }).catch(() => {});
+    if (translated) await interaction.editReply({ components: buttons(post) }).catch(() => {});
     await interaction.followUp({ content: '目前無法翻譯，請稍後再試或開啟原文。', flags: MessageFlags.Ephemeral, allowedMentions: { parse: [] } });
   }
   return true;
