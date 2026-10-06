@@ -36,6 +36,12 @@ const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
 const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
 const { startScheduler, stopScheduler } = require("./scheduler");
 const {
+  applyGuildCountStatus,
+  scheduleGuildCountStatus,
+  startPresenceRefresh,
+  stopPresenceRefresh,
+} = require("./presence");
+const {
   recordMessage: recordFamiliarityMessage,
   flush: flushFamiliarity,
   stopFlushTimer: stopFamiliarityFlushTimer,
@@ -105,7 +111,12 @@ client.once("clientReady", async () => {
   }
 
   startScheduler(client);
+  startPresenceRefresh(client);
 });
+
+// A re-identify (not a resume) starts a fresh gateway session that may come
+// up without our custom status — put it back right away.
+client.on("shardReady", () => applyGuildCountStatus(client));
 
 // guildCreate fires only for genuine joins after ready — a guild coming back
 // from an outage emits guildAvailable instead — so this won't re-greet on
@@ -114,6 +125,7 @@ client.on("guildCreate", async (guild) => {
   console.log(
     `加入新伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
+  scheduleGuildCountStatus(client);
   await sendGuildWelcome(guild);
 });
 
@@ -121,6 +133,7 @@ client.on("guildDelete", (guild) => {
   console.log(
     `離開伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
+  scheduleGuildCountStatus(client);
 });
 
 // Each event runs inside its guild's /language context, so fixed text the
@@ -297,6 +310,7 @@ process.on("uncaughtException", (err) => {
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     stopScheduler();
+    stopPresenceRefresh();
     stopMemorySweepTimer();
     stopProfileSweepTimer();
     flushFamiliarity();

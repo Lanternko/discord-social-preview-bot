@@ -5186,6 +5186,13 @@ const ogRaceCases = [
     });
   }
 
+  {
+    const { formatGuildCountStatus } = require("../src/presence");
+    it("presence status text carries the live guild count", () => {
+      assert.equal(formatGuildCountStatus(56), "正在陪 56 個伺服器聊天 🐾");
+    });
+  }
+
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
   process.exit(fail > 0 ? 1 : 0);
