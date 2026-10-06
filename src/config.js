@@ -588,6 +588,14 @@ module.exports = {
   AI_LONG_TERM_MEMORY_ENABLED:
     (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() ===
     "true",
+  // Nickname learning from all guild chat, not just the lines around an
+  // @mention (alias-extractor.js). "false" falls back to reply-time rows only.
+  ALIAS_PASSIVE_ENABLED:
+    (process.env.ALIAS_PASSIVE_ENABLED || "true").toLowerCase() === "true",
+  // Cost gates for alias extraction (both feeds): per-guild spacing and a
+  // global per-day ceiling (Taipei day, in-memory — a restart resets it).
+  ALIAS_EXTRACT_MIN_INTERVAL_MS: parsePositiveIntEnv("ALIAS_EXTRACT_MIN_INTERVAL_MS", 20 * 60 * 1000),
+  ALIAS_EXTRACT_DAILY_MAX: parsePositiveIntEnv("ALIAS_EXTRACT_DAILY_MAX", 150),
   // Personal-memory backlog sweep cadence; "0" disables the sweep entirely.
   PROFILE_SWEEP_INTERVAL_MS:
     process.env.PROFILE_SWEEP_INTERVAL_MS === "0"

@@ -1004,8 +1004,8 @@ async function generateAIReply(message, userText, options = {}) {
         appendPendingContext(guildId, guildName, groupContextLines);
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
 
-        recordAliasContext(guildId, groupContextLines);
-        maybeExtractAliases(guildId, runChain).catch(() => {});
+        recordAliasContext(guildId, groupContextLines, message.channelId);
+        maybeExtractAliases(guildId, message.channelId, runChain).catch(() => {});
 
         const personalContextLines = getPersonalMemoryContextEntries(groupContextLines);
         for (const entry of personalContextLines) {
