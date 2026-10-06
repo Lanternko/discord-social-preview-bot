@@ -74,6 +74,12 @@ const {
   resolveTargets,
   buildTargetContextBlock,
 } = require("../src/ai/target-context");
+const {
+  detectGroupCompareIntent,
+  compactProfile,
+  selectCompareCandidates,
+  buildGroupCompareBlock,
+} = require("../src/ai/group-compare");
 const aiMemory = require("../src/ai/memory");
 
 const {
@@ -3733,6 +3739,53 @@ it("resolveTargets: named third party under imitation; 幫我 adds no self", () 
   assert.equal(t.length, 1);
   assert.equal(t[0].userId, "u1");
   assert.equal(t[0].via, "name");
+});
+
+// --- group-compare (「群組裡誰最…」排名題) ---
+it("detectGroupCompareIntent: group ranking questions fire", () => {
+  for (const q of [
+    "所以群組裡誰最像蘿莉控 給出排名",
+    "群組裡面誰最像蘿莉控",
+    "誰比較會打電動",
+    "我們之中誰是最大的色胚",
+    "幫大家排個名次",
+  ]) assert.ok(detectGroupCompareIntent(q), q);
+});
+
+it("detectGroupCompareIntent: ordinary chat stays quiet", () => {
+  for (const q of ["你是誰", "今天晚餐吃什麼", "講個故事", "模仿小翔說話"]) {
+    assert.ok(!detectGroupCompareIntent(q), q);
+  }
+});
+
+it("selectCompareCandidates: roster order, skips no-profile + excluded, caps", () => {
+  const profiles = { a: "常聊話題：棒球", b: "", c: "常聊話題：動畫", d: "互動偏好：玩梗" };
+  const people = selectCompareCandidates({
+    roster: [{ userId: "a", name: "A" }, { userId: "b", name: "B" }, { userId: "c", name: "C" }],
+    groupEntries: [{ userId: "d", displayName: "D" }, { userId: "a", displayName: "A" }],
+    profileTextFor: (id) => profiles[id],
+    excludeIds: ["c"],
+    max: 5,
+  });
+  assert.deepStrictEqual(people.map((p) => p.userId), ["a", "d"]);
+  const capped = selectCompareCandidates({
+    roster: [{ userId: "a" }, { userId: "c" }, { userId: "d" }],
+    profileTextFor: (id) => profiles[id],
+    max: 2,
+  });
+  assert.strictEqual(capped.length, 2);
+});
+
+it("compactProfile drops the 說話風格 line when others remain", () => {
+  assert.strictEqual(compactProfile("說話風格：很短\n常聊話題：棒球\n注意：別叫老"), "常聊話題：棒球；注意：別叫老");
+  assert.strictEqual(compactProfile("說話風格：很短"), "說話風格：很短");
+});
+
+it("buildGroupCompareBlock: empty → '', otherwise one line per person + no-fact guard", () => {
+  assert.strictEqual(buildGroupCompareBlock([]), "");
+  const block = buildGroupCompareBlock([{ userId: "a", name: "小翔", profile: "常聊話題：白毛角色" }]);
+  assert.ok(block.includes("- 小翔：常聊話題：白毛角色"));
+  assert.ok(block.includes("不要說成事實"));
 });
 
 it("resolveTargets caps at MAX_TARGETS", () => {
