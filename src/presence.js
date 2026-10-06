@@ -1,6 +1,6 @@
 const { ActivityType } = require("discord.js");
 
-// 西寶's custom status bubble: "正在陪 N 個伺服器聊天 🐾".
+// 西寶's custom status bubble: "正在陪 N 個伺服器聊天".
 //
 // Updated on guild join/leave, but debounced: presence updates are rate
 // limited by the gateway (~5 per 20 s), so a burst of joins/leaves collapses
@@ -16,7 +16,7 @@ let debounceTimer = null;
 let refreshTimer = null;
 
 function formatGuildCountStatus(count) {
-  return `正在陪 ${count} 個伺服器聊天 🐾`;
+  return `正在陪 ${count} 個伺服器聊天`;
 }
 
 function applyGuildCountStatus(client) {

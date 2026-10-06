@@ -5189,7 +5189,7 @@ const ogRaceCases = [
   {
     const { formatGuildCountStatus } = require("../src/presence");
     it("presence status text carries the live guild count", () => {
-      assert.equal(formatGuildCountStatus(56), "正在陪 56 個伺服器聊天 🐾");
+      assert.equal(formatGuildCountStatus(56), "正在陪 56 個伺服器聊天");
     });
   }
 
