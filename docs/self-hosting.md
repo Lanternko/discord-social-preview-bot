@@ -54,7 +54,7 @@ docker run -d --name discord-social-preview-bot --restart unless-stopped \
 
 | Provider | `.env` | 預設 model | 備註 |
 |---|---|---|---|
-| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-flash` | 主力；便宜、中文好，唯一看得懂圖的一層 |
+| DeepSeek | `DEEPSEEK_API_KEY` | `deepseek-flash` | 主力；便宜、中文好。@西寶 附圖目前只送這一層 |
 | OpenAI 相容 | `OPENAI_API_KEY` | `gpt-5.6-luna` | 可用 `OPENAI_BASE_URL` 指向其他相容服務 |
 | Groq | `GROQ_API_KEY` | `qwen/qwen3.8-27b` | 免費、不用綁卡，**新手最好上手** |
 | Gemini | `GEMINI_API_KEY` | `gemini-3.6-flash` | 最後防線，見下方 billing 陷阱 |
