@@ -65,15 +65,39 @@ function collectFromMessage(message) {
   return images;
 }
 
+// A link preview's picture lives in an embed, not an attachment — including
+// every preview 西寶 posts herself. "@西寶 這張在畫什麼" as a reply to her own
+// X card used to reach her with images=0, so she guessed from the tweet text
+// (2026-10-07: called an apple a basket). The embed carries no content type,
+// so the type comes from the URL here or from the download's header later.
+function collectFromEmbeds(message) {
+  const embeds = Array.isArray(message?.embeds) ? message.embeds : [];
+  const images = [];
+  const seen = new Set();
+  for (const embed of embeds) {
+    const media = embed?.image || embed?.thumbnail;
+    const url = media?.proxyURL || media?.url;
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    const ext = url.split("?")[0].split(".").pop()?.toLowerCase();
+    images.push({ url, type: EXT_TO_TYPE[ext] || null, name: `embed-${images.length + 1}` });
+    if (images.length >= VISION_MAX_IMAGES) break;
+  }
+  return images;
+}
+
 // Images 西寶 should look at: the ones on the message that @ed her, or — when
 // she was @ed with no image of its own — the ones on the message being replied
 // to. "@西寶 這張是什麼" as a reply to someone else's photo is the single most
-// common way an image reaches her, and it carries no attachment itself.
+// common way an image reaches her, and it carries no attachment itself. A
+// replied-to message with no attachment falls back to its embed pictures.
 function collectVisionImages(message, referencedMessage = null) {
   if (!VISION_ENABLED) return [];
   const own = collectFromMessage(message);
   if (own.length > 0) return own;
-  return collectFromMessage(referencedMessage);
+  const referenced = collectFromMessage(referencedMessage);
+  if (referenced.length > 0) return referenced;
+  return collectFromEmbeds(referencedMessage);
 }
 
 // Images are inlined as base64 data URLs rather than handed over as links.
@@ -96,13 +120,21 @@ async function fetchImageData(image) {
       console.log(`[vision] skip oversized download name=${image.name} size=${declared}`);
       return null;
     }
+    // Embed pictures arrive without a declared type; trust the server's, and
+    // drop anything the vision endpoints won't take.
+    const type = image.type
+      || (response.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!SUPPORTED_IMAGE_TYPES.has(type)) {
+      console.log(`[vision] skip unsupported type name=${image.name} type=${type || "none"}`);
+      return null;
+    }
     const buffer = Buffer.from(await response.arrayBuffer());
     // Content-Length can lie or be absent; the buffer is the truth.
     if (buffer.length === 0 || buffer.length > VISION_MAX_BYTES) {
       console.log(`[vision] skip oversized body name=${image.name} size=${buffer.length}`);
       return null;
     }
-    return { ...image, bytes: buffer.length, dataUrl: `data:${image.type};base64,${buffer.toString("base64")}` };
+    return { ...image, type, bytes: buffer.length, dataUrl: `data:${type};base64,${buffer.toString("base64")}` };
   } catch (err) {
     const reason = err?.name === "AbortError" ? "timeout" : err.message;
     console.warn(`[vision] download failed name=${image.name}: ${reason}`);
@@ -193,6 +225,7 @@ module.exports = {
   SUPPORTED_IMAGE_TYPES,
   resolveImageType,
   collectFromMessage,
+  collectFromEmbeds,
   collectVisionImages,
   fetchImageData,
   loadVisionImages,
