@@ -3318,12 +3318,15 @@ it("buildAliasPrompt numbers people and lines, marks replies and @mentions", () 
     assert.match(turns[0].content, /L1 P1（回覆 P2）: @P2 峰哥/);
   });
 });
-it("aliases confirm at 2 distinct messages and show up in the profile block", () => {
+it("aliases confirm at 2 distinct speakers and show up in the profile block", () => {
   withProfileStore(() => {
     const now = Date.now();
     profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [{ messageId: "m1", at: now, speakerId: "u2" }]);
     let entry = profileStore.getUserProfile("g1", "u1");
     assert.deepEqual(profileStore.confirmedAliases(entry), [], "one message is only a guess");
+    profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [{ messageId: "m0", at: now, speakerId: "u2" }]);
+    entry = profileStore.getUserProfile("g1", "u1");
+    assert.deepEqual(profileStore.confirmedAliases(entry), [], "one person saying it twice is not the group's name for him");
     assert.doesNotMatch(profileStore.buildUserProfileBlock(entry), /群友常叫他/);
     profileStore.recordAliasEvidence("g1", "u1", "峰", "峰哥", [
       { messageId: "m1", at: now, speakerId: "u2" },
@@ -3343,7 +3346,7 @@ it("familiarity block renders aliases next to the roster name", () => {
   assert.match(out, /峰（群友叫：峰哥）/);
 });
 it("nameMatchCandidates matches a confirmed alias absent from the display name", () => {
-  const ev = [{ messageId: "m1", at: Date.now() }, { messageId: "m2", at: Date.now() }];
+  const ev = [{ messageId: "m1", at: Date.now(), speakerId: "u2" }, { messageId: "m2", at: Date.now(), speakerId: "u3" }];
   const profiles = [{ userId: "u1", name: "峰【曉未散】", aliases: [{ alias: "峰哥", evidence: ev, lastSeenAt: Date.now() }] }];
   assert.equal(nameMatchCandidates("模仿峰哥講話", profiles, [])[0]?.userId, "u1");
 });
@@ -3400,9 +3403,10 @@ memoryAsyncCases.push(["maybeExtractAliases batches, verifies, and records alias
     const rows = [];
     for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
       const fromU2 = i % 2 === 1;
+      const other = i % 4 === 1 ? ["u2", "萱萱"] : ["u3", "雅"];
       rows.push({
-        userId: fromU2 ? "u2" : "u1",
-        displayName: fromU2 ? "萱萱" : "峰",
+        userId: fromU2 ? other[0] : "u1",
+        displayName: fromU2 ? other[1] : "峰",
         messageId: `x${i}`,
         content: fromU2 ? "峰哥早" : "早",
         at: Date.now() - 1000 + i,

@@ -529,13 +529,15 @@ function setProfileItems(guildId, userId, items, consumed = null) {
 // Aliases = what OTHER people in the guild call this person (綽號), learned
 // from group chat by alias-extractor.js. Each alias pools evidence as
 // { messageId, at, speakerId }; code has already verified the speaker isn't
-// the person and the alias literally appears in that message. One message is
-// a guess — an alias counts once it shows up in ALIAS_CONFIRM_MIN_MESSAGES
-// distinct messages, and ages out like profile items.
+// the person and the alias literally appears in that message. An alias counts
+// once ALIAS_CONFIRM_MIN_SPEAKERS different people have used it — one person
+// saying it twice is usually them teasing (「小色狗」 confirmed off a single
+// speaker on the first passive day, 2026-10-07), not what the group calls
+// them. Ages out like profile items.
 const ALIAS_MAX_LEN = 12;
 const ALIAS_MAX_PER_USER = 8;
 const ALIAS_EVIDENCE_MAX = 10;
-const ALIAS_CONFIRM_MIN_MESSAGES = 2;
+const ALIAS_CONFIRM_MIN_SPEAKERS = 2;
 const ALIAS_PROMPT_MAX = 3;
 
 function sanitizeAlias(text) {
@@ -643,7 +645,8 @@ function recordAliasEvidence(guildId, userId, displayName, alias, evidence) {
 
 function isAliasConfirmed(a, now = Date.now()) {
   if (!a || isItemStale(a, now)) return false;
-  return new Set((a.evidence || []).map((e) => e.messageId)).size >= ALIAS_CONFIRM_MIN_MESSAGES;
+  const speakers = new Set((a.evidence || []).map((e) => e.speakerId).filter(Boolean));
+  return speakers.size >= ALIAS_CONFIRM_MIN_SPEAKERS;
 }
 
 // Confirmed aliases, most-used first.
@@ -803,7 +806,7 @@ module.exports = {
   getUserProfile,
   ALIAS_MAX_LEN,
   ALIAS_MAX_PER_USER,
-  ALIAS_CONFIRM_MIN_MESSAGES,
+  ALIAS_CONFIRM_MIN_SPEAKERS,
   sanitizeAlias,
   recordAliasEvidence,
   isAliasConfirmed,
