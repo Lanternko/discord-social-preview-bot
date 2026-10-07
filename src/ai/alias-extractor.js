@@ -16,7 +16,7 @@
 // globally (daily cap, Taipei day). The model only proposes —
 // resolveAliasCandidates keeps an alias only when a DIFFERENT person's message
 // literally contains it, and user-profile-store confirms it only after it shows
-// up in ≥2 distinct messages. Buffer is in-memory on purpose — raw chat of
+// is used by ≥2 different people. Buffer is in-memory on purpose — raw chat of
 // people who never talked to 西寶 is not written to disk; a restart just delays
 // the next batch. Confirmed aliases persist in user-profiles.json.
 
