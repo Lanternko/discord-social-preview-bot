@@ -54,6 +54,18 @@ function setGuildTier(guildId, tier) {
   save();
 }
 
+function deleteGuildTier(guildId) {
+  const settings = load();
+  if (!guildId || !(guildId in settings)) return false;
+  delete settings[guildId];
+  save();
+  return true;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function resetCacheForTests() {
   cache = null;
 }
@@ -65,5 +77,7 @@ module.exports = {
   isValidTier,
   getGuildTier,
   setGuildTier,
+  deleteGuildTier,
+  listGuildIds,
   resetCacheForTests,
 };

@@ -723,6 +723,52 @@ function deleteUserProfile(guildId, userId) {
   return true;
 }
 
+// save() copies the previous file to .bak first, so right after an erasure
+// the .bak still holds what was just deleted. Overwrite it with the erased
+// state — a deletion the backup quietly undoes isn't a deletion.
+function scrubBackup() {
+  try {
+    fs.copyFileSync(STORE_PATH, BAK_PATH);
+  } catch (_) {
+    // nothing saved yet — no backup to scrub
+  }
+}
+
+// Erasure variant of deleteUserProfile's sibling data: this person as the
+// SPEAKER in other members' alias evidence (their user id is all it holds).
+// An alias that loses its evidence entirely goes with it.
+function removeAliasEvidenceBySpeaker(guildId, userId) {
+  if (!guildId || !userId) return 0;
+  const guild = load()[guildId];
+  if (!guild) return 0;
+  let removed = 0;
+  for (const entry of Object.values(guild)) {
+    if (!Array.isArray(entry.aliases)) continue;
+    for (const a of entry.aliases) {
+      const before = (a.evidence || []).length;
+      a.evidence = (a.evidence || []).filter((ev) => ev.speakerId !== String(userId));
+      removed += before - a.evidence.length;
+    }
+    entry.aliases = entry.aliases.filter((a) => a.evidence.length > 0);
+  }
+  if (removed > 0) save();
+  return removed;
+}
+
+function deleteGuildUserProfiles(guildId) {
+  if (!guildId) return 0;
+  const data = load();
+  const count = Object.keys(data[guildId] || {}).length;
+  if (!(guildId in data)) return 0;
+  delete data[guildId];
+  save();
+  return count;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function hasGuildProfiles(guildId) {
   if (!guildId) return false;
   return Object.keys(load()[guildId] || {}).length > 0;
@@ -822,6 +868,10 @@ module.exports = {
   appendObservations,
   setConsolidatedProfile,
   deleteUserProfile,
+  removeAliasEvidenceBySpeaker,
+  deleteGuildUserProfiles,
+  listGuildIds,
+  scrubBackup,
   hasGuildProfiles,
   listUserProfiles,
   buildUserProfileBlock,

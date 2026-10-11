@@ -90,6 +90,20 @@ function removeSchedule(id) {
   return removed;
 }
 
+function removeGuildSchedules(guildId) {
+  if (!guildId) return [];
+  const schedules = load();
+  const removed = schedules.filter((s) => s.guildId === guildId);
+  if (removed.length === 0) return [];
+  cache = schedules.filter((s) => s.guildId !== guildId);
+  save();
+  return removed;
+}
+
+function listGuildIds() {
+  return [...new Set(load().map((s) => s.guildId).filter(Boolean))];
+}
+
 function resetCacheForTests() {
   cache = null;
 }
@@ -103,5 +117,7 @@ module.exports = {
   addSchedule,
   updateSchedule,
   removeSchedule,
+  removeGuildSchedules,
+  listGuildIds,
   resetCacheForTests,
 };

@@ -584,6 +584,10 @@ module.exports = {
     45000,
   ),
   AI_MEMORY_TTL_MS: parsePositiveIntEnv("AI_MEMORY_TTL_MS", 30 * 60 * 1000),
+  // Privacy retention (docs/privacy-policy.md states these numbers — change
+  // the policy text with them).
+  AI_TURN_LOG_RETENTION_DAYS: parsePositiveIntEnv("AI_TURN_LOG_RETENTION_DAYS", 90),
+  GUILD_DATA_RETENTION_DAYS: parsePositiveIntEnv("GUILD_DATA_RETENTION_DAYS", 30),
   AI_PROVIDER_FORCE: (process.env.AI_PROVIDER || "").toLowerCase(),
   AI_LONG_TERM_MEMORY_ENABLED:
     (process.env.AI_LONG_TERM_MEMORY_ENABLED || "true").toLowerCase() ===

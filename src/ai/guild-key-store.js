@@ -105,6 +105,10 @@ function consumeGuildKeyNotice(guildId) {
   return true;
 }
 
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function resetCacheForTests() {
   cache = null;
 }
@@ -121,5 +125,6 @@ module.exports = {
   markGuildKeyRejected,
   clearGuildKeyRejection,
   consumeGuildKeyNotice,
+  listGuildIds,
   resetCacheForTests,
 };

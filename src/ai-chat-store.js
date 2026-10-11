@@ -65,6 +65,18 @@ function setGuildAiChatMode(guildId, mode) {
   save();
 }
 
+function deleteGuildAiChatMode(guildId) {
+  const settings = load();
+  if (!guildId || !(guildId in settings)) return false;
+  delete settings[guildId];
+  save();
+  return true;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function resetCacheForTests() {
   cache = null;
 }
@@ -76,5 +88,7 @@ module.exports = {
   isValidAiChatMode,
   getGuildAiChatMode,
   setGuildAiChatMode,
+  deleteGuildAiChatMode,
+  listGuildIds,
   resetCacheForTests,
 };

@@ -3470,6 +3470,256 @@ memoryAsyncCases.push(["passive alias feed: per-channel buffers, guild gate, per
   }
 }]);
 
+// --- data erasure / retention (privacy) ---
+console.log("data erasure / retention");
+{
+  const erasure = require("../src/data-erasure");
+  const retention = require("../src/data-retention");
+  const departures = require("../src/guild-departure-store");
+  const familiarityStore = require("../src/familiarity");
+  const scheduleStore = require("../src/schedule-store");
+  const tierStore = require("../src/tier-store");
+  const languageStore = require("../src/language-store");
+  const aiChatStore = require("../src/ai-chat-store");
+  const guildKeyStore = require("../src/ai/guild-key-store");
+
+  const STORE_FILES = [
+    profileStore.STORE_PATH,
+    `${profileStore.STORE_PATH}.bak`,
+    guildStore.STORE_PATH,
+    `${guildStore.STORE_PATH}.bak`,
+    aiMemory.DISTILL_LOG_PATH,
+    `${aiMemory.DISTILL_LOG_PATH}.bak`,
+    familiarityStore.STORE_PATH,
+    scheduleStore.SCHEDULE_STORE_PATH,
+    tierStore.TIER_STORE_PATH,
+    languageStore.LANGUAGE_STORE_PATH,
+    aiChatStore.AI_CHAT_STORE_PATH,
+    guildKeyStore.STORE_PATH,
+    departures.STORE_PATH,
+  ];
+  const resetAllStores = () => {
+    profileStore.resetCacheForTests();
+    guildStore.resetCacheForTests();
+    aiMemory.resetDistillLogCacheForTests();
+    aiMemory.aiConversationHistory.clear();
+    familiarityStore.resetCacheForTests();
+    scheduleStore.resetCacheForTests();
+    tierStore.resetCacheForTests();
+    languageStore.resetCacheForTests();
+    aiChatStore.resetCacheForTests();
+    guildKeyStore.resetCacheForTests();
+    departures.resetCacheForTests();
+  };
+  // Starts from EMPTY stores (files removed, not just snapshotted) so nothing
+  // already on disk can leak into the assertions.
+  const withAllStores = (fn) => {
+    const snapshots = STORE_FILES.map((f) => [f, snapshotFile(f)]);
+    for (const f of STORE_FILES) restoreFile(f, null);
+    resetAllStores();
+    try {
+      fn();
+    } finally {
+      for (const [f, snap] of snapshots) restoreFile(f, snap);
+      resetAllStores();
+    }
+  };
+  const readIfExists = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
+  const ctxRow = (id, userId, displayName, text) => ({
+    line: `[${displayName}]: ${text}`, messageId: id, at: 1000, userId, displayName,
+  });
+  const fakeClient = (guildIds, ready = true) => ({
+    isReady: () => ready,
+    guilds: { cache: new Map(guildIds.map((id) => [id, {}])) },
+  });
+  // Alice (u-alice) and Bob (u-bob) both have data in guild G; Alice also in H.
+  const seed = (G, H) => {
+    profileStore.appendObservations(G, "u-alice", "Alice", [{ text: "愛吃拉麵" }]);
+    profileStore.appendObservations(G, "u-bob", "Bob", [{ text: "常聊籃球" }]);
+    profileStore.appendObservations(H, "u-alice", "Alice", [{ text: "另一個群" }]);
+    profileStore.recordAliasEvidence(G, "u-bob", "Bob", "阿包", [
+      { messageId: "a1", at: 1, speakerId: "u-alice" },
+      { messageId: "a2", at: 2, speakerId: "u-carol" },
+    ]);
+    recordFamiliarityMessage(G, "u-alice", "Alice");
+    recordFamiliarityMessage(G, "u-bob", "Bob");
+    recordFamiliarityMessage(H, "u-alice", "Alice");
+    const bot = { guildId: G, userId: "bot", displayName: "西寶" };
+    aiMemory.recordAITurn("c-g", "user", "alice-secret-text", 5, { guildId: G, userId: "u-alice", displayName: "Alice" });
+    aiMemory.recordAITurn("c-g", "assistant", "reply-to-alice", 5, bot);
+    aiMemory.recordAITurn("c-g", "user", "bob-text", 5, { guildId: G, userId: "u-bob", displayName: "Bob" });
+    aiMemory.recordAITurn("c-g", "assistant", "reply-to-bob", 5, bot);
+    aiMemory.recordAITurn("c-h", "user", "alice-in-h", 5, { guildId: H, userId: "u-alice", displayName: "Alice" });
+    guildStore.appendPendingContext(G, "Guild G", [
+      ctxRow("m1", "u-alice", "Alice", "alice-context-line"),
+      ctxRow("m2", "u-bob", "Bob", "bob-context-line"),
+    ]);
+  };
+
+  it("eraseUserData clears the member's profile, turns, familiarity and pending excerpts in that guild only", () => {
+    withAllStores(() => {
+      const G = "erase-g", H = "erase-h";
+      seed(G, H);
+      const erased = erasure.eraseUserData(G, "u-alice", ["Alice"]);
+      assert.equal(erased.any, true);
+      assert.equal(erased.profile, 1);
+      assert.equal(erased.familiarity, 1);
+      assert.equal(erased.turns, 2, "her turn + 西寶's reply to it");
+      assert.equal(erased.pendingLines, 1);
+      assert.equal(erased.aliasEvidence, 1);
+
+      assert.equal(profileStore.getUserProfile(G, "u-alice"), null);
+      assert.deepEqual(getFamiliarityRoster(G).map((r) => r.userId), ["u-bob"]);
+      const pending = guildStore.getPendingContexts(G);
+      assert.equal(pending.length, 1);
+      assert.doesNotMatch(pending[0].text, /alice-context-line/);
+      assert.match(pending[0].text, /bob-context-line/);
+      assert.deepEqual(aiMemory.getChannelAIHistory("c-g"), [], "short-term history of the touched channel is dropped");
+
+      // Bob, and Alice's data in the other guild, are untouched.
+      assert.ok(profileStore.getUserProfile(G, "u-bob"));
+      assert.deepEqual(
+        profileStore.getUserProfile(G, "u-bob").aliases[0].evidence.map((e) => e.speakerId),
+        ["u-carol"],
+      );
+      assert.ok(profileStore.getUserProfile(H, "u-alice"));
+      assert.equal(getFamiliarityRoster(H).length, 1);
+      const log = JSON.parse(fs.readFileSync(aiMemory.DISTILL_LOG_PATH, "utf8"));
+      assert.deepEqual(log.channels["c-g"].turns.map((t) => t.content), ["bob-text", "reply-to-bob"]);
+      assert.equal(log.channels["c-h"].turns.length, 1);
+
+      // Nothing of hers survives on disk for guild G — backups included.
+      const turnFiles = readIfExists(aiMemory.DISTILL_LOG_PATH) + readIfExists(`${aiMemory.DISTILL_LOG_PATH}.bak`);
+      assert.doesNotMatch(turnFiles, /alice-secret-text|reply-to-alice/);
+      for (const f of [guildStore.STORE_PATH, `${guildStore.STORE_PATH}.bak`]) {
+        assert.doesNotMatch(readIfExists(f), /alice-context-line/, f);
+      }
+      for (const f of [profileStore.STORE_PATH, `${profileStore.STORE_PATH}.bak`]) {
+        assert.equal(JSON.parse(fs.readFileSync(f, "utf8"))[G]["u-alice"], undefined, f);
+      }
+      assert.equal(JSON.parse(fs.readFileSync(familiarityStore.STORE_PATH, "utf8"))[G]["u-alice"], undefined);
+    });
+  });
+
+  it("eraseUserData finds legacy pending lines (no speakerId) by display name", () => {
+    withAllStores(() => {
+      const G = "erase-legacy";
+      guildStore.appendPendingContext(G, "G", [
+        { line: "[Alice]: old-line", messageId: "m1", at: 1, displayName: "Alice" },
+      ]);
+      const erased = erasure.eraseUserData(G, "u-alice", ["Alice"]);
+      assert.equal(erased.pendingLines, 1);
+      assert.deepEqual(guildStore.getPendingContexts(G), [], "an emptied snapshot is removed");
+    });
+  });
+
+  it("eraseUserData reports nothing for a member with no data", () => {
+    withAllStores(() => {
+      assert.equal(erasure.eraseUserData("erase-none", "u-nobody").any, false);
+      assert.equal(erasure.eraseUserData(null, "u1").any, false);
+    });
+  });
+
+  it("eraseGuildData clears every store for that guild and leaves others alone", () => {
+    withAllStores(() => {
+      const G = "erase-g", H = "erase-h";
+      seed(G, H);
+      for (const id of [G, H]) {
+        tierStore.setGuildTier(id, "standard");
+        languageStore.setGuildLanguage(id, "ja");
+        aiChatStore.setGuildAiChatMode(id, aiChatStore.AI_CHAT_MODES.find((m) => m !== aiChatStore.DEFAULT_AI_CHAT_MODE));
+        guildKeyStore.setGuildApiKey(id, `sk-${id}`);
+        scheduleStore.addSchedule({ guildId: id, channelId: `c-${id}`, createdBy: "u-alice" });
+      }
+      assert.deepEqual(erasure.listStoredGuildIds().sort(), [G, H]);
+
+      const result = erasure.eraseGuildData(G);
+      assert.equal(result.any, true);
+      assert.equal(result.removedSchedules.length, 1);
+      assert.equal(result.userProfiles, 2);
+      assert.deepEqual(erasure.listStoredGuildIds(), [H], "no store still lists the erased guild");
+      assert.equal(guildStore.getGuildProfile(G), null);
+      assert.equal(guildKeyStore.getGuildApiKey(G), null);
+      assert.equal(guildKeyStore.getGuildApiKey(H), `sk-${H}`);
+      assert.equal(scheduleStore.getGuildSchedules(H).length, 1);
+      for (const f of STORE_FILES) {
+        assert.doesNotMatch(readIfExists(f), new RegExp(G), `${path.basename(f)} still mentions the guild`);
+      }
+    });
+  });
+
+  it("pruneExpiredDistillTurns drops turns past the age limit and empty channels", () => {
+    withAllStores(() => {
+      const now = Date.now();
+      const realNow = Date.now;
+      // recordDistillTurn stamps turns with the clock, so wind it back.
+      Date.now = () => now - 91 * DAY_MS;
+      try {
+        aiMemory.recordDistillTurn("c-old", "user", "old", { guildId: "g" });
+        aiMemory.recordDistillTurn("c-mix", "user", "old-too", { guildId: "g" });
+      } finally {
+        Date.now = realNow;
+      }
+      aiMemory.recordDistillTurn("c-mix", "user", "fresh", { guildId: "g" });
+
+      assert.equal(aiMemory.pruneExpiredDistillTurns(90 * DAY_MS, now), 2);
+      const after = JSON.parse(fs.readFileSync(aiMemory.DISTILL_LOG_PATH, "utf8"));
+      assert.equal(after.channels["c-old"], undefined);
+      assert.deepEqual(after.channels["c-mix"].turns.map((t) => t.content), ["fresh"]);
+      assert.doesNotMatch(readIfExists(`${aiMemory.DISTILL_LOG_PATH}.bak`), /old-too/);
+      assert.equal(aiMemory.pruneExpiredDistillTurns(90 * DAY_MS, now), 0, "nothing left to prune");
+      assert.equal(aiMemory.AI_TURN_LOG_RETENTION_MS, 90 * DAY_MS, "default is 90 days");
+    });
+  });
+
+  it("a departed guild is erased only after the grace period, and only if still gone", () => {
+    withAllStores(() => {
+      const G = "left-g", H = "stay-h";
+      seed(G, H);
+      const t0 = 1_000_000_000_000;
+      const retentionMs = 30 * DAY_MS;
+      departures.markGuildDeparted(G, t0);
+      const gone = fakeClient([H]);
+
+      assert.deepEqual(retention.sweepDepartedGuilds(gone, t0 + 29 * DAY_MS, retentionMs).erased, []);
+      assert.ok(profileStore.getUserProfile(G, "u-bob"), "still inside the grace period");
+
+      // A client that hasn't received its guild list must never trigger erasure.
+      assert.deepEqual(retention.sweepDepartedGuilds(fakeClient([], true), t0 + 99 * DAY_MS, retentionMs).erased, []);
+      assert.deepEqual(retention.sweepDepartedGuilds(fakeClient([H], false), t0 + 99 * DAY_MS, retentionMs).erased, []);
+      assert.ok(profileStore.getUserProfile(G, "u-bob"));
+
+      assert.deepEqual(retention.sweepDepartedGuilds(gone, t0 + 31 * DAY_MS, retentionMs).erased, [G]);
+      assert.equal(profileStore.getUserProfile(G, "u-bob"), null);
+      assert.ok(profileStore.getUserProfile(H, "u-alice"), "a guild the bot is in is untouched");
+      assert.deepEqual(departures.listDepartures(), []);
+    });
+  });
+
+  it("rejoining within the grace period cancels the erasure", () => {
+    withAllStores(() => {
+      const G = "back-g";
+      seed(G, "other-h");
+      departures.markGuildDeparted(G, 0);
+      const result = retention.sweepDepartedGuilds(fakeClient([G, "other-h"]), 365 * DAY_MS, 30 * DAY_MS);
+      assert.deepEqual(result, { erased: [], returned: [G] });
+      assert.ok(profileStore.getUserProfile(G, "u-bob"));
+      assert.deepEqual(departures.listDepartures(), []);
+    });
+  });
+
+  it("markMissingGuilds starts the clock for guilds left while offline, once", () => {
+    withAllStores(() => {
+      const G = "offline-left", H = "still-in";
+      seed(G, H);
+      assert.deepEqual(retention.markMissingGuilds(fakeClient([H], false), 5), [], "not ready → no marks");
+      assert.deepEqual(retention.markMissingGuilds(fakeClient([H]), 5), [G]);
+      assert.deepEqual(retention.markMissingGuilds(fakeClient([H]), 999), [], "already counting down");
+      assert.deepEqual(departures.listDepartures(), [{ guildId: G, leftAt: 5 }], "the first departure time is kept");
+    });
+  });
+}
+
 console.log("guild-profile-store");
 it("getGuildProfile returns null for missing guild", () => {
   withGuildStore(() => {

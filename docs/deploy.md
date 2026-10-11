@@ -111,7 +111,21 @@ A cron watchdog restarts the bot within ~1 min if its process dies (crash, ENOSP
 - The watchdog counts a process as the bot only if its cwd is the repo, its exe is node, and argv is exactly `node src/index.js` — so a shell whose command merely *mentions* that string is not a live bot (a substring match once hid a dead bot for minutes and could kill such shells as "duplicates"). Launch the bot with exactly that argv or the watchdog won't see it. A `flock` on `/tmp/bot_watchdog.lock` stops a manual run and the cron tick from double-launching.
 - **To stop the bot for maintenance, comment out the cron line first** — otherwise the watchdog relaunches it within a minute.
 
+## Data retention (privacy)
+
+The privacy policy states these numbers; the code that keeps them true is [src/data-retention.js](../src/data-retention.js) (daily sweep, also runs at startup) and [src/data-erasure.js](../src/data-erasure.js). Grep `[retention]`.
+
+- **Turn log** (`data/ai-turn-log.json`): turns older than `AI_TURN_LOG_RETENTION_DAYS` (90) are pruned.
+- **Guilds the bot left**: `guildDelete` only records the time in `data/guild-departures.json`; the sweep erases that guild's data `GUILD_DATA_RETENTION_DAYS` (30) later, after re-checking the bot is still not a member. Rejoining cancels it. Guilds that left while the bot was down are picked up by comparing the stores against the guild list at sweep time — **so the first sweep after this ships starts the 30-day clock for every guild the bot has ever left.**
+- **`.bak` files** are overwritten with the post-erasure state whenever something is erased.
+- **`bot.log`**: rotated by logrotate, 14 days kept. Config: [scripts/bot-logrotate.conf](../scripts/bot-logrotate.conf). It is a user crontab line, **not installed by the repo** — add it once per host:
+
+  ```cron
+  17 4 * * * /usr/sbin/logrotate -s $HOME/.local/state/dspb-logrotate.status $HOME/side_projects/apps/discord-social-preview-bot/scripts/bot-logrotate.conf
+  ```
+
+- **Manual snapshots are outside all of the above.** `data/backups/` and one-off copies like `data/user-profiles.json.pre-*` are made by hand and nothing prunes them — they keep whatever was erased since. Delete them once the migration they guard is settled.
+
 ## Future hardening (not yet done)
 
 - systemd service for auto-restart on crash/reboot (cron watchdog above covers the common case)
-- log rotation for `bot.log`
