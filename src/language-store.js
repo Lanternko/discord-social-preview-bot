@@ -53,6 +53,18 @@ function setGuildLanguage(guildId, code) {
   save();
 }
 
+function deleteGuildLanguage(guildId) {
+  const settings = load();
+  if (!guildId || !(guildId in settings)) return false;
+  delete settings[guildId];
+  save();
+  return true;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function resetCacheForTests() {
   cache = null;
 }
@@ -61,5 +73,7 @@ module.exports = {
   LANGUAGE_STORE_PATH,
   getGuildLanguage,
   setGuildLanguage,
+  deleteGuildLanguage,
+  listGuildIds,
   resetCacheForTests,
 };

@@ -76,6 +76,9 @@ src/
 ├── guild-welcome.js      # guildCreate → fixed self-intro in system/first postable channel
 ├── commands.js           # Slash commands (/servers, /ai-tier, /ai-key, /memory, /schedule)
 ├── tier-store.js         # Per-guild /ai-tier persistence (data/tier-settings.json)
+├── data-erasure.js       # Erase one member's / one guild's stored data across every store
+├── data-retention.js     # Daily sweep: turn-log age limit, erase guilds the bot left ([retention])
+├── guild-departure-store.js # When the bot left each guild (data/guild-departures.json)
 ├── language-store.js     # Per-guild /language persistence (data/language-settings.json)
 ├── reply-language.js     # /language catalog + persona/story language snippets
 ├── system-text.js        # Fixed bot text per /language (t(key)) + per-event language context

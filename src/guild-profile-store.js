@@ -103,6 +103,8 @@ function normalizeContextRows(rows) {
       messageId: r.messageId ? String(r.messageId) : null,
       at: typeof r.at === "number" && Number.isFinite(r.at) ? r.at : null,
       speaker: r.displayName ? String(r.displayName) : null,
+      // Kept so /memory forget-me can pull one person's lines back out.
+      speakerId: r.userId ? String(r.userId) : null,
     }));
 }
 
@@ -153,6 +155,59 @@ function clearPendingContexts(guildId) {
   entry.lastExtractedAt = Date.now();
   entry.updatedAt = Date.now();
   save();
+}
+
+// Erasure: drop one person's lines from the excerpts waiting to be
+// summarised. Rows written before speakerId existed only carry a display
+// name, so those fall back to matching `knownNames` — over-deleting a
+// namesake's transient excerpt is the safe direction here.
+function removeUserFromPendingContexts(guildId, userId, knownNames = []) {
+  if (!guildId || !userId) return 0;
+  const entry = load()[guildId];
+  if (!entry || !Array.isArray(entry.pendingContexts)) return 0;
+  const names = new Set(knownNames.filter(Boolean).map(String));
+  const isTheirs = (l) =>
+    l.speakerId ? l.speakerId === String(userId) : Boolean(l.speaker && names.has(l.speaker));
+
+  let removed = 0;
+  const kept = [];
+  for (const snap of entry.pendingContexts) {
+    const lines = (snap.lines || []).filter((l) => !isTheirs(l));
+    const dropped = (snap.lines || []).length - lines.length;
+    if (dropped === 0) {
+      kept.push(snap);
+      continue;
+    }
+    removed += dropped;
+    if (lines.length > 0) {
+      kept.push({ ...snap, lines, text: lines.map((l) => l.text).join("\n") });
+    }
+  }
+  if (removed === 0) return 0;
+  entry.pendingContexts = kept;
+  entry.updatedAt = Date.now();
+  save();
+  return removed;
+}
+
+function deleteGuildProfile(guildId) {
+  if (!guildId) return false;
+  const data = load();
+  if (!(guildId in data)) return false;
+  delete data[guildId];
+  save();
+  return true;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
+// See user-profile-store.scrubBackup: the .bak must not outlive an erasure.
+function scrubBackup() {
+  try {
+    fs.copyFileSync(STORE_PATH, BAK_PATH);
+  } catch (_) {}
 }
 
 function appendObservations(guildId, guildName, observations) {
@@ -357,6 +412,10 @@ module.exports = {
   appendPendingContext,
   getPendingContexts,
   clearPendingContexts,
+  removeUserFromPendingContexts,
+  deleteGuildProfile,
+  listGuildIds,
+  scrubBackup,
   appendObservations,
   buildGuildProfileBlock,
   flush,

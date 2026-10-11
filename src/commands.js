@@ -26,7 +26,6 @@ const {
 } = require("./schedule-store");
 const {
   getUserProfile,
-  deleteUserProfile,
   PROFILE_FIELDS,
   isAliasConfirmed,
   isItemStale,
@@ -36,6 +35,7 @@ const {
   getGuildProfile,
   guildProfileTextOf,
 } = require("./guild-profile-store");
+const { eraseUserData, describeErasure } = require("./data-erasure");
 const {
   TASK_TYPES,
   VALID_TASK_TYPES,
@@ -194,7 +194,7 @@ const MEMORY_COMMAND = {
     },
     {
       name: "forget-me",
-      description: "刪除西寶對你的所有記憶",
+      description: "刪除西寶對你的記憶、對話紀錄與活躍度統計",
       type: 1, // SUB_COMMAND
     },
     {
@@ -332,6 +332,11 @@ async function ensureApplicationCommands(client) {
       console.log(`[commands] deleted stale /${cmd.name}`);
     }
   }
+}
+
+// Every name a member shows up under in stored chat excerpts.
+function namesOf(user, member) {
+  return [member?.displayName, user?.globalName, user?.username].filter(Boolean);
 }
 
 function buildHelpMessage() {
@@ -887,11 +892,11 @@ async function handleMemoryCommand(interaction) {
   }
 
   if (sub === "forget-me") {
-    const deleted = deleteUserProfile(guildId, interaction.user.id);
-    if (deleted) {
-      console.log(`[memory] user=${interaction.user.id} guild=${guildId} self-deleted`);
+    const erased = eraseUserData(guildId, interaction.user.id, namesOf(interaction.user, interaction.member));
+    if (erased.any) {
+      console.log(`[memory] user=${interaction.user.id} guild=${guildId} self-deleted ${describeErasure(erased)}`);
       await interaction.reply({
-        content: "已刪除西寶對你的所有記憶。",
+        content: "已刪除西寶在這個伺服器對你的記憶、對話紀錄與活躍度統計。",
         flags: MessageFlags.Ephemeral,
       });
     } else {
@@ -916,11 +921,15 @@ async function handleMemoryCommand(interaction) {
     }
 
     const target = interaction.options.getUser("user");
-    const deleted = deleteUserProfile(guildId, target.id);
-    if (deleted) {
-      console.log(`[memory] user=${target.id} guild=${guildId} deleted by admin=${interaction.user.id}`);
+    const erased = eraseUserData(
+      guildId,
+      target.id,
+      namesOf(target, interaction.options.getMember?.("user")),
+    );
+    if (erased.any) {
+      console.log(`[memory] user=${target.id} guild=${guildId} deleted by admin=${interaction.user.id} ${describeErasure(erased)}`);
       await interaction.reply({
-        content: `已刪除西寶對 **${target.username}** 的所有記憶。`,
+        content: `已刪除西寶在這個伺服器對 **${target.username}** 的記憶、對話紀錄與活躍度統計。`,
         flags: MessageFlags.Ephemeral,
       });
     } else {

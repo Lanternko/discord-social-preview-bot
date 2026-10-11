@@ -77,6 +77,35 @@ function recordMessage(guildId, userId, displayName) {
   startFlushTimer();
 }
 
+// Erasure writes through immediately — a deletion sitting in the 60s flush
+// window would be lost (i.e. undone) by a crash.
+function deleteUserFamiliarity(guildId, userId) {
+  if (!guildId || !userId) return null;
+  const data = load();
+  const removed = data[guildId]?.[userId];
+  if (!removed) return null;
+  delete data[guildId][userId];
+  if (Object.keys(data[guildId]).length === 0) delete data[guildId];
+  dirty = true;
+  flush();
+  return removed;
+}
+
+function deleteGuildFamiliarity(guildId) {
+  if (!guildId) return 0;
+  const data = load();
+  if (!(guildId in data)) return 0;
+  const count = Object.keys(data[guildId]).length;
+  delete data[guildId];
+  dirty = true;
+  flush();
+  return count;
+}
+
+function listGuildIds() {
+  return Object.keys(load());
+}
+
 function tierLabel(count) {
   for (const t of TIERS) {
     if (count >= t.min) return t.label;
@@ -133,6 +162,9 @@ module.exports = {
   TIERS,
   ROSTER_LIMIT,
   recordMessage,
+  deleteUserFamiliarity,
+  deleteGuildFamiliarity,
+  listGuildIds,
   getFamiliarityRoster,
   buildFamiliarityBlock,
   tierLabel,

@@ -38,6 +38,8 @@ const { recordPassiveMessage, maybeExtractAliases } = require("./ai/alias-extrac
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
 const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
 const { startScheduler, stopScheduler } = require("./scheduler");
+const { startRetentionSweep, stopRetentionSweep } = require("./data-retention");
+const { markGuildDeparted, clearGuildDeparture } = require("./guild-departure-store");
 const {
   applyGuildCountStatus,
   scheduleGuildCountStatus,
@@ -115,6 +117,7 @@ client.once("clientReady", async () => {
 
   startScheduler(client);
   startPresenceRefresh(client);
+  startRetentionSweep(client);
 });
 
 // A re-identify (not a resume) starts a fresh gateway session that may come
@@ -129,14 +132,27 @@ client.on("guildCreate", async (guild) => {
     `加入新伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
   scheduleGuildCountStatus(client);
+  // Back within the grace period: its data stays.
+  if (clearGuildDeparture(guild.id)) {
+    console.log(`[retention] guild=${guild.id} rejoined, erasure cancelled`);
+  }
   await sendGuildWelcome(guild);
 });
 
+// Nothing is erased here — this only starts the grace-period clock, and the
+// daily sweep (data-retention.js) re-checks membership before deleting. An
+// outage must never reach that clock: discord.js routes those to
+// guildUnavailable, the `available` check is the belt to that braces.
 client.on("guildDelete", (guild) => {
+  if (guild.available === false) {
+    console.log(`[retention] guild=${guild.id} unavailable (outage), not a departure`);
+    return;
+  }
   console.log(
     `離開伺服器: ${guild.name}，目前共 ${client.guilds.cache.size} 個`,
   );
   scheduleGuildCountStatus(client);
+  markGuildDeparted(guild.id);
 });
 
 // Each event runs inside its guild's /language context, so fixed text the
@@ -326,6 +342,7 @@ process.on("uncaughtException", (err) => {
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.once(signal, () => {
     stopScheduler();
+    stopRetentionSweep();
     stopPresenceRefresh();
     stopMemorySweepTimer();
     stopProfileSweepTimer();
