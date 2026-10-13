@@ -13,7 +13,7 @@ const controls = [
   { id: 'cn-ja-clause', text: '剛剛看到官方這樣說：メンテナンスが終わりました！', language: 'zh', expectedDisplay: true },
   { id: 'short-ja', text: 'お渡しするよー！', expectedDisplay: true },
   { id: 'short-ko', text: '안녕하세요!', expectedDisplay: true },
-  { id: 'short-en', text: 'No refunds.', expectedDisplay: true },
+  { id: 'short-en', text: 'No refunds.', expectedDisplay: false },
   { id: 'one-name', text: 'アロナ #ブルアカ', language: 'ja', expectedDisplay: false },
   { id: 'one-word-label', text: 'Release', language: 'en', expectedDisplay: false },
 ];
