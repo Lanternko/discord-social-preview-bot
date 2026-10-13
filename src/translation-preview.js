@@ -67,8 +67,12 @@ function parseCustomId(customId) {
   return { known: false };
 }
 
+const SHORT_ENGLISH_WORDS = 6;
+
 function isForeignPost(meta) {
-  const text = (meta?.text || '').replace(/https?:\/\/\S+|@[A-Za-z0-9_]+|#[\p{L}\p{N}_]+/gu, '');
+  // Handles keep their dots (Threads: ovo_x.m) and survive a stray space
+  // after the @ ("Cos. X @ zzamo0"), or a credit line reads as English prose.
+  const text = (meta?.text || '').replace(/https?:\/\/\S+|@ ?[A-Za-z0-9_.]+|#[\p{L}\p{N}_]+/gu, '');
   const letters = text.match(/\p{L}/gu) || [];
   // Short Japanese/Korean sentences still carry meaning without API language
   // metadata. Keep one-name captions (e.g. アロナ) below the four-letter floor.
@@ -81,8 +85,12 @@ function isForeignPost(meta) {
   if (letters.length < 8) return false;
   if (/[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
   if (/^zh\b/i.test(meta?.language || '')) return false;
-  const foreign = letters.filter(c => !/\p{Script=Han}/u.test(c)).length;
-  return foreign / letters.length >= .6;
+  const foreign = letters.filter(c => !/\p{Script=Han}/u.test(c));
+  if (foreign.length / letters.length < .6) return false;
+  // A few English words ("No refunds.", "Happy birthday!") read fine as-is.
+  // Any other script or a declared non-English language keeps the floor above.
+  const english = /^(en|und)?$/i.test(meta?.language || '') && foreign.every(c => /[A-Za-z]/.test(c));
+  return !english || (text.match(/[A-Za-z]+(?:[’'-][A-Za-z]+)*/g) || []).length >= SHORT_ENGLISH_WORDS;
 }
 
 function enabled() {

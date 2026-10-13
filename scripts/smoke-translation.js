@@ -16,6 +16,14 @@ async function main() {
   assert.equal(isForeignPost({ text: 'アロナ #ブルアカ' }), false);
   assert.equal(isForeignPost({ text: '不要漏看公告，以下是需要留意的退款條件：Tickets are not refundable after purchase.', language: 'zh' }), true);
   assert.equal(isForeignPost({ text: '今天研究 AI agents 和 System prompt，有趣。', language: 'zh' }), false);
+  assert.equal(isForeignPost({ text: 'Cos. X @ zzamo0' }), false);
+  assert.equal(isForeignPost({ text: 'shot by @ovo_x.m' }), false);
+  assert.equal(isForeignPost({ text: 'No refunds.' }), false);
+  assert.equal(isForeignPost({ text: 'Happy birthday, Hoshino!', language: 'en' }), false);
+  assert.equal(isForeignPost({ text: 'Happy birthday to my best friend' }), true);
+  assert.equal(isForeignPost({ text: 'Feliz cumpleaños' }), true);
+  assert.equal(isForeignPost({ text: 'Bon anniversaire', language: 'fr' }), true);
+  assert.equal(isForeignPost({ text: 'С днём рождения' }), true);
   const tokens = protectTokens('Hello @BlueArchive #ブルアカ https://example.com');
   assert.equal(tokens.restore(tokens.masked), 'Hello @BlueArchive #ブルアカ https://example.com');
   assert.throws(() => tokens.restore('no tokens'), /protected token/);
