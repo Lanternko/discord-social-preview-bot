@@ -191,7 +191,7 @@ function buildThreadsCardPayload(canonicalUrl, rawMetadata, viewerUrls) {
   const hasVideo = Boolean(metadata.video) || metadata.videoCount > 0;
   const isTextOnly = !metadata.image && !hasVideo;
 
-  if (isTextOnly || metadata.twitterCard === "summary") {
+  if (isTextOnly || (metadata.twitterCard === "summary" && !hasVideo)) {
     const logLabel = isTextOnly ? "threads-text-only" : "threads-compact";
     console.log(
       `[preview] ${logLabel} ${metadata.twitterCard} ${canonicalUrl}`,

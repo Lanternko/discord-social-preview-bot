@@ -23,7 +23,28 @@ process.env.NATIVE_EMBED_WAIT_MS = "30";
 // Pre-require the modules whose exports we need to override, then poke their
 // cached exports so downstream requires see the mocks.
 const probeModulePath = require.resolve("../src/probe");
-require(probeModulePath);
+// Keep a real metadata pipeline with deterministic GraphQL + subprocess I/O.
+const childProcess = require("node:child_process");
+const realExecFile = childProcess.execFile;
+let metadataProbeMock = null;
+const { promisify } = require("node:util");
+const realExecFileAsync = promisify(realExecFile);
+childProcess.execFile = (...args) => realExecFile(...args);
+childProcess.execFile[promisify.custom] = async (...args) => {
+  if (!metadataProbeMock) return realExecFileAsync(...args);
+  metadataProbeMock.calls += 1;
+  assert.equal(args[1][1], metadataProbeMock.url);
+  if (metadataProbeMock.error) throw metadataProbeMock.error;
+  return { stdout: JSON.stringify(metadataProbeMock.result), stderr: "" };
+};
+const graphqlModule = require("../src/threads-graphql");
+const realGraphqlFetch = graphqlModule.fetchThreadsGraphqlMetadata;
+let metadataGraphqlMock = null;
+graphqlModule.fetchThreadsGraphqlMetadata = async (...args) =>
+  metadataGraphqlMock ? metadataGraphqlMock.result : realGraphqlFetch(...args);
+const actualFetchThreadsMetadata = require(probeModulePath).fetchThreadsMetadata;
+childProcess.execFile = realExecFile;
+graphqlModule.fetchThreadsGraphqlMetadata = realGraphqlFetch;
 let _mockThreadsMetadata = null;
 let _mockPageMetadata = null;
 let _mockProbeError = null;
@@ -364,6 +385,68 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     }
   });
 
+  console.log("fetchThreadsMetadata — media omitted by GraphQL");
+  const apiText = {
+    title: "@sky650226 on Threads",
+    description: "設計師是個人才，不對，是天才▓▓",
+    postText: "設計師是個人才，不對，是天才▓▓",
+    image: null, images: [], imageCount: 0,
+    video: null, videoCount: 0, twitterCard: "summary",
+    ancestors: [{ author: "op", text: "original context" }],
+  };
+  const domVideo = {
+    onPostPage: true, targetPostFound: true,
+    title: "browser title", description: "browser caption",
+    image: "https://cdn.example/avatar.jpg", twitterCard: "summary",
+    images: ["https://cdn.example/cover.jpg"], imageCount: 1,
+    video: "https://cdn.example/shared.mp4", videoCount: 1,
+  };
+  for (const scenario of [
+    { name: "supplements shared video, preserving API text and context", result: domVideo, enriched: true },
+    { name: "supplements images without mistaking an OG avatar for media", result: { ...domVideo, video: null, videoCount: 0 }, enriched: true },
+    { name: "keeps API text when the browser only finds an avatar", result: { ...domVideo, images: [], imageCount: 0, video: null, videoCount: 0 } },
+    { name: "keeps API text when the probe times out", error: new Error("probe timeout") },
+    { name: "rejects media after redirecting to the home feed", result: { ...domVideo, onPostPage: false } },
+    { name: "rejects media when the target post cannot be identified", result: { ...domVideo, targetPostFound: false } },
+    { name: "rejects a content-less stub", result: { onPostPage: true, title: "Threads" } },
+    { name: "rejects a login wall with no post media", result: { onPostPage: true, title: "Threads • Log in" } },
+    { name: "keeps the fast path for API media", api: { ...apiText, image: "https://cdn.example/api.jpg", images: ["https://cdn.example/api.jpg"], imageCount: 1, twitterCard: "summary_large_image" }, noProbe: true },
+  ]) {
+    await it(scenario.name, async () => {
+      const url = `https://www.threads.com/@test/post/CASE${pass + fail}`;
+      metadataGraphqlMock = { result: scenario.api || apiText };
+      metadataProbeMock = { ...scenario, url, calls: 0 };
+      try {
+        const metadata = await actualFetchThreadsMetadata(url);
+        assert.equal(metadata.description, apiText.description);
+        assert.deepEqual(metadata.ancestors, apiText.ancestors);
+        assert.equal(metadataProbeMock.calls, scenario.noProbe ? 0 : 1);
+        if (scenario.enriched) {
+          assert.deepEqual(metadata.images, domVideo.images);
+          assert.equal(metadata.image, domVideo.images[0]);
+          assert.equal(metadata.video, scenario.result.video);
+          assert.equal(metadata.twitterCard, "summary_large_image");
+          _mockThreadsMetadata = metadata;
+          const payload = await buildThreadsPayload(url);
+          if (metadata.video) {
+            assert.equal(payload.videoAttachment, metadata.video);
+            assert.equal(payload.videoAttachmentEmbeds[0].data.description, `> **@op**\n> original context\n\n↳ ${apiText.description}`);
+          } else {
+            assert.equal(payload.embeds[0].data.image.url, domVideo.images[0]);
+          }
+        } else {
+          assert.equal(metadata.image, scenario.api?.image || null);
+          assert.equal(metadata.video, null);
+        }
+        assert.deepEqual(await actualFetchThreadsMetadata(url), metadata);
+        assert.equal(metadataProbeMock.calls, scenario.noProbe ? 0 : 1, "cached result avoids another browser");
+      } finally {
+        metadataGraphqlMock = null;
+        metadataProbeMock = null;
+      }
+    });
+  }
+
   console.log("buildThreadsPayload — branch coverage");
 
   await it("expands a share URL before probe and uses canonical links", async () => {
@@ -510,6 +593,17 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     const s = shapeOf(p);
     assert.equal(s.embedCount, 1);
     assert.equal(s.hasContent, false);
+  });
+
+  await it("summary card with actual video still attaches video and keeps viewer fallback", async () => {
+    for (const video of ["https://cdn.example/shared.mp4", null]) {
+      _mockThreadsMetadata = { ...domVideo, video, title: "曾昭全Chuan (@sky650226) on Threads" };
+      const payload = await buildThreadsPayload(THREADS_URL);
+      assert.equal(payload.videoAttachment, video || undefined);
+      assert.equal(payload.viewerValidation, "threads");
+      assert.ok(payload.content.includes("fzthreads.com"));
+      assert.equal(payload.videoAttachmentEmbeds[0].data.description, domVideo.description);
+    }
   });
 
   await it("multi-image (3 images, no video) → carousel of 3 embeds", async () => {
