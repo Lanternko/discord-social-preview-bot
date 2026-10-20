@@ -105,24 +105,6 @@ async function readThreadsMetadata(page) {
         return img.currentSrc || img.src || img.getAttribute("src") || null;
       };
 
-      // 只取主貼文範圍的圖（viewport 內）；留言在 viewport 以下
-      const viewportHeight = window.innerHeight;
-      const mediaContainer = document.querySelector("article") || document.body;
-      const candidateImages = Array.from(
-        mediaContainer.querySelectorAll("img"),
-      ).filter((img) => {
-        const rect = img.getBoundingClientRect();
-        if (rect.top >= viewportHeight) return false; // 留言區
-        const src = getBestSrc(img);
-        return src && rect.width >= 160 && rect.height >= 160;
-      });
-
-      const inMainPost = (element) => {
-        const rect = element.getBoundingClientRect();
-        if (rect.top >= viewportHeight) return false;
-        return rect.width >= 160 && rect.height >= 160;
-      };
-
       // A shared Threads link very often points at a REPLY, and og:description
       // then carries only the punchline — the post it answers is nowhere in the
       // preview. The thread page renders every ancestor post above the target
@@ -188,6 +170,26 @@ async function readThreadsMetadata(page) {
             }))
           : [];
 
+      // Scope media to the requested post, including its attached/shared video.
+      // A reply or related post in the viewport must never supply its media.
+      const viewportHeight = window.innerHeight;
+      const mediaContainer =
+        postContainers[targetIndex] || document.querySelector("article") || document.body;
+      const candidateImages = Array.from(
+        mediaContainer.querySelectorAll("img"),
+      ).filter((img) => {
+        const rect = img.getBoundingClientRect();
+        if (rect.top >= viewportHeight) return false; // 留言區
+        const src = getBestSrc(img);
+        return src && rect.width >= 160 && rect.height >= 160;
+      });
+
+      const inMainPost = (element) => {
+        const rect = element.getBoundingClientRect();
+        if (rect.top >= viewportHeight) return false;
+        return rect.width >= 160 && rect.height >= 160;
+      };
+
       const candidateVideos = Array.from(
         mediaContainer.querySelectorAll("video"),
       ).filter(inMainPost);
@@ -221,6 +223,7 @@ async function readThreadsMetadata(page) {
         // that isn't a post permalink must not be attributed to this link.
         onPostPage: /\/post\//.test(location.pathname),
         ancestors,
+        targetPostFound: targetIndex >= 0,
         postText:
           targetIndex >= 0 ? bodyTextOf(postContainers[targetIndex]) : null,
         images: candidateImages.map((img) => getBestSrc(img)).filter(Boolean),
@@ -253,8 +256,15 @@ async function readThreadsMetadata(page) {
       .waitForFunction(
         () => {
           const viewportHeight = window.innerHeight;
+          const targetPath = location.pathname.replace(/\/$/, "");
+          const targetPost = Array.from(
+            document.querySelectorAll('div[data-pressable-container="true"]'),
+          ).find((container) => {
+            const href = container.querySelector("time")?.closest("a")?.getAttribute("href");
+            return href?.split("?")[0].replace(/\/$/, "") === targetPath;
+          });
           const mediaContainer =
-            document.querySelector("article") || document.body;
+            targetPost || document.querySelector("article") || document.body;
           const inMainPost = (element) => {
             const rect = element.getBoundingClientRect();
             if (rect.top >= viewportHeight) return false;

@@ -30,6 +30,8 @@ Local fallback 卡一律從 canonical `/@user/post/` 取作者（author 欄＋�
 
 `isTextOnly` requires NO image AND NO video. A video-only post without `og:image` previously fell into the text-only branch and silently dropped the video.
 
+**API 漏回媒體的補抓**：GraphQL 有時把含分享影片的貼文回成純文字（例如 `@sky650226/post/DesjdrOD8Mz`：`media_type=19`、候選圖片為空，但網頁內有影片）。API 沒有圖片或影片時，會再跑既有 Playwright probe，只接受已定位到目標貼文容器內的媒體，保留 API 原文與上文；補抓逾時、登入牆或找不到目標時仍保留文字卡。只有頭像 OG 圖不算補抓成功。這會讓真正的純文字貼文多一次瀏覽器讀取，結果沿用 metadata cache。`twitter:card=summary` 若同時抓到影片，仍走影片附件與 viewer fallback。
+
 **Content-less stub guard** (`isContentlessStub` in [src/probe.js](../src/probe.js)): 被牆／已移除的貼文不一定會轉址離開 permalink，也不一定吐登入牆文案——2026-09-16 的 `@cuqhytr/post/DdRLvLZE-Rr` 停在原網址、17 個 meta tag、標題只有 `Threads`、沒有 description／card／媒體。那個形狀會掉進 `isTextOnly` 分支，被當成真的純文字貼文，產出一張內容只有「Threads」四個字的 embed。因此把「標題是裸站名（或空）且完全沒有內容」視為 probe miss，交給 viewer chain + local fallback。判準刻意保守：真貼文的標題一定帶作者（`X (@y) on Threads`），任何殘存的 postText／圖／影片／ancestors 都不會被丟掉。
 
 **Login-wall guard** (`isThreadsLoginWall` in [src/probe.js](../src/probe.js)): Threads serves a logged-out `Threads • Log in` interstitial for sensitive / flagged posts even to a working probe. `fetchThreadsMetadata` detects it and throws. Discord 的 viewer unfurl 也會再驗證內容：空 embed、`Threads • Log in`、`Join Threads…` 與只有 `Thread` / `Threads` 的泛用卡片都視為失敗並嘗試下一個 viewer；第一個含實質文字或媒體的 embed 才停止。

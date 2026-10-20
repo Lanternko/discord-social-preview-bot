@@ -136,6 +136,7 @@ function normalizeThreadsMetadata(metadata) {
     videoCount: metadata.videoCount || 0,
     ancestors: metadata.ancestors || [],
     postText: metadata.postText || null,
+    targetPostFound: metadata.targetPostFound === true,
   };
 }
 
@@ -238,15 +239,45 @@ async function fetchThreadsMetadataViaProbe(url) {
   return normalizeThreadsMetadata(metadata);
 }
 
-// GraphQL first, chromium second. The fast path returns null (never throws) on
-// any miss — a walled post, a rotated doc_id, a share link we couldn't
-// canonicalise — so the probe stays the safety net rather than being replaced.
+// GraphQL can omit shared/attached media entirely (2026-10-20: DesjdrOD8Mz
+// returned media_type=19 and empty candidates while the page played a video).
+// A text-shaped API result needs a DOM check before calling it text-only.
+// Keep the API text/context if that check fails; an avatar OG image alone is
+// not evidence of post media, nor is media from a reply or the related feed.
+async function supplementThreadsMedia(url, metadata) {
+  try {
+    const probed = await fetchThreadsMetadataViaProbe(url);
+    if (!probed.targetPostFound) return metadata;
+    const images = probed.images || [];
+    if (!images.length && !probed.video && !probed.videoCount) return metadata;
+    console.log(`[threads-meta] graphql text supplemented with post media ${url}`);
+    return {
+      ...metadata,
+      image: images[0] || null,
+      images,
+      imageSizes: null,
+      imageCount: images.length,
+      video: probed.video,
+      videoCount: probed.videoCount,
+      twitterCard: "summary_large_image",
+    };
+  } catch (error) {
+    console.log(`[threads-meta] media supplement miss: ${error.message} ${url}`);
+    return metadata;
+  }
+}
+
+// GraphQL first; a miss or a text-shaped response checks chromium.
 async function resolveThreadsMetadata(url) {
   if (THREADS_GRAPHQL_ENABLED) {
     const metadata = await fetchThreadsGraphqlMetadata(url);
     if (metadata) {
       logThreadsMetadata(metadata, "graphql");
-      return normalizeThreadsMetadata(metadata);
+      const normalized = normalizeThreadsMetadata(metadata);
+      if (!normalized.image && !normalized.video && !normalized.videoCount) {
+        return supplementThreadsMedia(url, normalized);
+      }
+      return normalized;
     }
     console.log(`[threads-meta] graphql miss → playwright ${url}`);
   }
