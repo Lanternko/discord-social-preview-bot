@@ -67,23 +67,27 @@ function parseCustomId(customId) {
   return { known: false };
 }
 
-const SHORT_ENGLISH_WORDS = 6;
+// A translate button on a one-line caption is noise: the reader gets the gist
+// without it. Kana/Hangul pack more meaning per letter, so they clear a lower
+// floor than Latin/Cyrillic text, and English is counted in words.
+const MIN_DENSE_LETTERS = 15;
+const MIN_LETTERS = 30;
+const SHORT_ENGLISH_WORDS = 8;
 
 function isForeignPost(meta) {
   // Handles keep their dots (Threads: ovo_x.m) and survive a stray space
   // after the @ ("Cos. X @ zzamo0"), or a credit line reads as English prose.
   const text = (meta?.text || '').replace(/https?:\/\/\S+|@ ?[A-Za-z0-9_.]+|#[\p{L}\p{N}_]+/gu, '');
   const letters = text.match(/\p{L}/gu) || [];
-  // Short Japanese/Korean sentences still carry meaning without API language
-  // metadata. Keep one-name captions (e.g. アロナ) below the four-letter floor.
-  if (letters.length >= 4 && /[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
-  if (/^(ja|ko)\b/i.test(meta?.language || '') && letters.length >= 4) return true;
+  // Japanese/Korean need no API language metadata once they are a real
+  // sentence; short captions (アロナ, お渡しするよー！) stay below the floor.
+  if (letters.length >= MIN_DENSE_LETTERS && /[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
+  if (/^(ja|ko)\b/i.test(meta?.language || '') && letters.length >= MIN_DENSE_LETTERS) return true;
   // A meaningful English clause can need translation even when Chinese prose
   // dominates or X labels the whole mixed post zh. Short borrowed terms do not.
   const clauses = text.match(/[A-Za-z]+(?:[’'-][A-Za-z]+)*(?:[ \t]+[A-Za-z]+(?:[’'-][A-Za-z]+)*){3,}/g) || [];
-  if (clauses.some(clause => (clause.match(/[A-Za-z]/g) || []).length >= 20)) return true;
-  if (letters.length < 8) return false;
-  if (/[\u3040-\u30ff\uac00-\ud7af]/u.test(text)) return true;
+  if (clauses.some(clause => (clause.match(/[A-Za-z]/g) || []).length >= MIN_LETTERS)) return true;
+  if (letters.length < MIN_LETTERS) return false;
   if (/^zh\b/i.test(meta?.language || '')) return false;
   const foreign = letters.filter(c => !/\p{Script=Han}/u.test(c));
   if (foreign.length / letters.length < .6) return false;
