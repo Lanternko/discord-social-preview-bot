@@ -32,7 +32,7 @@
       "publishedAt": "Tue Apr 07 04:40:29 +0000 2026",
       "text": "お渡しするよー！",
       "language": "ja",
-      "expectedDisplay": true,
+      "expectedDisplay": false,
       "reviewFocus": "會交給對方；短日文句",
       "keep": []
     },
@@ -362,7 +362,7 @@
       "publishedAt": "Wed Jan 28 14:04:59 +0000 2026",
       "text": "아코 옷을 입은 케이 만화\n\n#블루아카이브",
       "language": "ko",
-      "expectedDisplay": true,
+      "expectedDisplay": false,
       "reviewFocus": "完整保留原文主詞、動作、限定條件、段落與語气；專名可保留原文",
       "keep": []
     },
