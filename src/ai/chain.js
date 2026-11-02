@@ -353,6 +353,18 @@ function buildStoryProviderChain() {
         callOpenAI(turns, persona, maxTokens, options),
     });
   }
+  // Last layer: with DeepSeek (402) and Luna (no credits) both out of balance
+  // the whole chain exhausted and 搖E露營's 22:00 story never posted
+  // (2026-11-02). Gemini's free tier doesn't depend on either balance.
+  if (GEMINI_API_KEY && (!only || only === "gemini")) {
+    const options = { timeoutMs: RECAP_GEMINI_TIMEOUT_MS };
+    chain.push({
+      label: `gemini:${GEMINI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callGemini(turns, persona, maxTokens, options),
+    });
+  }
   return chain;
 }
 

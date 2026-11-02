@@ -1,5 +1,6 @@
 const cron = require("node-cron");
 const {
+  BOT_OWNER_IDS,
   EMOJI_TRUSTED_GUILD_IDS,
   RECAP_DEEPSEEK_MAX_TOKENS,
   STORY_MAX_TOKENS,
@@ -136,6 +137,41 @@ async function sendAtOrAfter(channel, payload, notBeforeMs, options = {}) {
   return channel.send(payload);
 }
 
+// ── Failure alert ───────────────────────────────────────────────────────
+// A scheduled post that dies with the whole AI chain is otherwise invisible —
+// nothing lands in the channel and only the log knows (搖E露營 missed its
+// 晚安 story on 2026-11-02 and the user found out by its absence). DM the bot
+// owners once per schedule per Taipei day so a dead key shows up the same day.
+const notifiedFailures = new Set();
+
+function taipeiDateKey(now = Date.now()) {
+  return new Date(now + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+async function notifyOwnersOfFailure(client, schedule, channel, now = Date.now()) {
+  const dedupeKey = `${schedule.id}:${taipeiDateKey(now)}`;
+  if (notifiedFailures.has(dedupeKey)) return;
+  notifiedFailures.add(dedupeKey);
+
+  const taskLabel = TASK_TYPES[schedule.taskType]?.label || "排程訊息";
+  const where = `${channel?.guild?.name || schedule.guildId} #${channel?.name || schedule.channelId}`;
+  const text =
+    `⚠️ 西寶排程沒發出去：${where} 的「${taskLabel}」` +
+    `（${String(schedule.hour).padStart(2, "0")}:${String(schedule.minute).padStart(2, "0")}）` +
+    "所有 AI 供應商都失敗了。請檢查 DeepSeek / OpenAI 的餘額，詳見 bot.log 的 `chain exhausted`。";
+
+  for (const ownerId of BOT_OWNER_IDS) {
+    try {
+      const owner = await client.users.fetch(ownerId);
+      await owner.send(text);
+    } catch (err) {
+      console.warn(
+        `[scheduler] owner alert failed owner=${ownerId} schedule=${schedule.id}: ${err.message}`,
+      );
+    }
+  }
+}
+
 // ── Task execution ──────────────────────────────────────────────────────
 
 async function executeScheduledTask(schedule, client, options = {}) {
@@ -230,6 +266,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
       console.warn(
         `[scheduler] AI chain exhausted for schedule=${schedule.id}`,
       );
+      await notifyOwnersOfFailure(client, schedule, channel);
       return;
     }
 
@@ -454,4 +491,5 @@ module.exports = {
   recapNotBeforeMs,
   waitUntil,
   sendAtOrAfter,
+  notifyOwnersOfFailure,
 };
