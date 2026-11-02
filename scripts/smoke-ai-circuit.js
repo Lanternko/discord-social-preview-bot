@@ -10,6 +10,7 @@ process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
 process.env.DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "sk-smoke-dummy";
 process.env.KIMI_API_KEY = process.env.KIMI_API_KEY || "sk-kimi-smoke-dummy";
 process.env.KIMI_ENABLED = "true";
+process.env.BOT_OWNER_IDS = "111111111111111111,222222222222222222";
 process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || "sk-gemini-smoke-dummy";
 process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || "gsk-groq-smoke-dummy";
 // Assert the shipped default, not whatever the operator has in .env.
@@ -85,7 +86,9 @@ const {
   subtractScheduleMinute,
   recapNotBeforeMs,
   sendAtOrAfter,
+  notifyOwnersOfFailure,
 } = require("../src/scheduler");
+const { BOT_OWNER_IDS } = require("../src/config");
 const {
   getGuildApiKey,
   setGuildApiKey,
@@ -217,7 +220,7 @@ async function main() {
   });
 
   console.log("bedtime story provider policy");
-  it("uses flash thinking, then v4-pro thinking, then flash direct, then OpenAI Luna", () => {
+  it("uses flash thinking, then v4-pro thinking, then flash direct, then OpenAI Luna, then Gemini", () => {
     assert.deepEqual(
       STORY_PROVIDER_CHAIN.map((provider) => provider.label),
       [
@@ -225,6 +228,7 @@ async function main() {
         "deepseek:deepseek-v4-pro:story",
         `deepseek:${process.env.DEEPSEEK_MODEL || "deepseek-flash"}:direct`,
         "openai:gpt-5.6-luna",
+        `gemini:${process.env.GEMINI_MODEL || "gemini-3.6-flash"}`,
       ],
     );
     assert.deepEqual(STORY_PROVIDER_CHAIN[0].options.thinking, { type: "enabled" });
@@ -239,6 +243,38 @@ async function main() {
     assert.equal(STORY_PROVIDER_CHAIN[2].options.timeoutMs, 90000);
     assert.deepEqual(STORY_PROVIDER_CHAIN[2].options.thinking, { type: "disabled" });
     assert.equal(STORY_PROVIDER_CHAIN[3].options.timeoutMs, 45000);
+    assert.equal(STORY_PROVIDER_CHAIN[4].options.timeoutMs, 45000);
+  });
+
+  await itAsync("DMs each bot owner once per schedule per Taipei day when a schedule's chain is exhausted", async () => {
+    const sent = [];
+    const client = {
+      users: {
+        fetch: async (id) => ({ send: async (text) => sent.push({ id, text }) }),
+      },
+    };
+    const schedule = {
+      id: "sched-alert-1",
+      guildId: "g1",
+      taskType: "bedtime_story",
+      hour: 22,
+      minute: 0,
+    };
+    const channel = { name: "閒聊", guild: { name: "搖E露營" } };
+    const now = Date.UTC(2026, 10, 2, 14, 0);
+
+    await notifyOwnersOfFailure(client, schedule, channel, now);
+    await notifyOwnersOfFailure(client, schedule, channel, now + 60 * 1000);
+    assert.equal(sent.length, BOT_OWNER_IDS.length);
+    if (sent.length > 0) {
+      assert.match(sent[0].text, /搖E露營/);
+      assert.match(sent[0].text, /床邊故事/);
+      assert.match(sent[0].text, /22:00/);
+    }
+
+    // Next Taipei day (UTC 16:00 = 00:00 +8) alerts again.
+    await notifyOwnersOfFailure(client, schedule, channel, now + 2 * 60 * 60 * 1000);
+    assert.equal(sent.length, BOT_OWNER_IDS.length * 2);
   });
 
   await itAsync("sends story prompt to OpenAI with max_completion_tokens", async () => {
