@@ -397,6 +397,16 @@ module.exports = {
     "STORY_OPENAI_TIMEOUT_MS",
     45000,
   ),
+  // Luna's story layer: OPENAI_REASONING_HEADROOM (768) was sized on chat
+  // (reasoning p99 379), but a story prompt is ~5k tokens and Luna with no
+  // effort set reasoned straight through the cap — completion == reasoning ==
+  // 2668, empty content (2026-11-03 22:30, chain exhausted). Low effort keeps
+  // the thinking short; the headroom is the safety net if it doesn't.
+  STORY_OPENAI_REASONING_HEADROOM: parsePositiveIntEnv(
+    "STORY_OPENAI_REASONING_HEADROOM",
+    4096,
+  ),
+  STORY_OPENAI_REASONING_EFFORT: process.env.STORY_OPENAI_REASONING_EFFORT || "low",
   // Bedtime stories lead with DeepSeek's thinking model: two blind tests
   // (2026-09-25) ranked it the only model with no bad story. It needs ~50 s and
   // a big reasoning budget: runs burned 6180 (→ empty) and 9375 (→ story cut
