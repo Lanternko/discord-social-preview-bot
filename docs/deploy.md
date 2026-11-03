@@ -21,7 +21,9 @@ Bot runs 24/7 on **this machine** (the same host Claude Code runs on) via `nohup
 - **There is no separate deploy branch.** Whatever `git branch --show-current` prints in that folder is what's live (2026-09-27: `fix/recap-deepseek-empty`, kept as a fast-forward mirror of `main` — see below). Check it before assuming.
 - **Uncommitted edits in that working tree go live on the next restart.** Run `git status` before restarting; another session's half-finished work is not your deploy.
 
-A cron watchdog runs every minute and restarts the bot if the process is gone, so `kill <pid>` alone is a valid restart — or run `scripts/bot-watchdog.sh` by hand to skip the wait. Do **not** `pkill -f 'node src/index.js'`: that pattern also matches Claude Code's own tool shells (use `pkill -xf` or the pid).
+A cron watchdog runs every minute and restarts the bot if the process is gone, so `kill <pid>` alone is a valid restart — or run `scripts/bot-watchdog.sh` by hand to skip the wait.
+
+Find the bot with `pgrep -f '^(/[^ ]*/)?node src/index.js$'`. The watchdog launches node by its full nvm path (`/home/kojiek/.nvm/versions/node/<ver>/bin/node src/index.js`), so `pgrep -xf 'node src/index.js'` matches nothing and the restart silently doesn't happen (2026-11-04). An unanchored `pgrep`/`pkill -f 'src/index.js'` is worse: it also matches Claude Code's own tool shells whose command line mentions it, and `pkill` would kill them. The anchored pattern matches only a command line that *starts* with node and ends at `src/index.js`.
 
 ### Daily ops
 
@@ -30,7 +32,7 @@ A cron watchdog runs every minute and restarts the bot if the process is gone, s
 tail -50 ~/side_projects/apps/discord-social-preview-bot/bot.log
 
 # Health check
-pgrep -f 'node src/index.js'
+pgrep -af '^(/[^ ]*/)?node src/index.js$'
 ```
 
 ### Redeploy after merging
@@ -44,7 +46,7 @@ git status --short                 # anything uncommitted goes live too — chec
 git fetch origin
 git merge --ff-only origin/main
 npm test
-kill "$(pgrep -xf 'node src/index.js')"   # watchdog relaunches within 60s
+kill $(pgrep -f '^(/[^ ]*/)?node src/index.js$')   # watchdog relaunches within 60s
 ./scripts/bot-watchdog.sh                 # or restart immediately
 tail -20 bot.log
 ```
@@ -81,7 +83,7 @@ grep 'chain exhausted' bot.log   # AI chain drained for every mention
 cd ~/side_projects/apps/discord-social-preview-bot
 git fetch origin
 git checkout <branch-name>
-pkill -f 'src/index.js' && sleep 1
+pkill -f '^(/[^ ]*/)?node src/index.js$' && sleep 1
 nohup node src/index.js > bot.log 2>&1 &
 sleep 3 && tail -20 bot.log
 ```
@@ -90,7 +92,7 @@ To roll back:
 
 ```bash
 git checkout main
-pkill -f 'src/index.js' && sleep 1
+pkill -f '^(/[^ ]*/)?node src/index.js$' && sleep 1
 nohup node src/index.js > bot.log 2>&1 &
 ```
 
