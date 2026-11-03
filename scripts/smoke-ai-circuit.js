@@ -47,6 +47,8 @@ const {
   VISION_TIMEOUT_MS,
   DEEPSEEK_REASONING_HEADROOM,
   OPENAI_REASONING_HEADROOM,
+  STORY_OPENAI_REASONING_HEADROOM,
+  STORY_OPENAI_REASONING_EFFORT,
   GEMINI_REASONING_HEADROOM,
 } = require("../src/config");
 const {
@@ -66,6 +68,7 @@ const {
   isQuotaReply,
   quotaReply,
   RECAP_PROVIDER_CHAIN,
+  orderScheduledChainForPeak,
   STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,
 } = require("../src/ai/chain");
@@ -201,10 +204,10 @@ async function main() {
   });
 
   console.log("daily recap provider policy");
-  it("uses DeepSeek thinking → DeepSeek direct → Kimi → Gemini and excludes Groq/Llama", () => {
+  it("uses DeepSeek thinking → DeepSeek direct → Luna → Kimi → Gemini and excludes Groq/Llama", () => {
     assert.deepEqual(
       RECAP_PROVIDER_CHAIN.map((provider) => provider.label.split(":")[0]),
-      ["deepseek", "deepseek", "kimi", "gemini"],
+      ["deepseek", "deepseek", "openai", "kimi", "gemini"],
     );
     assert.ok(RECAP_PROVIDER_CHAIN[1].label.endsWith(":direct"));
     assert.ok(RECAP_PROVIDER_CHAIN.every((provider) => !/groq|llama/i.test(provider.label)));
@@ -212,11 +215,29 @@ async function main() {
     assert.equal(RECAP_PROVIDER_CHAIN[1].options.timeoutMs, 90000);
     assert.equal(RECAP_PROVIDER_CHAIN[2].options.timeoutMs, 45000);
     assert.equal(RECAP_PROVIDER_CHAIN[3].options.timeoutMs, 45000);
+    assert.equal(RECAP_PROVIDER_CHAIN[4].options.timeoutMs, 45000);
+    assert.equal(RECAP_PROVIDER_CHAIN[2].options.reasoningEffort, STORY_OPENAI_REASONING_EFFORT);
+    assert.equal(RECAP_PROVIDER_CHAIN[2].options.reasoningHeadroom, STORY_OPENAI_REASONING_HEADROOM);
     assert.deepEqual(RECAP_PROVIDER_CHAIN[0].options.thinking, { type: "enabled" });
     assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningEffort, "medium");
     assert.equal(RECAP_PROVIDER_CHAIN[0].options.reasoningHeadroom, 4096);
     assert.deepEqual(RECAP_PROVIDER_CHAIN[1].options.thinking, { type: "disabled" });
     assert.equal(RECAP_PROVIDER_CHAIN[1].options.reasoningHeadroom, 0);
+  });
+
+  console.log("scheduled chains during DeepSeek peak");
+  it("moves Luna to the front only inside the peak window", () => {
+    const peak = new Date("2026-11-04T02:30:00Z"); // Wed 10:30 Taipei
+    const off = new Date("2026-11-04T15:00:00Z"); // Wed 23:00 Taipei
+    const heads = (chain) => chain.map((p) => p.label.split(":")[0]);
+    assert.deepEqual(heads(orderScheduledChainForPeak(RECAP_PROVIDER_CHAIN, off)), heads(RECAP_PROVIDER_CHAIN));
+    assert.deepEqual(
+      heads(orderScheduledChainForPeak(RECAP_PROVIDER_CHAIN, peak)),
+      ["openai", "deepseek", "deepseek", "kimi", "gemini"],
+    );
+    const story = orderScheduledChainForPeak(STORY_PROVIDER_CHAIN, peak);
+    assert.equal(story[0].label.split(":")[0], "openai");
+    assert.equal(story.length, STORY_PROVIDER_CHAIN.length);
   });
 
   console.log("bedtime story provider policy");
@@ -302,11 +323,13 @@ async function main() {
       assert.match(String(requestUrl), /api\.openai\.com/);
       assert.equal(requestBody.model, "gpt-5.6-luna");
       // 900 is the display budget; Luna's hidden reasoning is billed against
-      // the same ceiling, so the headroom rides on top of it.
+      // the same ceiling, so the story headroom rides on top of it (chat's 768
+      // starved a 5k-token story prompt: 2026-11-03 22:30).
       assert.equal(
         requestBody.max_completion_tokens,
-        900 + OPENAI_REASONING_HEADROOM,
+        900 + STORY_OPENAI_REASONING_HEADROOM,
       );
+      assert.equal(requestBody.reasoning_effort, STORY_OPENAI_REASONING_EFFORT);
     } finally {
       global.fetch = originalFetch;
     }

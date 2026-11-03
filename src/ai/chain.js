@@ -9,6 +9,8 @@ const {
   OPENAI_API_KEY,
   OPENAI_MODEL,
   STORY_OPENAI_TIMEOUT_MS,
+  STORY_OPENAI_REASONING_HEADROOM,
+  STORY_OPENAI_REASONING_EFFORT,
   DEEPSEEK_CHAT_TIMEOUT_MS,
   STORY_DEEPSEEK_MODEL,
   STORY_FLASH_MODEL,
@@ -199,6 +201,15 @@ function ownerDeepSeekIsDemoted(now) {
   return demoted;
 }
 
+// Scheduled chains (recap / story) lead with DeepSeek, so the peak rule is
+// applied per run: Luna moves to the front, everything else keeps its order
+// and DeepSeek stays reachable behind it.
+function orderScheduledChainForPeak(chain, now = new Date()) {
+  if (!ownerDeepSeekIsDemoted(now)) return chain;
+  const isLuna = (p) => p.label.startsWith("openai:");
+  return [...chain.filter(isLuna), ...chain.filter((p) => !isLuna(p))];
+}
+
 // GLM leads only the chains the owner pays for (whitelist + free brief). A
 // guild that brought its own DeepSeek key chose DeepSeek, so it keeps it.
 // Flat-rate, so it also stays first through DeepSeek's peak window.
@@ -244,7 +255,8 @@ const AI_PROVIDER_CHAIN = buildAIProviderChain();
 // one minute before publication. Keep Groq/Llama completely out of this chain:
 // a recap should wait for the higher-quality providers instead of silently
 // changing voice. DeepSeek remains first; a same-model no-think entry is
-// second so a thinking-empty day still publishes from DeepSeek.
+// second so a thinking-empty day still publishes from DeepSeek. Luna is
+// third, ahead of Kimi/Gemini.
 function buildRecapProviderChain() {
   const chain = [];
   const only = AI_PROVIDER_FORCE;
@@ -271,6 +283,23 @@ function buildRecapProviderChain() {
       options: directOptions,
       call: (turns, persona, maxTokens) =>
         callDeepSeek(turns, persona, maxTokens, directOptions),
+    });
+  }
+  // DeepSeek out of balance (402) plus a Gemini 503/timeout left both
+  // 2026-11-03 recaps unposted while Luna still had credits but wasn't in
+  // this chain. Same low-effort settings as the story layer: a recap prompt
+  // is the same size class, and default effort reasons through the cap.
+  if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
+    const options = {
+      timeoutMs: STORY_OPENAI_TIMEOUT_MS,
+      reasoningHeadroom: STORY_OPENAI_REASONING_HEADROOM,
+      reasoningEffort: STORY_OPENAI_REASONING_EFFORT,
+    };
+    chain.push({
+      label: `openai:${OPENAI_MODEL}`,
+      options,
+      call: (turns, persona, maxTokens) =>
+        callOpenAI(turns, persona, maxTokens, options),
     });
   }
   if (KIMI_ENABLED && KIMI_API_KEY && (!only || only === "kimi")) {
@@ -345,7 +374,11 @@ function buildStoryProviderChain() {
     });
   }
   if (OPENAI_API_KEY && (!only || only === "openai" || only === "luna")) {
-    const options = { timeoutMs: STORY_OPENAI_TIMEOUT_MS };
+    const options = {
+      timeoutMs: STORY_OPENAI_TIMEOUT_MS,
+      reasoningHeadroom: STORY_OPENAI_REASONING_HEADROOM,
+      reasoningEffort: STORY_OPENAI_REASONING_EFFORT,
+    };
     chain.push({
       label: `openai:${OPENAI_MODEL}`,
       options,
@@ -1054,6 +1087,7 @@ module.exports = {
   PERSONAL_CONTEXT_MEMORY_COUNT,
   buildAIProviderChain,
   buildRecapProviderChain,
+  orderScheduledChainForPeak,
   buildStoryProviderChain,
   buildGuildChain,
   buildVisionEntry,

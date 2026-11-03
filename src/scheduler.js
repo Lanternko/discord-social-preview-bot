@@ -15,6 +15,7 @@ const {
   AI_PROVIDER_CHAIN,
   RECAP_PROVIDER_CHAIN,
   STORY_PROVIDER_CHAIN,
+  orderScheduledChainForPeak,
   runProviderChain,
 } = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
@@ -220,9 +221,9 @@ async function executeScheduledTask(schedule, client, options = {}) {
   }
 
   const providerChain = taskType === "daily_recap"
-    ? RECAP_PROVIDER_CHAIN
+    ? orderScheduledChainForPeak(RECAP_PROVIDER_CHAIN)
     : taskType === "bedtime_story"
-      ? STORY_PROVIDER_CHAIN
+      ? orderScheduledChainForPeak(STORY_PROVIDER_CHAIN)
       : AI_PROVIDER_CHAIN;
   if (providerChain.length === 0) {
     console.warn("[scheduler] no AI providers, skipping scheduled task");
