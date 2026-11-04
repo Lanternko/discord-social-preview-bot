@@ -5,6 +5,7 @@ const {
   RECAP_DEEPSEEK_MAX_TOKENS,
   STORY_MAX_TOKENS,
   STORY_QUIZ_RATE,
+  STORY_POLL_RATE,
 } = require("./config");
 const { getAllSchedules, getScheduleById, updateSchedule } = require("./schedule-store");
 const { getTierConfig } = require("./tier-config");
@@ -47,6 +48,12 @@ const {
   formatStoryQuiz,
   parseStoryQuiz,
 } = require("./story-quiz");
+const {
+  POLL_EXTRA_TOKENS,
+  addPollReactions,
+  formatStoryPoll,
+  parseStoryPoll,
+} = require("./story-poll");
 const { repairNames } = require("./name-repair");
 const { STORY_MIN_REPLY_CHARS } = require("./ai/skills/story");
 
@@ -72,15 +79,18 @@ const TASK_TYPES = {
       );
       const selection = selectStoryIngredients(messages, channelStats);
       await describeStoryImages(selection.ingredients);
+      // One roll, quiz and poll are mutually exclusive: quiz first, then poll.
+      const roll = Math.random();
       const built = buildBedtimeStoryPrompt({
         guildName: guild.name,
         schedule,
         selection,
-        quiz: Math.random() < STORY_QUIZ_RATE,
+        quiz: roll < STORY_QUIZ_RATE,
+        poll: roll >= STORY_QUIZ_RATE && roll < STORY_QUIZ_RATE + STORY_POLL_RATE,
         language: getGuildLanguage(guild.id),
       });
       console.log(
-        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length} quiz=${built.quiz}`,
+        `[bedtime-story] guild=${guild.name} ingredients=${built.ingredientCount} scanned=${messages.length} quiz=${built.quiz} poll=${built.poll}`,
       );
       if (built.buffet?.length) {
         console.log(`[bedtime-story] buffet=${built.buffet.join(" | ")}`);
@@ -88,6 +98,7 @@ const TASK_TYPES = {
       return {
         prompt: built.prompt,
         quiz: built.quiz,
+        poll: built.poll,
         names: selection.ingredients.map((item) => item.authorName),
         onSuccess: () => markBedtimeStoryUsed(schedule, built.dateKey),
       };
@@ -198,6 +209,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
   let prompt;
   let onSuccess;
   let wantsQuiz = false;
+  let wantsPoll = false;
   let taskNames = [];
   if (taskDef && taskDef.buildPrompt) {
     const built = await taskDef.buildPrompt(channel, client, schedule);
@@ -205,6 +217,7 @@ async function executeScheduledTask(schedule, client, options = {}) {
       prompt = built.prompt;
       onSuccess = built.onSuccess;
       wantsQuiz = Boolean(built.quiz);
+      wantsPoll = Boolean(built.poll);
       taskNames = built.names || [];
     } else {
       prompt = built;
@@ -246,7 +259,8 @@ async function executeScheduledTask(schedule, client, options = {}) {
     ? Math.max(tierConfig.maxTokens, RECAP_DEEPSEEK_MAX_TOKENS)
     : taskType === "bedtime_story"
       ? Math.max(tierConfig.maxTokens, STORY_MAX_TOKENS) +
-        (wantsQuiz ? QUIZ_EXTRA_TOKENS : 0)
+        (wantsQuiz ? QUIZ_EXTRA_TOKENS : 0) +
+        (wantsPoll ? POLL_EXTRA_TOKENS : 0)
       : tierConfig.maxTokens;
   if (taskType === "daily_recap") {
     console.log(
@@ -280,9 +294,13 @@ async function executeScheduledTask(schedule, client, options = {}) {
     ]);
     // Split the quiz off BEFORE the length cap — capping first would cut the
     // quiz in half, or leave half a quiz glued to the story.
+    // The poll marker is split off first (a poll night has no quiz block).
+    const { story: afterPoll, poll } = taskType === "bedtime_story"
+      ? parseStoryPoll(repaired)
+      : { story: repaired, poll: null };
     const { story, quiz } = taskType === "bedtime_story"
-      ? parseStoryQuiz(repaired)
-      : { story: repaired, quiz: null };
+      ? parseStoryQuiz(afterPoll)
+      : { story: afterPoll, quiz: null };
     // A story (title + 150～300 字 + punctuation) overruns 入門's 300-char
     // reply cap, which cut it off mid-sentence. Same floor as the chat skill.
     const maxChars = taskType === "bedtime_story"
@@ -312,6 +330,20 @@ async function executeScheduledTask(schedule, client, options = {}) {
         );
       }
     }
+    const pollText = poll ? formatStoryPoll(poll) : null;
+    if (pollText) {
+      try {
+        const pollMsg = await channel.send({ content: pollText });
+        await addPollReactions(pollMsg);
+      } catch (pollErr) {
+        console.warn(
+          `[story-poll] send failed schedule=${schedule.id}: ${pollErr.message}`,
+        );
+      }
+    }
+    if (wantsPoll) {
+      console.log(`[story-poll] schedule=${schedule.id} posted=${Boolean(pollText)}`);
+    }
     if (wantsQuiz) {
       console.log(`[story-quiz] schedule=${schedule.id} posted=${Boolean(quizText)}`);
     }
@@ -335,7 +367,8 @@ async function executeScheduledTask(schedule, client, options = {}) {
       { guildId },
     );
     // The quiz (answer included) rides along so she can tell whoever asks.
-    const remembered = quizText ? `${capped}\n\n${quizText}` : capped;
+    const extraText = quizText || pollText;
+    const remembered = extraText ? `${capped}\n\n${extraText}` : capped;
     recordAITurn(channelId, "assistant", remembered, tierConfig.memoryMaxTurns, {
       guildId,
       userId: client.user?.id,

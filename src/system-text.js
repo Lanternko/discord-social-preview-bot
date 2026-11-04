@@ -144,6 +144,14 @@ const TEXT = {
     en: ({ answer }) => `Answer: ||${answer}||`,
   },
 
+  // ── Bedtime-story poll ───────────────────────────────────────────
+  "poll.header": {
+    "zh-TW": "🗳️ **投票時間**",
+    "zh-CN": "🗳️ **投票时间**",
+    ja: "🗳️ **投票タイム**",
+    en: "🗳️ **Vote time**",
+  },
+
   // ── @西寶 hardcoded replies ────────────────────────────────────────
   "fortune.line": {
     "zh-TW": ({ result, comment }) => `🎋 今日運勢：**${result}**\n${comment}`,

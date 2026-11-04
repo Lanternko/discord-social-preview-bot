@@ -32,6 +32,12 @@ const {
   shuffleQuizOptions,
   formatStoryQuiz,
 } = require("../src/story-quiz");
+const {
+  POLL_MARKER,
+  parseStoryPoll,
+  formatStoryPoll,
+  addPollReactions,
+} = require("../src/story-poll");
 
 let passed = 0;
 const asyncChecks = [];
@@ -394,6 +400,48 @@ check("the quiz prompt asks direct questions, not 下列何者敘述正確", () 
 
 check("story without a quiz block passes through untouched", () => {
   assert.deepEqual(parseStoryQuiz("## 標題\n\n內文"), { story: "## 標題\n\n內文", quiz: null });
+});
+
+const POLL_REPLY = [
+  "## 麵條事件",
+  "",
+  "海豹把麵吐回鍋裡。",
+  "",
+  "---",
+  "【投票】",
+  "題目：你覺得亂源是誰？",
+  "選項：1. 海豹",
+  "選項：**貓**",
+].join("\n");
+
+check("poll block only goes into the prompt on poll nights, never with a quiz", () => {
+  const off = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0 });
+  const on = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0, poll: true });
+  assert.ok(!off.prompt.includes(POLL_MARKER));
+  assert.ok(on.prompt.includes(POLL_MARKER) && !on.prompt.includes(QUIZ_MARKER));
+  const both = buildBedtimeStoryPrompt({ guildName: "g", rng: () => 0, quiz: true, poll: true });
+  assert.ok(!both.prompt.includes(POLL_MARKER) && both.poll === false);
+});
+
+check("parseStoryPoll splits the poll off and formats 1️⃣ 2️⃣", () => {
+  const { story, poll } = parseStoryPoll(POLL_REPLY);
+  assert.equal(story, "## 麵條事件\n\n海豹把麵吐回鍋裡。");
+  assert.deepEqual(poll.options, ["海豹", "貓"]);
+  const text = formatStoryPoll(poll);
+  assert.ok(text.includes("1️⃣ 海豹") && text.includes("2️⃣ 貓"));
+});
+
+check("malformed poll is dropped and never leaks into the story", () => {
+  const { story, poll } = parseStoryPoll(POLL_REPLY.replace("選項：**貓**", ""));
+  assert.equal(poll, null);
+  assert.ok(!story.includes(POLL_MARKER));
+});
+
+check("addPollReactions reacts 1️⃣ then 2️⃣ and survives a failure", async () => {
+  const seen = [];
+  assert.equal(await addPollReactions({ react: async (e) => { seen.push(e); } }), true);
+  assert.deepEqual(seen, ["1️⃣", "2️⃣"]);
+  assert.equal(await addPollReactions({ react: async () => { throw new Error("perm"); } }), false);
 });
 
 check("answer letter follows the correct option through the shuffle", () => {
