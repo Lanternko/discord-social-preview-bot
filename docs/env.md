@@ -87,6 +87,7 @@
 | `STORY_IMAGE_MAX` | `3` | 睡前故事素材裡最多幾張圖先交給 vision 寫成一句描述（每張一次 flash vision 呼叫） |
 | `STORY_QUIZ_RATE` | `0.1` | 睡前故事附「閱讀測驗」的機率（0～1）。題目跟故事同一次呼叫產出、另發一則，答案包在 spoiler；格式不合就只發故事。grep `[story-quiz]` |
 | `STORY_POLL_RATE` | `0.3` | 睡前故事附「投票題」（兩選項意見題，如「你覺得亂源是誰」）的機率（0～1）。與閱讀測驗同一次擲骰、互斥（先擲測驗，沒中再擲投票）；另發一則，西寶自己按 1️⃣ 2️⃣ 讓人投票；格式不合就只發故事。grep `[story-poll]` |
+| `STORY_OPENAI_REASONING_EFFORT` | `high` | 睡前故事／回顧鏈裡 Luna 的 `reasoning_effort`（`low`/`medium`/`high`）。2026-11-05 由 `low` 提到 `high` 換故事品質；實測測驗夜約 34 s、投票夜約 22 s，貼近 `STORY_OPENAI_TIMEOUT_MS`（45 s），逾時會掉到下一層。慢到撞逾時就改 `medium` |
 | `DEEPSEEK_PREMIUM_GUILD_IDS` | — | Comma-separated guild IDs allowed to use 標準 / 精細 with the owner DeepSeek key instead of setting `/ai-key` |
 | `AI_PEAK_PREFER_FALLBACK` | `true` | 尖峰時段（UTC 平日 01–04、06–10）把 owner key 的 DeepSeek 移到鏈尾，改由 luna 先跑；設 `false` 則永遠 DeepSeek 優先 |
 | `AI_FREE_DAILY_LIMIT` | `20` | Per-guild daily replies for guilds without `/ai-key` or whitelist — counts every reply whichever provider answers; over it → canned reply. Persisted in `data/ai-daily-usage.json`, resets at Taipei midnight |
