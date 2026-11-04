@@ -436,6 +436,7 @@ module.exports = {
   // Share of nights the story is followed by a 閱讀測驗 (0 = never, 1 = every
   // night). Every night turns it into homework; ~1/3 keeps it a treat.
   STORY_QUIZ_RATE: parseRateEnv("STORY_QUIZ_RATE", 0.34),
+  STORY_POLL_RATE: parseRateEnv("STORY_POLL_RATE", 0.34),
   // gpt-5.6-luna reasons too, and OpenAI counts those hidden tokens against
   // max_completion_tokens — so the same starvation that hit DeepSeek applies
   // here (111 empty finish_reason=length calls, all completion == reasoning).
