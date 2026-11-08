@@ -32,6 +32,14 @@ DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback
 - **`GLM_TIMEOUT_MS` 12 s**（比 DeepSeek 的 40 s 短很多）：盲測裡 GLM 也會 25 s 逾時，卡住時要快點交給 DeepSeek。逾時第一次只記 strike，連兩次才冷卻 60 s。
 - 付費走 Vercel 儲值額度，額度用完 gateway 回 402 → 歸類為 `auth`（冷卻 10 分鐘），鏈自動落到 DeepSeek。grep `glm:`。
 
+### GLM 走哪個 Gateway 供應商（`GLM_PROVIDER_ORDER`，預設 `relace,gmicloud,pareto`）
+
+同一個 `zai/glm-5.3-flash`，Vercel 上有多家代管，價差 5 倍。`callOpenAI` 收到 `gatewayOrder` 時送 `providerOptions.gateway.order`：先試這幾家，掛了 Gateway 照樣切到別家（是 `order` 不是 `only`）。不設的話 Gateway 自己挑，2026-11-09 挑到 baseten（約 relace 的 5 倍）。
+
+- **2026-11-09 實測**（同 persona、6 題聊天、每題約 1.9k input）：relace $0.068／千則、gmicloud $0.075、pareto $0.079、deepinfra $0.10、novita $0.12（還冒了一個簡體「过」）、zai 官方約 5 倍。
+- **尖峰不影響**：DeepSeek 的 2 倍尖峰價是它自家 API 的規則；GLM 不分時段。DeepSeek 經 Gateway 的代管（deepinfra $0.10/$0.29、pareto $0.08/$0.30）離峰也比 GLM relace（$0.03/$0.08）貴 2～3 倍，所以順位不分尖峰離峰都是 GLM 在前、DeepSeek 在後。
+- 清成空字串 = 回到 Gateway 預設路由。
+
 ### 尖峰時段降級（`AI_PEAK_PREFER_FALLBACK`，預設開）
 
 DeepSeek 在自己的尖峰時段收**雙倍**價錢，所以尖峰期間**用 owner key 的 DeepSeek entry 會被移到鏈尾**，改由 flat-rate 的 fallback（luna）先跑。DeepSeek 沒有被移除——上面全掛了還是會打到它，只是不再是預設花錢的那一層。

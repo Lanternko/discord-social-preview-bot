@@ -30,6 +30,7 @@ const {
   GLM_BASE_URL,
   GLM_TIMEOUT_MS,
   GLM_REASONING_EFFORT,
+  GLM_PROVIDER_ORDER,
   DEEPSEEK_API_KEY,
   DEEPSEEK_MODEL,
   DEEPSEEK_MODEL_FREE,
@@ -222,6 +223,7 @@ function buildGlmPrimary() {
     apiKey: AI_GATEWAY_API_KEY,
     timeoutMs: GLM_TIMEOUT_MS,
     reasoningEffort: GLM_REASONING_EFFORT,
+    gatewayOrder: GLM_PROVIDER_ORDER,
   };
   return [{
     label: `glm:${GLM_MODEL}`,

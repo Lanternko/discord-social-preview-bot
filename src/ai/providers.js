@@ -315,6 +315,10 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
   };
   const effort = overrides.reasoningEffort ?? OPENAI_REASONING_EFFORT;
   if (effort) body.reasoning_effort = effort;
+  // Vercel AI Gateway only: preferred upstream hosts, still with failover.
+  if (overrides.gatewayOrder?.length) {
+    body.providerOptions = { gateway: { order: overrides.gatewayOrder } };
+  }
   const label = overrides.label || `openai:${model}`;
 
   const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;

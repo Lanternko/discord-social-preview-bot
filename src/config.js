@@ -460,6 +460,13 @@ module.exports = {
     process.env.GLM_BASE_URL || "https://ai-gateway.vercel.sh/v1/chat/completions",
   GLM_TIMEOUT_MS: parsePositiveIntEnv("GLM_TIMEOUT_MS", 12000),
   GLM_REASONING_EFFORT: process.env.GLM_REASONING_EFFORT || "high",
+  // Gateway hosts to try first for GLM (soft order: the Gateway still fails
+  // over to other hosts). 2026-11-09 probe, 6 chat prompts each: relace
+  // $0.068/1k replies, gmicloud $0.075, pareto $0.079, zai (official) ~5x;
+  // novita leaked a Simplified character. Empty string = Gateway default
+  // routing (it picked baseten, ~5x relace).
+  GLM_PROVIDER_ORDER: (process.env.GLM_PROVIDER_ORDER ?? "relace,gmicloud,pareto")
+    .split(",").map((s) => s.trim()).filter(Boolean),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   // gemini-2.0-flash is retired ("no longer available", 404). 3.6 over the
   // newer 3.8 on purpose: this is the last-resort layer, where availability
