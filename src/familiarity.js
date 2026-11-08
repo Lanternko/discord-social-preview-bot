@@ -131,8 +131,12 @@ function buildFamiliarityBlock(roster) {
 
   // Group by tier in canonical order; only emit tiers that have members so
   // 西寶 doesn't see empty buckets.
+  // Inside a tier, order by userId rather than count: count order reshuffles
+  // the line whenever two people trade places, which breaks the DeepSeek
+  // prefix cache for everything after it. Tier membership changes far less.
   const byTier = new Map();
-  for (const r of roster) {
+  const ordered = [...roster].sort((x, y) => String(x.userId ?? "").localeCompare(String(y.userId ?? "")));
+  for (const r of ordered) {
     if (!r.tier) continue;
     if (!byTier.has(r.tier)) byTier.set(r.tier, []);
     // aliases (optional, added by chain.js) = what group members call them.

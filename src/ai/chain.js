@@ -796,6 +796,7 @@ async function generateAIReply(message, userText, options = {}) {
   //   1. persona template (per AI plan, changes only on /ai-tier)
   //   2. emoji table     (per bot session — memoized, same string every call)
   //   3. familiarity      (per-guild, drifts slowly as talk counts grow)
+  //   3b. guild profile, then the speaker's user profile
   //   4. group context    (per-call, fully volatile — MUST be last)
   let persona = personaOverride || tierConfig.persona;
 
@@ -819,15 +820,17 @@ async function generateAIReply(message, userText, options = {}) {
     persona += buildFamiliarityBlock(roster);
   }
 
+  // Guild profile before the user profile: it is the same for everyone in the
+  // guild, so it extends the cached prefix; the user block differs per speaker.
   let profileBlock = "";
   if (AI_LONG_TERM_MEMORY_ENABLED && includeContext) {
-    const userProfile = getUserProfile(message.guildId, message.author?.id);
-    profileBlock = buildUserProfileBlock(userProfile);
-    if (profileBlock) persona += profileBlock;
-
     const guildProfile = getGuildProfile(message.guildId);
     const guildBlock = buildGuildProfileBlock(guildProfile);
     if (guildBlock) persona += guildBlock;
+
+    const userProfile = getUserProfile(message.guildId, message.author?.id);
+    profileBlock = buildUserProfileBlock(userProfile);
+    if (profileBlock) persona += profileBlock;
   }
 
   // Mode-specific rules are appended last so they can narrow output format
