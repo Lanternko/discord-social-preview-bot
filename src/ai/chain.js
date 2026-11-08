@@ -36,6 +36,7 @@ const {
   DEEPSEEK_MODEL_FREE,
   DEEPSEEK_PREMIUM_GUILD_IDS,
   DEEPSEEK_REASONING_HEADROOM,
+  DEEPSEEK_CHAT_REASONING_EFFORT,
   DEEPSEEK_VISION_MODEL,
   VISION_ENABLED,
   VISION_TIMEOUT_MS,
@@ -234,8 +235,9 @@ function buildGlmPrimary() {
 
 const GLM_PRIMARY = buildGlmPrimary();
 
-function placeOwnerDeepSeek(entry, tail, demoted) {
-  return demoted ? [...tail, entry] : [entry, ...tail];
+function placeOwnerDeepSeek(entries, tail, demoted) {
+  const list = Array.isArray(entries) ? entries : [entries];
+  return demoted ? [...tail, ...list] : [...list, ...tail];
 }
 
 function buildAIProviderChain() {
@@ -573,14 +575,32 @@ function buildTextGuildChain(
         // Headroom 0 is only correct alongside thinking:{type:"disabled"},
         // which is how the recap/story chains use it.
         reasoningHeadroom: DEEPSEEK_REASONING_HEADROOM,
+        // Low effort: 663 reasoning tokens for ~50 visible ones on an average
+        // brief reply, and 49/321 calls a day still hit finish_reason=length
+        // with nothing visible (2026-11-08 bot.log).
+        ...(DEEPSEEK_CHAT_REASONING_EFFORT
+          ? { reasoningEffort: DEEPSEEK_CHAT_REASONING_EFFORT }
+          : {}),
         ...deepSeekOptions,
+      }),
+  };
+  // Same model, thinking off: a reply whose reasoning ran out of budget is
+  // retried here instead of falling through to another voice.
+  const direct = {
+    label: `deepseek:${DEEPSEEK_MODEL_FREE}:direct`,
+    call: (turns, persona, maxTokens) =>
+      callDeepSeek(turns, persona, maxTokens, {
+        model: DEEPSEEK_MODEL_FREE,
+        ...deepSeekOptions,
+        thinking: { type: "disabled" },
+        reasoningHeadroom: 0,
       }),
   };
   return {
     chain: [
       ...GLM_PRIMARY,
       ...placeOwnerDeepSeek(
-        entry,
+        [entry, direct],
         [...kimiSecondary, ...FALLBACK_CHAIN],
         demoted && !isWhitelisted,
       ),

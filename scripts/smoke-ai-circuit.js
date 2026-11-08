@@ -958,10 +958,11 @@ async function main() {
       chain[chain.length - 1].label.startsWith("deepseek:"),
       `DeepSeek must stay reachable at the tail, got ${chain[chain.length - 1].label}`,
     );
+    const dsLabels = chain.filter((e) => e.label.startsWith("deepseek:")).map((e) => e.label);
     assert.equal(
-      chain.filter((e) => e.label.startsWith("deepseek:")).length,
-      1,
-      "demotion must move the entry, not duplicate it",
+      new Set(dsLabels).size,
+      dsLabels.length,
+      "demotion must move the entries, not duplicate them",
     );
   });
 
@@ -1236,6 +1237,39 @@ async function main() {
         !requestBody.thinking || requestBody.thinking.type !== "disabled",
         "headroom 0 is only valid when thinking is explicitly disabled",
       );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+  await itAsync("owner flash chat: low effort, then a same-model no-think retry", async () => {
+    resetKeyCache();
+    resetRateLimiter();
+    resetCircuitState();
+    const bodies = [];
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, options) => {
+      bodies.push(JSON.parse(options.body));
+      return {
+        ok: true,
+        headers: { get: () => null },
+        json: async () => ({
+          choices: [{ message: { content: "嗨" }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 12, prompt_cache_hit_tokens: 8, prompt_cache_miss_tokens: 2 },
+        }),
+      };
+    };
+    try {
+      const { chain } = buildGuildChain("free-effort-guild", briefTier, {}, OFF_PEAK);
+      const i = chain.findIndex((e) => e.label.startsWith("deepseek:"));
+      const [thinkEntry, direct] = [chain[i], chain[i + 1]];
+      assert.ok(direct.label.endsWith(":direct"), chain.map((e) => e.label).join(","));
+      await thinkEntry.call([{ role: "user", content: "hi" }], "persona", 180);
+      await direct.call([{ role: "user", content: "hi" }], "persona", 180);
+      assert.equal(bodies[0].reasoning_effort, "low");
+      assert.equal(bodies[1].thinking?.type, "disabled");
+      assert.equal(bodies[1].max_tokens, 180, "no-think retry needs no headroom");
+      const peak = buildGuildChain("free-effort-peak", briefTier, {}, PEAK).chain.map((e) => e.label);
+      assert.ok(peak[peak.length - 1].endsWith(":direct"), `both DeepSeek entries move to the tail: ${peak}`);
     } finally {
       global.fetch = originalFetch;
     }

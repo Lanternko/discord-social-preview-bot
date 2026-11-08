@@ -569,6 +569,8 @@ module.exports = {
     "DEEPSEEK_REASONING_HEADROOM",
     2048,
   ),
+  // reasoning_effort for the owner-key flash chat entry. Empty = API default.
+  DEEPSEEK_CHAT_REASONING_EFFORT: process.env.DEEPSEEK_CHAT_REASONING_EFFORT ?? "low",
   AI_TIMEOUT_MS: parsePositiveIntEnv(
     "AI_TIMEOUT_MS",
     parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
