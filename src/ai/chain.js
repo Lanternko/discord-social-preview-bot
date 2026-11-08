@@ -180,6 +180,34 @@ function buildFallbackChain() {
 
 const FALLBACK_CHAIN = buildFallbackChain();
 
+// Background memory work (nicknames, a person's preferences / habits, a
+// guild's topics) only turns chat into JSON — no reasoning needed, and nobody
+// waits on it. A Jev gate (decisions.js) decides whether a batch is worth an
+// LLM at all; this chain runs the ones that are: flat-rate Luna first, then
+// owner DeepSeek flash with thinking off (the [alias] batches alone were 160
+// owner-paid thinking calls a day), then the free tail.
+function buildMemoryProviderChain() {
+  const only = AI_PROVIDER_FORCE;
+  const luna = FALLBACK_CHAIN.filter((e) => e.label.startsWith("openai:"));
+  const rest = FALLBACK_CHAIN.filter((e) => !e.label.startsWith("openai:"));
+  const chain = [...luna];
+  if (DEEPSEEK_API_KEY && (!only || only === "deepseek")) {
+    const options = {
+      model: DEEPSEEK_MODEL_FREE,
+      thinking: { type: "disabled" },
+      reasoningHeadroom: 0,
+    };
+    chain.push({
+      label: `deepseek:${DEEPSEEK_MODEL_FREE}:direct`,
+      options,
+      call: (turns, persona, maxTokens) => callDeepSeek(turns, persona, maxTokens, options),
+    });
+  }
+  return [...chain, ...rest];
+}
+
+const MEMORY_PROVIDER_CHAIN = buildMemoryProviderChain();
+
 // Logged on transition only: peak lasts hours, so a per-request line would
 // double the [ai] log for a third of every weekday.
 let loggedPeakState = null;
@@ -1060,7 +1088,7 @@ async function generateAIReply(message, userText, options = {}) {
     if (AI_LONG_TERM_MEMORY_ENABLED && recordMemory) {
       const guildId = message.guildId;
       const userId = message.author?.id;
-      const runChain = (t, p, m) => runProviderChain(guildChain, t, p, m);
+      const runChain = runMemoryChain;
       if (guildId && userId) {
         appendPendingInteraction(guildId, userId, displayName, userText, capped, {
           messageId: message.id,
@@ -1075,7 +1103,7 @@ async function generateAIReply(message, userText, options = {}) {
         maybeGuildExtract(guildId, guildName, runChain).catch(() => {});
 
         recordAliasContext(guildId, groupContextLines, message.channelId);
-        maybeExtractAliases(guildId, message.channelId, runChain).catch(() => {});
+        maybeExtractAliases(guildId, message.channelId, runMemoryChain).catch(() => {});
 
         const personalContextLines = getPersonalMemoryContextEntries(groupContextLines);
         for (const entry of personalContextLines) {
@@ -1104,8 +1132,16 @@ async function generateAIReply(message, userText, options = {}) {
   return null;
 }
 
+// Both alias feeds (this reply path and index.js's passive one) share it.
+function runMemoryChain(turns, persona, maxTokens) {
+  return runProviderChain(MEMORY_PROVIDER_CHAIN, turns, persona, maxTokens);
+}
+
 module.exports = {
   AI_PROVIDER_CHAIN,
+  MEMORY_PROVIDER_CHAIN,
+  buildMemoryProviderChain,
+  runMemoryChain,
   RECAP_PROVIDER_CHAIN,
   STORY_PROVIDER_CHAIN,
   FALLBACK_CHAIN,

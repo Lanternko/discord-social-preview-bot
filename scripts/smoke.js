@@ -11,6 +11,8 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 process.env.DISCORD_TOKEN = process.env.DISCORD_TOKEN || "smoke-dummy";
+// The Jev memory gate is a network call; tests that want it pass mode in.
+process.env.MEMORY_GATE_MODE = "off";
 
 const {
   normalizeUrl,
@@ -3467,6 +3469,163 @@ memoryAsyncCases.push(["passive alias feed: per-channel buffers, guild gate, per
     aliasEx.resetAliasBuffersForTests();
     restoreFile(storePath, snap);
     restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
+
+memoryAsyncCases.push(["alias extraction backs off on empty batches and caps each guild per day", async () => {
+  const storePath = profileStore.STORE_PATH;
+  const snap = snapshotFile(storePath);
+  const bakSnap = snapshotFile(`${storePath}.bak`);
+  profileStore.resetCacheForTests();
+  aliasEx.resetAliasBuffersForTests();
+  try {
+    const { ALIAS_EXTRACT_MIN_INTERVAL_MS, ALIAS_EXTRACT_GUILD_DAILY_MAX } = require("../src/config");
+    let calls = 0;
+    let reply = '{"aliases":[]}';
+    const chain = async () => { calls++; return { provider: { label: "fake" }, text: reply }; };
+    let n = 0;
+    const feed = () => {
+      const rows = [];
+      for (let i = 0; i < aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+        n++;
+        rows.push({ userId: n % 2 ? "u2" : "u1", displayName: n % 2 ? "萱萱" : "峰", messageId: `b${n}`, content: "峰哥早", at: n });
+      }
+      aliasEx.recordAliasContext("gb", rows, "c1");
+    };
+    const t0 = Date.parse("2026-11-09T01:00:00Z"); // 09:00 Taipei
+    feed();
+    await aliasEx.maybeExtractAliases("gb", "c1", chain, t0);
+    assert.equal(calls, 1);
+    assert.equal(aliasEx.extractIntervalMs("gb"), ALIAS_EXTRACT_MIN_INTERVAL_MS * 2, "one empty batch doubles the wait");
+    feed();
+    await aliasEx.maybeExtractAliases("gb", "c1", chain, t0 + ALIAS_EXTRACT_MIN_INTERVAL_MS + 1000);
+    assert.equal(calls, 1, "the base interval is no longer enough");
+    await aliasEx.maybeExtractAliases("gb", "c1", async () => { calls++; return null; }, t0 + 2 * ALIAS_EXTRACT_MIN_INTERVAL_MS + 1000);
+    assert.equal(calls, 2);
+    assert.equal(aliasEx.extractIntervalMs("gb"), ALIAS_EXTRACT_MIN_INTERVAL_MS * 2, "a failed call leaves the streak alone");
+    reply = '{"aliases":[{"person":"P2","alias":"峰哥","evidence":["L1"]}]}';
+    feed();
+    const t1 = t0 + 5 * ALIAS_EXTRACT_MIN_INTERVAL_MS;
+    await aliasEx.maybeExtractAliases("gb", "c1", chain, t1);
+    assert.equal(calls, 3);
+    assert.equal(aliasEx.extractIntervalMs("gb"), ALIAS_EXTRACT_MIN_INTERVAL_MS, "an accepted alias resets the backoff");
+    let t = t1;
+    while (calls < ALIAS_EXTRACT_GUILD_DAILY_MAX) {
+      t += ALIAS_EXTRACT_MIN_INTERVAL_MS + 1000;
+      feed();
+      await aliasEx.maybeExtractAliases("gb", "c1", chain, t);
+    }
+    t += ALIAS_EXTRACT_MIN_INTERVAL_MS + 1000;
+    feed();
+    await aliasEx.maybeExtractAliases("gb", "c1", chain, t);
+    assert.equal(calls, ALIAS_EXTRACT_GUILD_DAILY_MAX, "per-guild daily cap holds");
+    await aliasEx.maybeExtractAliases("gb", "c1", chain, t0 + 24 * 60 * 60 * 1000);
+    assert.equal(calls, ALIAS_EXTRACT_GUILD_DAILY_MAX + 1, "a new Taipei day reopens the guild");
+  } finally {
+    profileStore.resetCacheForTests();
+    aliasEx.resetAliasBuffersForTests();
+    restoreFile(storePath, snap);
+    restoreFile(`${storePath}.bak`, bakSnap);
+  }
+}]);
+
+memoryAsyncCases.push(["memory gate: Jev verdicts, fail-open, audit sampling", async () => {
+  const { predicateProbability, runGate, gateSkips, resetGateForTests } = require("../src/ai/decisions");
+  assert.equal(predicateProbability({ answers: [{ type: "predicate", name: "q", probability: 0.8 }] }, "q"), 0.8);
+  assert.equal(predicateProbability({ answers: [{ type: "refusal", name: "q" }] }, "q"), null);
+  assert.equal(predicateProbability(null, "q"), null);
+  const Q = { type: "predicate", name: "q", instructions: "x" };
+  const says = (p) => async () => ({ answers: [{ type: "predicate", name: "q", probability: p }], costUsd: 0.00002 });
+  resetGateForTests();
+  assert.equal(await runGate("k", Q, "in", { mode: "off", decide: says(0) }), null);
+  assert.equal((await runGate("k", Q, "in", { mode: "enforce", decide: says(0.5), threshold: 0.15 })).verdict, "pass");
+  assert.equal((await runGate("k", Q, "in", { mode: "enforce", decide: async () => null })).verdict, "na");
+  assert.equal((await runGate("k", Q, "in", { mode: "enforce", decide: async () => { throw new Error("boom"); } })).verdict, "na");
+  assert.equal((await runGate("k", Q, "in", { mode: "shadow", decide: says(0.01), threshold: 0.15 })).verdict, "would_skip");
+  const verdicts = [];
+  for (let i = 0; i < 3; i++) {
+    verdicts.push((await runGate("k", Q, "in", { mode: "enforce", decide: says(0.01), threshold: 0.15, auditEvery: 3 })).verdict);
+  }
+  assert.deepEqual(verdicts, ["skip", "skip", "audit"], "every 3rd skip of a kind still runs");
+  assert.equal(gateSkips({ verdict: "audit" }), false);
+  resetGateForTests();
+}]);
+
+memoryAsyncCases.push(["memory gate: a skip spends no LLM call on aliases, traits or guild topics", async () => {
+  const { resetGateForTests } = require("../src/ai/decisions");
+  const guildStore = require("../src/guild-profile-store");
+  const obsEx = require("../src/ai/observation-extractor");
+  const paths = [profileStore.STORE_PATH, `${profileStore.STORE_PATH}.bak`, guildStore.STORE_PATH, `${guildStore.STORE_PATH}.bak`];
+  const snaps = paths.map(snapshotFile);
+  profileStore.resetCacheForTests();
+  guildStore.resetCacheForTests?.();
+  aliasEx.resetAliasBuffersForTests();
+  resetGateForTests();
+  const logs = [];
+  const origLog = console.log;
+  console.log = (...args) => { logs.push(args.join(" ")); };
+  const gateSaying = (p, seen) => ({
+    mode: "enforce",
+    threshold: 0.15,
+    auditEvery: 0,
+    decide: async (req) => {
+      seen?.push(req);
+      return { answers: [{ type: "predicate", name: req.questions[0].name, probability: p }], costUsd: 0.00002 };
+    },
+  });
+  try {
+    // Aliases: skip → no LLM, nothing stored, daily cap untouched.
+    const rows = [];
+    for (let i = 1; i <= aliasEx.ALIAS_EXTRACT_MIN_NEW; i++) {
+      rows.push({ userId: i % 2 ? "u2" : "u1", displayName: i % 2 ? "萱萱" : "峰", messageId: `s${i}`, content: "峰哥早", at: i });
+    }
+    let llmCalls = 0;
+    const chain = async () => {
+      llmCalls++;
+      return { provider: { label: "fake" }, text: '{"aliases":[{"person":"P2","alias":"峰哥","evidence":["L1"]}]}' };
+    };
+    const seen = [];
+    aliasEx.recordAliasContext("gs", rows, "c1");
+    await aliasEx.maybeExtractAliases("gs", "c1", chain, Date.now(), { gate: gateSaying(0.03, seen) });
+    assert.equal(llmCalls, 0);
+    assert.equal(seen[0].model, "typesafe-ai/jev");
+    assert.match(seen[0].input, /## 對話/, "gate sees the same numbered transcript");
+    assert.ok(logs.some((l) => /\[alias\].*llm=skipped gate=skip gate_p=0\.030/.test(l)), logs.join("\n"));
+    assert.equal(profileStore.getUserProfile("gs", "u1")?.aliases?.length ?? 0, 0);
+
+    // Pass → the LLM runs and the verdict rides on the normal line.
+    aliasEx.resetAliasBuffersForTests();
+    aliasEx.recordAliasContext("gs2", rows.map((r) => ({ ...r, messageId: `t${r.messageId}` })), "c1");
+    await aliasEx.maybeExtractAliases("gs2", "c1", chain, Date.now(), { gate: gateSaying(0.9) });
+    assert.equal(llmCalls, 1);
+    assert.ok(logs.some((l) => /accepted=1 .*gate=pass gate_p=0\.900/.test(l)), logs.join("\n"));
+
+    // A person's traits: skip clears the pending batch without an LLM call.
+    for (let i = 0; i < obsEx.EXTRACT_MIN_COUNT; i++) {
+      profileStore.appendPendingInteraction("go", "uo", "Amy", `早安 ${i}`, `早 ${i}`, { messageId: `o${i}`, source: "direct", at: i });
+    }
+    let obsCalls = 0;
+    const obsChain = async () => { obsCalls++; return { provider: { label: "fake" }, text: '{"observations":[]}' }; };
+    await obsEx.maybeExtractObservations("go", "uo", "Amy", obsChain, { gate: gateSaying(0.02) });
+    assert.equal(obsCalls, 0);
+    assert.equal(profileStore.getPendingInteractions("go", "uo").length, 0, "skipped batch is cleared like an empty one");
+    assert.ok(logs.some((l) => /\[observation-extractor\].*llm=skipped.*gate=skip/.test(l)), logs.join("\n"));
+
+    // Guild topics: same.
+    for (let i = 0; i < obsEx.GUILD_EXTRACT_MIN_COUNT; i++) {
+      guildStore.appendPendingContext("gg", "G", [{ line: `[A]: 早 ${i}`, messageId: `g${i}`, at: i }]);
+    }
+    await obsEx.maybeGuildExtract("gg", "G", obsChain, { gate: gateSaying(0.02) });
+    assert.equal(obsCalls, 0);
+    assert.equal(guildStore.getPendingContexts("gg").length, 0);
+    assert.ok(logs.some((l) => /\[guild-extract\].*llm=skipped.*gate=skip/.test(l)), logs.join("\n"));
+  } finally {
+    console.log = origLog;
+    resetGateForTests();
+    aliasEx.resetAliasBuffersForTests();
+    paths.forEach((p, i) => restoreFile(p, snaps[i]));
+    profileStore.resetCacheForTests();
+    guildStore.resetCacheForTests?.();
   }
 }]);
 

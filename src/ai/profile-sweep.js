@@ -2,7 +2,7 @@
 // observation-extractor so the extractor never has to import chain.js
 // (chain.js requires the extractor — importing back would be circular).
 const { AI_LONG_TERM_MEMORY_ENABLED, PROFILE_SWEEP_INTERVAL_MS } = require("../config");
-const { buildGuildChain, runProviderChain } = require("./chain");
+const { buildGuildChain, runMemoryChain } = require("./chain");
 const { getTierConfig } = require("../tier-config");
 const { sweepPendingBacklog } = require("./observation-extractor");
 
@@ -18,9 +18,10 @@ function buildRunChainForGuild(guildId) {
   const { chain } = buildGuildChain(guildId, tierConfig, {}, new Date(), [], {
     metered: false,
   });
+  // The guild chain only answers "may this guild use AI at all"; the
+  // extraction itself runs on the background memory chain like live replies.
   if (chain.length === 0) return null;
-  return (turns, persona, maxTokens) =>
-    runProviderChain(chain, turns, persona, maxTokens);
+  return runMemoryChain;
 }
 
 function runSweep() {

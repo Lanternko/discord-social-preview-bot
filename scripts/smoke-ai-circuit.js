@@ -1274,6 +1274,15 @@ async function main() {
       global.fetch = originalFetch;
     }
   });
+  it("alias chain: Luna first, DeepSeek only with thinking off", () => {
+    const { buildMemoryProviderChain } = require("../src/ai/chain");
+    const chain = buildMemoryProviderChain();
+    const lunaAt = chain.findIndex((e) => e.label.startsWith("openai:"));
+    if (lunaAt >= 0) assert.equal(lunaAt, 0, chain.map((e) => e.label).join(","));
+    for (const e of chain.filter((x) => x.label.startsWith("deepseek:"))) {
+      assert.equal(e.options?.thinking?.type, "disabled", e.label);
+    }
+  });
   await itAsync("callGemini reserves reasoning headroom", async () => {
     let requestBody;
     const originalFetch = global.fetch;

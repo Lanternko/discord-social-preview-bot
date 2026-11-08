@@ -34,6 +34,23 @@ const {
   isGuildItemStale,
   sanitizeGuildItems,
 } = require("../guild-profile-store");
+const { runGate, gateSkips, formatGate } = require("./decisions");
+
+// Jev gate questions (decisions.js). A skipped batch is cleared exactly like
+// an extraction that found nothing — that is what the LLM would have done.
+const USER_TRAIT_GATE_QUESTION = {
+  type: "predicate",
+  name: "has_user_trait",
+  instructions:
+    "The input is chat history (mostly Traditional Chinese) between one Discord user and the bot 西寶, plus lines that user posted in the group. Does it reveal at least one lasting, non-sensitive thing about that user — a like or dislike, a habit or routine, a recurring interest, hobby or topic, a way of talking, or a fact about their life such as their job, school, or where they live — that would likely still be true next week? One-off moods, greetings, single requests to the bot, and links without comment do not count.",
+};
+
+const GUILD_TRAIT_GATE_QUESTION = {
+  type: "predicate",
+  name: "has_group_trait",
+  instructions:
+    "The input is numbered lines from a Discord group chat (mostly Traditional Chinese). Do several different lines show something about the group as a whole — a topic, game, or show people keep coming back to, the way they interact (teasing, running jokes, sticker wars), or an in-joke or catchphrase that is repeated? A single event, facts about one person, and people using the bot 西寶 do not count.",
+};
 
 const EXTRACT_MIN_COUNT = 5;
 const EXTRACT_MIN_COUNT_TIME = 2;
@@ -202,7 +219,7 @@ function isStableObservation(obs) {
   return isStableEvidence(obs?.evidence);
 }
 
-async function maybeExtractObservations(guildId, userId, displayName, runChain) {
+async function maybeExtractObservations(guildId, userId, displayName, runChain, deps = null) {
   if (!guildId || !userId || !runChain) return;
   if (!shouldExtract(guildId, userId)) return;
 
@@ -215,6 +232,12 @@ async function maybeExtractObservations(guildId, userId, displayName, runChain) 
     if (pending.length === 0) return;
 
     const turns = buildExtractionTurns(pending);
+    const gate = await runGate("user_trait", USER_TRAIT_GATE_QUESTION, turns[0].content, deps?.gate);
+    if (gateSkips(gate)) {
+      console.log(`[observation-extractor] user=${userId} llm=skipped from=${pending.length} pending${formatGate(gate)}`);
+      clearPending(guildId, userId);
+      return;
+    }
     const result = await runChain(
       turns,
       EXTRACTION_PERSONA,
@@ -228,7 +251,7 @@ async function maybeExtractObservations(guildId, userId, displayName, runChain) 
 
     const observations = attachEvidence(parseExtractionResult(result.text), pending);
     console.log(
-      `[observation-extractor] user=${userId} provider=${result.provider.label} extracted=${observations.length} from=${pending.length} pending evidence=${observations.map((o) => o.evidence.length).join(",") || "-"}`,
+      `[observation-extractor] user=${userId} provider=${result.provider.label} extracted=${observations.length} from=${pending.length} pending evidence=${observations.map((o) => o.evidence.length).join(",") || "-"}${formatGate(gate)}`,
     );
 
     if (observations.length > 0) {
@@ -884,7 +907,7 @@ function countGuildItems(items) {
   return items ? GUILD_FIELDS.reduce((n, f) => n + (items[f.key]?.length ?? 0), 0) : 0;
 }
 
-async function maybeGuildExtract(guildId, guildName, runChain) {
+async function maybeGuildExtract(guildId, guildName, runChain, deps = null) {
   if (!guildId || !runChain) return;
   if (!shouldGuildExtract(guildId)) return;
 
@@ -897,6 +920,12 @@ async function maybeGuildExtract(guildId, guildName, runChain) {
 
     const lines = flattenGuildPending(pending);
     const turns = buildGuildExtractionTurns(lines);
+    const gate = await runGate("guild_trait", GUILD_TRAIT_GATE_QUESTION, turns[0].content, deps?.gate);
+    if (gateSkips(gate)) {
+      console.log(`[guild-extract] guild=${guildId} llm=skipped from=${lines.length} lines${formatGate(gate)}`);
+      clearPendingContexts(guildId);
+      return;
+    }
     const result = await runChain(turns, GUILD_EXTRACTION_PERSONA, EXTRACT_MAX_TOKENS);
 
     if (!result) {
@@ -907,7 +936,7 @@ async function maybeGuildExtract(guildId, guildName, runChain) {
     const parsed = parseExtractionResult(result.text).slice(0, GUILD_EXTRACT_MAX_OBSERVATIONS);
     const observations = attachGuildEvidence(parsed, lines);
     console.log(
-      `[guild-extract] guild=${guildId} provider=${result.provider.label} extracted=${observations.length} dropped=${parsed.length - observations.length} from=${lines.length} lines evidence=${observations.map((o) => o.evidence.length).join(",") || "-"}`,
+      `[guild-extract] guild=${guildId} provider=${result.provider.label} extracted=${observations.length} dropped=${parsed.length - observations.length} from=${lines.length} lines evidence=${observations.map((o) => o.evidence.length).join(",") || "-"}${formatGate(gate)}`,
     );
 
     if (observations.length > 0) {
@@ -1061,5 +1090,7 @@ module.exports = {
   countGuildItems,
   maybeGuildExtract,
   maybeGuildConsolidate,
+  USER_TRAIT_GATE_QUESTION,
+  GUILD_TRAIT_GATE_QUESTION,
   resetForTests,
 };

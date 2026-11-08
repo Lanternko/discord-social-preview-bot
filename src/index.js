@@ -33,7 +33,7 @@ const { sendGuildWelcome } = require("./guild-welcome");
 const { loadStickerLibrary } = require("./stickers");
 const { ensureApplicationCommands, handleInteraction } = require("./commands");
 const { runInGuildLanguage, t } = require("./system-text");
-const { AI_PROVIDER_CHAIN, runProviderChain } = require("./ai/chain");
+const { AI_PROVIDER_CHAIN, runMemoryChain } = require("./ai/chain");
 const { recordPassiveMessage, maybeExtractAliases } = require("./ai/alias-extractor");
 const { startMemorySweepTimer, stopMemorySweepTimer } = require("./ai/memory");
 const { startProfileSweepTimer, stopProfileSweepTimer } = require("./ai/profile-sweep");
@@ -204,16 +204,14 @@ client.on("messageCreate", (message) =>
   runInGuildLanguage(message.guildId, () => onMessageCreate(message)),
 );
 
-// Nickname learning off ordinary chat (alias-extractor.js). No message
-// context to meter against, so it runs on the default owner chain; the
-// extractor's interval + daily cap bound the spend.
-const runAliasChain = (turns, persona, maxTokens) =>
-  runProviderChain(AI_PROVIDER_CHAIN, turns, persona, maxTokens);
+// Nickname learning off ordinary chat (alias-extractor.js). Runs on the
+// alias chain (Luna first, DeepSeek no-think after — chain.js); the
+// extractor's backoff, per-guild and global caps bound the spend.
 
 function observeChatForAliases(message) {
   if (!ALIAS_PASSIVE_ENABLED || !AI_LONG_TERM_MEMORY_ENABLED) return;
   if (recordPassiveMessage(message) === 0) return;
-  maybeExtractAliases(message.guildId, message.channelId, runAliasChain).catch(() => {});
+  maybeExtractAliases(message.guildId, message.channelId, runMemoryChain).catch(() => {});
 }
 
 async function onMessageCreate(message) {
