@@ -460,6 +460,13 @@ module.exports = {
     process.env.GLM_BASE_URL || "https://ai-gateway.vercel.sh/v1/chat/completions",
   GLM_TIMEOUT_MS: parsePositiveIntEnv("GLM_TIMEOUT_MS", 12000),
   GLM_REASONING_EFFORT: process.env.GLM_REASONING_EFFORT || "high",
+  // Gateway hosts to try first for GLM (soft order: the Gateway still fails
+  // over to other hosts). 2026-11-09 probe, 6 chat prompts each: relace
+  // $0.068/1k replies, gmicloud $0.075, pareto $0.079, zai (official) ~5x;
+  // novita leaked a Simplified character. Empty string = Gateway default
+  // routing (it picked baseten, ~5x relace).
+  GLM_PROVIDER_ORDER: (process.env.GLM_PROVIDER_ORDER ?? "relace,gmicloud,pareto")
+    .split(",").map((s) => s.trim()).filter(Boolean),
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   // gemini-2.0-flash is retired ("no longer available", 404). 3.6 over the
   // newer 3.8 on purpose: this is the last-resort layer, where availability
@@ -562,6 +569,8 @@ module.exports = {
     "DEEPSEEK_REASONING_HEADROOM",
     2048,
   ),
+  // reasoning_effort for the owner-key flash chat entry. Empty = API default.
+  DEEPSEEK_CHAT_REASONING_EFFORT: process.env.DEEPSEEK_CHAT_REASONING_EFFORT ?? "low",
   AI_TIMEOUT_MS: parsePositiveIntEnv(
     "AI_TIMEOUT_MS",
     parsePositiveIntEnv("GEMINI_TIMEOUT_MS", 8000),
@@ -610,6 +619,25 @@ module.exports = {
   // global per-day ceiling (Taipei day, in-memory — a restart resets it).
   ALIAS_EXTRACT_MIN_INTERVAL_MS: parsePositiveIntEnv("ALIAS_EXTRACT_MIN_INTERVAL_MS", 20 * 60 * 1000),
   ALIAS_EXTRACT_DAILY_MAX: parsePositiveIntEnv("ALIAS_EXTRACT_DAILY_MAX", 150),
+  // Per guild, per Taipei day. Busy guilds ran 13-24 batches a day each.
+  ALIAS_EXTRACT_GUILD_DAILY_MAX: parsePositiveIntEnv("ALIAS_EXTRACT_GUILD_DAILY_MAX", 6),
+  // Each batch that finds nothing doubles that guild's interval, up to this.
+  ALIAS_EXTRACT_MAX_INTERVAL_MS: parsePositiveIntEnv("ALIAS_EXTRACT_MAX_INTERVAL_MS", 12 * 60 * 60 * 1000),
+  // Shadow gate: ask a decision model "does this batch contain a nickname?"
+  // next to every alias batch and log the probability. Nothing is skipped on
+  // it yet — the log decides the threshold first. Needs AI_GATEWAY_API_KEY.
+  // Jev yes/no gate in front of the memory extractors (aliases, a person's
+  // traits, guild topics). enforce = below-threshold batches skip the LLM;
+  // shadow = log the verdict only; off = no gate call. Every
+  // MEMORY_GATE_AUDIT_EVERY-th skip of each kind still runs (gate=audit) so
+  // the logs keep showing what a skip would have lost. 2026-11-09 probe:
+  // clear nickname 0.96, subtle 0.25-0.69, no nickname 0.02-0.10.
+  MEMORY_GATE_MODE: (process.env.MEMORY_GATE_MODE || "enforce").toLowerCase(),
+  MEMORY_GATE_MODEL: process.env.MEMORY_GATE_MODEL || "typesafe-ai/jev",
+  MEMORY_GATE_THRESHOLD: Number(process.env.MEMORY_GATE_THRESHOLD ?? 0.15),
+  MEMORY_GATE_AUDIT_EVERY: Number(process.env.MEMORY_GATE_AUDIT_EVERY ?? 10),
+  DECISIONS_BASE_URL: process.env.DECISIONS_BASE_URL || "https://ai-gateway.vercel.sh/v1",
+  DECISIONS_TIMEOUT_MS: parsePositiveIntEnv("DECISIONS_TIMEOUT_MS", 15000),
   // Personal-memory backlog sweep cadence; "0" disables the sweep entirely.
   PROFILE_SWEEP_INTERVAL_MS:
     process.env.PROFILE_SWEEP_INTERVAL_MS === "0"

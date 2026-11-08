@@ -22,8 +22,11 @@
 
 const {
   ALIAS_EXTRACT_MIN_INTERVAL_MS,
+  ALIAS_EXTRACT_MAX_INTERVAL_MS,
   ALIAS_EXTRACT_DAILY_MAX,
+  ALIAS_EXTRACT_GUILD_DAILY_MAX,
 } = require("../config");
+const { runGate, gateSkips, formatGate } = require("./decisions");
 const {
   getUserProfile,
   hasGuildProfiles,
@@ -76,9 +79,18 @@ const ALIAS_PERSONA = `你是一個群組稱呼紀錄助手。你的工作是從
 ## 輸出（只輸出 JSON）
 {"aliases":[{"person":"P1","alias":"峰哥","evidence":["L3","L7"]}]}`;
 
+const ALIAS_GATE_QUESTION = {
+  type: "predicate",
+  name: "has_nickname",
+  instructions:
+    "The input is a Discord group chat (mostly Traditional Chinese). The 參與者 section maps P ids to display names; each L line is one message. Does at least one message call or address another participant by a nickname — a name other than their display name, such as a shortened, altered, or affectionate name (e.g. 峰哥 for 峰)? Pronouns, generic words like 大家/兄弟/老師, kinship words like 哥哥/姐姐, and names of the bot 西寶 do not count.",
+};
+
 const buffers = new Map(); // "guildId:channelId" -> { lines: Map<messageId, row>, newCount }
 const inFlight = new Set(); // guildIds
 const lastExtractAt = new Map(); // guildId -> ms
+const emptyStreak = new Map(); // guildId -> batches in a row that accepted nothing
+const guildDaily = new Map(); // guildId -> { day, count }
 const daily = { day: null, count: 0 };
 
 function bufferKey(guildId, channelId) {
@@ -95,14 +107,34 @@ function taipeiDay(now) {
   return new Date(now).toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" });
 }
 
-// Cost gate shared by both feeds: one batch per guild per interval, and a
+// A guild whose batches keep finding nothing has already given up its
+// nicknames: each empty batch doubles its wait (20 min → 40 → … → 12 h).
+// One accepted alias resets it.
+function extractIntervalMs(guildId) {
+  const streak = Math.min(emptyStreak.get(guildId) ?? 0, 20);
+  return Math.min(ALIAS_EXTRACT_MIN_INTERVAL_MS * 2 ** streak, ALIAS_EXTRACT_MAX_INTERVAL_MS);
+}
+
+function guildDailyFor(guildId, day) {
+  let g = guildDaily.get(guildId);
+  if (!g || g.day !== day) {
+    g = { day, count: 0 };
+    guildDaily.set(guildId, g);
+  }
+  return g;
+}
+
+// Cost gate shared by both feeds: a per-guild interval that backs off, a
+// per-guild daily cap so more guilds don't mean more batches each, and a
 // global daily ceiling so a chatty day can't run up the owner's bill.
 function extractionAllowed(guildId, now) {
-  if (now - (lastExtractAt.get(guildId) ?? 0) < ALIAS_EXTRACT_MIN_INTERVAL_MS) return false;
-  if (daily.day !== taipeiDay(now)) {
-    daily.day = taipeiDay(now);
+  if (now - (lastExtractAt.get(guildId) ?? 0) < extractIntervalMs(guildId)) return false;
+  const day = taipeiDay(now);
+  if (daily.day !== day) {
+    daily.day = day;
     daily.count = 0;
   }
+  if (guildDailyFor(guildId, day).count >= ALIAS_EXTRACT_GUILD_DAILY_MAX) return false;
   return daily.count < ALIAS_EXTRACT_DAILY_MAX;
 }
 
@@ -233,29 +265,45 @@ function resolveAliasCandidates(proposals, { people, rows }) {
   return out;
 }
 
-async function maybeExtractAliases(guildId, channelId, runChain, now = Date.now()) {
+async function maybeExtractAliases(guildId, channelId, runChain, now = Date.now(), deps = null) {
   if (!guildId || !runChain || inFlight.has(guildId)) return;
   const buf = buffers.get(bufferKey(guildId, channelId));
   if (!buf || buf.newCount < ALIAS_EXTRACT_MIN_NEW) return;
   if (!extractionAllowed(guildId, now)) return;
   inFlight.add(guildId);
   lastExtractAt.set(guildId, now);
-  daily.count++;
   // Reset before the call: a failed batch waits for the next 30 new lines
   // instead of retrying on every reply.
   buf.newCount = 0;
   try {
     const rows = [...buf.lines.values()].sort((a, b) => a.at - b.at);
     const ctx = buildAliasPrompt(guildId, rows);
+    // A gate skip costs ~nothing, so it neither spends the daily caps nor
+    // grows the empty-streak backoff — those budget the LLM calls.
+    const gate = await runGate("alias", ALIAS_GATE_QUESTION, ctx.turns[0].content, deps?.gate);
+    if (gateSkips(gate)) {
+      console.log(`[alias] guild=${guildId} channel=${channelId} lines=${rows.length} llm=skipped${formatGate(gate)}`);
+      return;
+    }
+    daily.count++;
+    guildDailyFor(guildId, taipeiDay(now)).count++;
     const result = await runChain(ctx.turns, ALIAS_PERSONA, ALIAS_EXTRACT_MAX_TOKENS);
-    if (!result) return;
+    if (!result) {
+      console.log(`[alias] guild=${guildId} channel=${channelId} lines=${rows.length} llm=failed${formatGate(gate)}`);
+      return;
+    }
     const proposals = parseAliasResult(result.text);
     const accepted = resolveAliasCandidates(proposals, ctx);
     for (const a of accepted) {
       recordAliasEvidence(guildId, a.userId, a.displayName, a.alias, a.evidence);
     }
+    // Only a batch that actually ran counts: a provider failure (null result,
+    // throw, unparseable text) leaves the streak as it was.
+    if (proposals) {
+      emptyStreak.set(guildId, accepted.length > 0 ? 0 : (emptyStreak.get(guildId) ?? 0) + 1);
+    }
     console.log(
-      `[alias] guild=${guildId} channel=${channelId} lines=${rows.length} proposed=${proposals?.length ?? 0} accepted=${accepted.length}${accepted.length ? ` (${accepted.map((a) => `${a.displayName}=${a.alias}`).join(", ")})` : ""} provider=${result.provider?.label}`,
+      `[alias] guild=${guildId} channel=${channelId} lines=${rows.length} proposed=${proposals?.length ?? 0} accepted=${accepted.length}${accepted.length ? ` (${accepted.map((a) => `${a.displayName}=${a.alias}`).join(", ")})` : ""} provider=${result.provider?.label} empty_streak=${emptyStreak.get(guildId) ?? 0}${formatGate(gate)}`,
     );
   } catch (err) {
     console.warn(`[alias] extraction failed: ${err.message}`);
@@ -268,6 +316,8 @@ function resetAliasBuffersForTests() {
   buffers.clear();
   inFlight.clear();
   lastExtractAt.clear();
+  emptyStreak.clear();
+  guildDaily.clear();
   daily.day = null;
   daily.count = 0;
 }
@@ -276,11 +326,13 @@ module.exports = {
   ALIAS_BUFFER_MAX,
   ALIAS_EXTRACT_MIN_NEW,
   ALIAS_PERSONA,
+  ALIAS_GATE_QUESTION,
   recordAliasContext,
   recordPassiveMessage,
   buildAliasPrompt,
   parseAliasResult,
   resolveAliasCandidates,
   maybeExtractAliases,
+  extractIntervalMs,
   resetAliasBuffersForTests,
 };

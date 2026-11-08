@@ -114,6 +114,9 @@ function openAIResponseMeta(payload) {
     completionTokens: usage.completion_tokens,
     reasoningTokens:
       usage?.completion_tokens_details?.reasoning_tokens ?? usage.reasoning_tokens,
+    // DeepSeek context (prefix) cache: hit tokens bill at ~1/10 of a miss.
+    cacheHitTokens: usage.prompt_cache_hit_tokens,
+    cacheMissTokens: usage.prompt_cache_miss_tokens,
   };
 }
 
@@ -138,6 +141,12 @@ function logResponseMeta(label, meta) {
   }
   if (Number.isFinite(meta?.reasoningTokens)) {
     parts.push(`reasoning_tokens=${meta.reasoningTokens}`);
+  }
+  if (Number.isFinite(meta?.cacheHitTokens)) {
+    parts.push(`cache_hit_tokens=${meta.cacheHitTokens}`);
+  }
+  if (Number.isFinite(meta?.cacheMissTokens)) {
+    parts.push(`cache_miss_tokens=${meta.cacheMissTokens}`);
   }
   if (parts.length > 0) console.log(`[ai] provider=${label} ${parts.join(" ")}`);
 }
@@ -306,6 +315,10 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
   };
   const effort = overrides.reasoningEffort ?? OPENAI_REASONING_EFFORT;
   if (effort) body.reasoning_effort = effort;
+  // Vercel AI Gateway only: preferred upstream hosts, still with failover.
+  if (overrides.gatewayOrder?.length) {
+    body.providerOptions = { gateway: { order: overrides.gatewayOrder } };
+  }
   const label = overrides.label || `openai:${model}`;
 
   const timeoutMs = overrides.timeoutMs ?? AI_TIMEOUT_MS;
