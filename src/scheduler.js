@@ -20,6 +20,7 @@ const {
 } = require("./ai/chain");
 const { recordAITurn } = require("./ai/memory");
 const { screenPersonaReply } = require("./ai/meta-leak");
+const { enforceTraditional } = require("./traditional");
 const {
   buildEmojiMap,
   buildEmojiPromptBlock,
@@ -274,10 +275,12 @@ async function executeScheduledTask(schedule, client, options = {}) {
     // Put back member names the model spelled with kana spliced in
     // (lインchien) — see src/name-repair.js. Before the quiz split so the
     // quiz gets the fix too.
-    const repaired = repairNames(result.text, [
-      ...roster.map((r) => r.name),
-      ...taskNames,
-    ]);
+    const names = [...roster.map((r) => r.name), ...taskNames];
+    const repaired = enforceTraditional(repairNames(result.text, names), {
+      language: getGuildLanguage(guildId),
+      protect: names,
+      label: result.provider.label,
+    });
     // Split the quiz off BEFORE the length cap — capping first would cut the
     // quiz in half, or leave half a quiz glued to the story.
     const { story, quiz } = taskType === "bedtime_story"
