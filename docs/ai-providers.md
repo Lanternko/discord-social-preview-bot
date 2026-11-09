@@ -39,6 +39,7 @@ DeepSeek is selected per guild, then Kimi (when enabled) and the shared fallback
 - **2026-11-09 實測**（同 persona、6 題聊天、每題約 1.9k input）：relace $0.068／千則、gmicloud $0.075、pareto $0.079、deepinfra $0.10、novita $0.12（還冒了一個簡體「过」）、zai 官方約 5 倍。
 - **尖峰不影響**：DeepSeek 的 2 倍尖峰價是它自家 API 的規則；GLM 不分時段。DeepSeek 經 Gateway 的代管（deepinfra $0.10/$0.29、pareto $0.08/$0.30）離峰也比 GLM relace（$0.03/$0.08）貴 2～3 倍，所以順位不分尖峰離峰都是 GLM 在前、DeepSeek 在後。
 - 清成空字串 = 回到 Gateway 預設路由。
+- **實際用了哪家**：GLM 每次回應的 `[ai] provider=glm:... host=<家>` 會帶 Gateway 實際選的供應商。欄位路徑沒有文件，`callOpenAI` 試了幾個常見位置；都撈不到時印 `host=?`，並且只印一次 `[ai] gateway host not found; payload keys=...`，照那行補路徑。
 
 ### 尖峰時段降級（`AI_PEAK_PREFER_FALLBACK`，預設開）
 
@@ -147,6 +148,8 @@ Log prefix: `[ai]`.
 - Per call: `x-ratelimit-remaining-{tokens,requests}` from Groq/DeepSeek when provided (`logRateHeaders()`) — live quota drain.
 - Chain exhausted: `[ai] chain exhausted (X providers tried), falling back to hardcoded reply` — **the ops signal** to grep for.
 - Out-of-character reply: `[ai] meta-leak salvaged|rejected label=<provider> head="..."` — [src/ai/meta-leak.js](../src/ai/meta-leak.js) screens chat + scheduled posts (not the JSON extractors). `salvaged` = a meta preamble (「輸出推理內容的要求我沒辦法照做…」) above a `---` was cut, the in-character part below was sent; `rejected` = the reply was leaked planning / a system-voice dump, counted as `empty` so the next layer answers. Cues only count in the first 160 chars; bare 系統提示/語言模型 are deliberately NOT cues (西寶 denying them in character must pass). New leak vocabulary goes into `META_CUES` — re-run it over `data/ai-turn-log.json` to check for false positives.
+
+- Simplified leak fixed: `[s2t] converted N char(s) label=<provider> chars=<字>` — [src/traditional.js](../src/traditional.js) rewrites leaked 簡體 in chat + scheduled posts (zh-TW guilds only) before the length cap and before memory, so 西寶 never sees her own 简体 next turn. Per character from [src/s2t-map.json](../src/s2t-map.json) (`node scripts/build-s2t-map.js` regenerates it from OpenCC): only chars with one safe 繁體 form; ambiguous ones (发 后 干 台 里) are left alone, emoji/sticker/URL/roster names are skipped. Every model leaks (~3% of replies, 2026-11-09 log), so this is a filter, not a provider choice. Wrong conversions → add the char to `KEEP` in the build script; a frequent ambiguous leak → `PREFER`.
 
 ## Short-term conversation memory
 

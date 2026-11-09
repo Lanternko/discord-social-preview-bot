@@ -5850,6 +5850,35 @@ const ogRaceCases = [
     });
   }
 
+  {
+    const { toTraditional, enforceTraditional } = require("../src/traditional");
+    it("s2t: rewrites the leaked Simplified chars from prod replies", () => {
+      const { text, changed } = toTraditional("寫得跟散文一樣认真，存起来当考完试的奖励");
+      assert.equal(text, "寫得跟散文一樣認真，存起來當考完試的獎勵");
+      assert.equal(changed.join(""), "认来当试奖励");
+    });
+    it("s2t: already-繁體 text comes through unchanged", () => {
+      const src = "台灣的公里數，皇后在後面，准不准？頭髮乾了，干你屁事";
+      assert.deepEqual(toTraditional(src), { text: src, changed: [] });
+    });
+    it("s2t: ambiguous chars are left alone, not guessed", () => {
+      // 发 發/髮, 历 歷/曆, 复 復/複, 后, 干, 里 need word context
+      const { text } = toTraditional("头发 日历 复杂 皇后 干杯 这里");
+      assert.equal(text, "頭发 日历 复雜 皇后 干杯 這里");
+    });
+    it("s2t: emoji, stickers, URLs, code and protected names are untouched", () => {
+      const src = "这 <:国旗:123> :学长: [貼圖:这个] https://x.com/国 `这` 小龙说";
+      const { text } = toTraditional(src, { protect: ["小龙"] });
+      assert.equal(text, "這 <:国旗:123> :学长: [貼圖:这个] https://x.com/国 `这` 小龙說");
+    });
+    it("s2t: only zh-TW guilds are converted", () => {
+      assert.equal(enforceTraditional("国家", { language: "zh-CN" }), "国家");
+      assert.equal(enforceTraditional("国語", { language: "ja" }), "国語");
+      assert.equal(enforceTraditional("国家", { language: "zh-TW" }), "國家");
+      assert.equal(enforceTraditional("国家", {}), "國家");
+    });
+  }
+
   console.log("");
   console.log(`Result: ${pass} passed, ${fail} failed`);
   process.exit(fail > 0 ? 1 : 0);

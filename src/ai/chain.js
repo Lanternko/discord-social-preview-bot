@@ -48,6 +48,8 @@ const {
 } = require("../config");
 const { trimDescription, sanitizeName } = require("../utils");
 const { screenPersonaReply } = require("./meta-leak");
+const { enforceTraditional } = require("../traditional");
+const { getGuildLanguage } = require("../language-store");
 const { getTierConfig, TIER_REQUIRES_KEY } = require("../tier-config");
 const { isDeepSeekPeak } = require("./peak-hours");
 const { buildUserTurn } = require("./persona");
@@ -1057,8 +1059,20 @@ async function generateAIReply(message, userText, options = {}) {
     { screen: screenPersonaReply },
   );
   if (result) {
+    // Before the cap and before memory, so the next turn never sees (and
+    // copies) a Simplified character from 西寶's own previous reply.
+    const replyText = enforceTraditional(result.text, {
+      language: getGuildLanguage(message.guildId),
+      protect: [
+        ...roster.map((r) => r.name),
+        message.member?.displayName,
+        message.author?.globalName,
+        message.author?.username,
+      ],
+      label: result.provider.label,
+    });
     const capped = trimDescription(
-      result.text,
+      replyText,
       Math.max(maxReplyChars || tierConfig.maxReplyChars, minReplyChars),
     );
     // Record the UNRESOLVED text (`:name:` form) into memory. If we stored the

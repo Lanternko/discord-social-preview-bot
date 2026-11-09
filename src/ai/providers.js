@@ -120,6 +120,31 @@ function openAIResponseMeta(payload) {
   };
 }
 
+// Which upstream host the Vercel AI Gateway actually used. The request's
+// `order` is soft, so without this a quality problem (a leaked 簡體 char)
+// can't be pinned on relace vs gmicloud vs pareto. The field path is not
+// documented for the OpenAI-compatible endpoint, so several are tried; when
+// none hits, the payload's key list is logged once to find the right one.
+let gatewayHostMissLogged = false;
+function gatewayHost(payload) {
+  const msg = payload?.choices?.[0]?.message;
+  const candidates = [
+    payload?.provider_metadata?.gateway?.routing?.finalProvider,
+    payload?.providerMetadata?.gateway?.routing?.finalProvider,
+    msg?.provider_metadata?.gateway?.routing?.finalProvider,
+    msg?.providerMetadata?.gateway?.routing?.finalProvider,
+    payload?.provider,
+  ];
+  const host = candidates.find((c) => typeof c === "string" && c);
+  if (!host && !gatewayHostMissLogged) {
+    gatewayHostMissLogged = true;
+    console.log(
+      `[ai] gateway host not found; payload keys=${Object.keys(payload || {}).join(",")} message keys=${Object.keys(msg || {}).join(",")}`,
+    );
+  }
+  return host || "?";
+}
+
 function geminiResponseMeta(payload) {
   const usage = payload?.usageMetadata || {};
   return {
@@ -148,6 +173,7 @@ function logResponseMeta(label, meta) {
   if (Number.isFinite(meta?.cacheMissTokens)) {
     parts.push(`cache_miss_tokens=${meta.cacheMissTokens}`);
   }
+  if (meta?.gatewayHost) parts.push(`host=${meta.gatewayHost}`);
   if (parts.length > 0) console.log(`[ai] provider=${label} ${parts.join(" ")}`);
 }
 
@@ -347,6 +373,7 @@ async function callOpenAI(turns, persona, maxTokens, overrides = {}) {
 
     const payload = await response.json();
     const meta = openAIResponseMeta(payload);
+    if (overrides.gatewayOrder?.length) meta.gatewayHost = gatewayHost(payload);
     logResponseMeta(label, meta);
     const raw = payload?.choices?.[0]?.message?.content;
     const text = (typeof raw === "string" ? raw : "").trim();
