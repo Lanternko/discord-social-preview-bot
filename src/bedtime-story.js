@@ -2,6 +2,7 @@ const { updateSchedule } = require("./schedule-store");
 const { trimDescription, sanitizeName } = require("./utils");
 const { collectFromMessage } = require("./ai/vision");
 const { buildStoryQuizBlock } = require("./story-quiz");
+const { buildStoryPollBlock } = require("./story-poll");
 const { languageSpec } = require("./reply-language");
 
 const BEDTIME_LOOKBACK_MS = 18 * 60 * 60 * 1000;
@@ -365,6 +366,7 @@ function buildBedtimeStoryPrompt({
   rng = Math.random,
   selection = null,
   quiz = false,
+  poll = false,
   language,
 }) {
   const dateKey = localDateKey(now, schedule?.timezone || "Asia/Taipei");
@@ -378,13 +380,14 @@ function buildBedtimeStoryPrompt({
     buildStoryCraftBlock({ guildName, mode: "scheduled", language, rng }),
     "",
     buildStoryIngredientsBlock({ ingredients, activeChannels }),
-    ...(quiz ? [buildStoryQuizBlock()] : []),
+    ...(quiz ? [buildStoryQuizBlock()] : poll ? [buildStoryPollBlock()] : []),
   ].join("\n");
 
   return {
     prompt,
     dateKey,
     quiz,
+    poll: !quiz && poll,
     ingredientCount: ingredients.length,
     buffet: ingredients.map(
       (item) => `${item.authorName}/#${item.channelName}:${ingredientSaid(item)}`,

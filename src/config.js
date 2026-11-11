@@ -400,13 +400,13 @@ module.exports = {
   // Luna's story layer: OPENAI_REASONING_HEADROOM (768) was sized on chat
   // (reasoning p99 379), but a story prompt is ~5k tokens and Luna with no
   // effort set reasoned straight through the cap — completion == reasoning ==
-  // 2668, empty content (2026-11-03 22:30, chain exhausted). Low effort keeps
+  // 2668, empty content (2026-11-03 22:30, chain exhausted). Effort was low (2026-11-03); raised to high 2026-11-05 for quality (quiz ~34s, poll ~22s vs the 45s cap). Low effort keeps
   // the thinking short; the headroom is the safety net if it doesn't.
   STORY_OPENAI_REASONING_HEADROOM: parsePositiveIntEnv(
     "STORY_OPENAI_REASONING_HEADROOM",
     4096,
   ),
-  STORY_OPENAI_REASONING_EFFORT: process.env.STORY_OPENAI_REASONING_EFFORT || "low",
+  STORY_OPENAI_REASONING_EFFORT: process.env.STORY_OPENAI_REASONING_EFFORT || "high",
   // Bedtime stories lead with DeepSeek's thinking model: two blind tests
   // (2026-09-25) ranked it the only model with no bad story. It needs ~50 s and
   // a big reasoning budget: runs burned 6180 (→ empty) and 9375 (→ story cut
@@ -435,7 +435,8 @@ module.exports = {
   STORY_IMAGE_MAX: parsePositiveIntEnv("STORY_IMAGE_MAX", 3),
   // Share of nights the story is followed by a 閱讀測驗 (0 = never, 1 = every
   // night). Every night turns it into homework; ~1/3 keeps it a treat.
-  STORY_QUIZ_RATE: parseRateEnv("STORY_QUIZ_RATE", 0.34),
+  STORY_QUIZ_RATE: parseRateEnv("STORY_QUIZ_RATE", 0.1),
+  STORY_POLL_RATE: parseRateEnv("STORY_POLL_RATE", 0.3),
   // gpt-5.6-luna reasons too, and OpenAI counts those hidden tokens against
   // max_completion_tokens — so the same starvation that hit DeepSeek applies
   // here (111 empty finish_reason=length calls, all completion == reasoning).
