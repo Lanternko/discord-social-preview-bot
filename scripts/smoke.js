@@ -2099,6 +2099,15 @@ it("buildEmojiPromptBlock surfaces a recent emoji even with no hint", () => {
   assert.match(block, /:zzq_novelname:【新】 /);
   assert.match(block, /新的，還沒固定用法/);
 });
+it("buildEmojiPromptBlock hides the quiz answer emoji even when new", () => {
+  const map = new Map([
+    ["quiz_A", { id: snowflakeForMs(Date.now()), animated: false }],
+    ["zzq_novelname", { id: snowflakeForMs(Date.now()), animated: false }],
+  ]);
+  const block = buildEmojiPromptBlock(map);
+  assert.doesNotMatch(block, /quiz_A/);
+  assert.match(block, /:zzq_novelname:/);
+});
 it("buildEmojiPromptBlock keeps a context gate on suggestive emoji", () => {
   const map = new Map([["Pepe_OK", { id: "1", animated: false }]]);
   const block = buildEmojiPromptBlock(map);
