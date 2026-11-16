@@ -328,10 +328,15 @@ function emojiCreatedAt(id) {
 // when an emoji ages out of the new-window or a fresh one is added.
 let _promptCache = { sig: null, block: "" };
 
+// Tool emoji the bot uses mechanically (the bedtime-story quiz's A–D answer
+// reactions, see src/story-quiz.js) — never offered to the model. Without this
+// they'd show up as 【新】 for 30 days and 西寶 would sprinkle :quiz_A: in chat.
+const RESERVED_EMOJI_RE = /^quiz_/;
+
 function buildEmojiPromptBlock(emojiMap) {
   if (!emojiMap || emojiMap.size === 0) return "";
 
-  const names = [...emojiMap.keys()].sort();
+  const names = [...emojiMap.keys()].filter((name) => !RESERVED_EMOJI_RE.test(name)).sort();
 
   // "New" = created within NEW_EMOJI_WINDOW_MS (derived from the snowflake id).
   // Folded into the memo signature so the block rebuilds when the new-set drifts,

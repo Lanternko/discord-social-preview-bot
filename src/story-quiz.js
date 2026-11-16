@@ -108,8 +108,49 @@ function formatStoryQuiz(quiz, rng = Math.random) {
   ].join("\n");
 }
 
+// 西寶's own application emoji (assets/quiz-emoji/, uploaded with
+// scripts/app-emoji.js) — deliberately NOT the built-in 🇦🇧🇨🇩, so the answer
+// buttons look like hers. Missing emoji are skipped, never swapped for built-ins.
+const QUIZ_EMOJI_NAMES = LETTERS.map((letter) => `quiz_${letter}`);
+
+async function findQuizEmojis(client) {
+  const manager = client?.application?.emojis;
+  if (!manager) return [];
+  let cache = manager.cache;
+  if (!QUIZ_EMOJI_NAMES.every((name) => cache.some((e) => e.name === name))) {
+    try {
+      cache = await manager.fetch();
+    } catch (error) {
+      console.warn(`[story-quiz] app emoji fetch failed: ${error.message}`);
+    }
+  }
+  return QUIZ_EMOJI_NAMES.map((name) => cache.find((e) => e.name === name) || null);
+}
+
+// Pre-seed the A–D reactions so readers answer with one tap. Sequential so the
+// reactions appear in A→D order.
+async function reactQuizOptions(message) {
+  const emojis = await findQuizEmojis(message.client);
+  let added = 0;
+  for (const [i, emoji] of emojis.entries()) {
+    if (!emoji) {
+      console.warn(`[story-quiz] missing app emoji ${QUIZ_EMOJI_NAMES[i]}`);
+      continue;
+    }
+    try {
+      await message.react(emoji);
+      added++;
+    } catch (error) {
+      console.warn(`[story-quiz] react ${QUIZ_EMOJI_NAMES[i]} failed: ${error.message}`);
+    }
+  }
+  return added;
+}
+
 module.exports = {
   QUIZ_MARKER,
+  QUIZ_EMOJI_NAMES,
+  reactQuizOptions,
   QUIZ_EXTRA_TOKENS,
   buildStoryQuizBlock,
   parseStoryQuiz,

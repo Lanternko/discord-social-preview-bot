@@ -47,6 +47,7 @@ const {
   QUIZ_EXTRA_TOKENS,
   formatStoryQuiz,
   parseStoryQuiz,
+  reactQuizOptions,
 } = require("./story-quiz");
 const { repairNames } = require("./name-repair");
 const { STORY_MIN_REPLY_CHARS } = require("./ai/skills/story");
@@ -308,7 +309,8 @@ async function executeScheduledTask(schedule, client, options = {}) {
     const quizText = quiz ? formatStoryQuiz(quiz) : null;
     if (quizText) {
       try {
-        await channel.send({ content: quizText });
+        const quizMsg = await channel.send({ content: quizText });
+        await reactQuizOptions(quizMsg);
       } catch (quizErr) {
         console.warn(
           `[story-quiz] send failed schedule=${schedule.id}: ${quizErr.message}`,

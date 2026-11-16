@@ -31,6 +31,7 @@ const {
   parseStoryQuiz,
   shuffleQuizOptions,
   formatStoryQuiz,
+  reactQuizOptions,
 } = require("../src/story-quiz");
 
 let passed = 0;
@@ -410,6 +411,24 @@ check("answer letter follows the correct option through the shuffle", () => {
   const text = formatStoryQuiz(quiz, () => 0);
   assert.match(text, /正確答案：\|\|[ABCD]\|\|$/);
 });
+
+asyncChecks.push([
+  "quiz reactions use 西寶's own A–D app emoji in order, skipping missing ones",
+  async () => {
+    const own = ["quiz_A", "quiz_B", "quiz_D"].map((name) => ({ name, id: name }));
+    const cache = { some: (f) => own.some(f), find: (f) => own.find(f) };
+    let fetched = 0;
+    const reacted = [];
+    const message = {
+      client: { application: { emojis: { cache, fetch: async () => (fetched++, cache) } } },
+      react: async (emoji) => reacted.push(emoji.name),
+    };
+    const added = await reactQuizOptions(message);
+    assert.equal(added, 3);
+    assert.deepEqual(reacted, ["quiz_A", "quiz_B", "quiz_D"]);
+    assert.equal(fetched, 1, "incomplete cache should trigger one refetch");
+  },
+]);
 
 // ── 5. Help pack (說明書) ─────────────────────────────────────────────────
 const help = require("../src/ai/skills/help");
