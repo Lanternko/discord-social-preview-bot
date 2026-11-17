@@ -1557,7 +1557,8 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
       seen.push(String(reqUrl));
       if (String(reqUrl).includes("/embed/captioned/")) {
         if (shortcodeMedia instanceof Error) throw shortcodeMedia;
-        return { ok: true, status: 200, text: async () => igEmbedHtml(shortcodeMedia) };
+        const html = typeof shortcodeMedia === "string" ? shortcodeMedia : igEmbedHtml(shortcodeMedia);
+        return { ok: true, status: 200, text: async () => html };
       }
       throw new Error(`unexpected fetch ${reqUrl}`);
     };
@@ -1589,16 +1590,43 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
-  await it("instagram single photo → one-image gallery card", async () => {
-    await withIgEmbed(
-      { owner: { username: "u" }, ...igSlide(9).node },
-      async () => {
-        const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
-        assert.equal(p.embeds.length, 1);
-        assert.equal(p.embeds[0].data.image.url, "https://cdn.example/9-1080.jpg");
-        assert.equal(p.embeds[0].data.description, undefined);
-      },
-    );
+  // Real single-photo pages: "contextJSON":null, data only in the markup.
+  function igStaticHtml({ sidecar = false, media }) {
+    return `<script>{"isSidecar":${sidecar},"contextJSON":null}</script>` +
+      `<div class="Header"><a class="Avatar" href="#"><img src="https://cdn.example/av.jpg?a=1&amp;b=2" alt="u" /></a>` +
+      `<span class="UsernameText">arknights</span></div>${media}` +
+      `<div class="Caption"><a class="CaptionUsername" href="#">arknights</a><br /><br />sad kitty &amp; friends<br />` +
+      `<a href="/explore/tags/cat/">#cat</a><div class="CaptionComments">x</div></div>`;
+  }
+  const IG_STATIC_IMG = '<img class="EmbeddedMediaImage" alt="Instagram post shared by &#064;arknights" ' +
+    'src="https://cdn.example/9-640.jpg" srcset="https://cdn.example/9-1638.jpg?a=1&amp;b=2 1638w,' +
+    'https://cdn.example/9-1080.jpg?a=1&amp;b=2 1080w,https://cdn.example/9-720.jpg 720w,' +
+    'https://cdn.example/9-crop1080.jpg 1080w" />';
+
+  await it("instagram single photo (static HTML, no JSON) → one-image gallery card", async () => {
+    await withIgEmbed(igStaticHtml({ media: IG_STATIC_IMG }), async () => {
+      const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+      assert.equal(p.embeds.length, 1);
+      const e = p.embeds[0].data;
+      assert.equal(e.image.url, "https://cdn.example/9-1080.jpg?a=1&b=2");
+      assert.equal(e.author.name, "@arknights");
+      assert.equal(e.author.icon_url, "https://cdn.example/av.jpg?a=1&b=2");
+      assert.equal(e.description, "sad kitty & friends\n#cat");
+    });
+  });
+
+  await it("instagram static video page (EmbedBrokenMedia) → viewer chain", async () => {
+    await withIgEmbed(igStaticHtml({ media: '<div class="EmbedBrokenMedia">x</div>' }), async () => {
+      const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+      assert.equal(p.content, "https://oginstagram.com/p/ABC/");
+    });
+  });
+
+  await it("instagram sidecar without JSON → viewer chain (never show 1 of N)", async () => {
+    await withIgEmbed(igStaticHtml({ sidecar: true, media: IG_STATIC_IMG }), async () => {
+      const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+      assert.equal(p.content, "https://oginstagram.com/p/ABC/");
+    });
   });
 
   await it("instagram carousel with a video slide → viewer chain", async () => {
