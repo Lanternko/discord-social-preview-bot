@@ -370,6 +370,12 @@ module.exports = {
   // pixiv works can run to 100+ pages; the gallery shows the first few and
   // says how many are left.
   PIXIV_MAX_IMAGES: Math.min(10, parsePositiveIntEnv("PIXIV_MAX_IMAGES", 4)),
+  // Instagram carousels run to 20 slides; the bot-built gallery shows the
+  // first few (Discord's album lays out 4 best) and says how many are left.
+  INSTAGRAM_MAX_IMAGES: Math.min(
+    10,
+    parsePositiveIntEnv("INSTAGRAM_MAX_IMAGES", 4),
+  ),
   VIDEO_ATTACHMENT_ENABLED:
     (process.env.VIDEO_ATTACHMENT_ENABLED || "true").toLowerCase() === "true",
   // Empty = every guild may use it (still bounded by the caps below). Set a

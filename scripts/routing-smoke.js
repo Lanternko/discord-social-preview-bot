@@ -1533,6 +1533,99 @@ const THREADS_URL = "https://www.threads.net/@a/post/1";
     );
   });
 
+  // The embed page carries the post as a JSON string inside a JSON blob.
+  function igEmbedHtml(shortcodeMedia) {
+    const ctx = JSON.stringify({ context: {}, gql_data: { shortcode_media: shortcodeMedia } });
+    return `<script>{"isSidecar":true,"contextJSON":${JSON.stringify(ctx)}}</script>`;
+  }
+  function igSlide(n, isVideo = false) {
+    return {
+      node: {
+        is_video: isVideo,
+        display_url: `https://cdn.example/${n}-orig.jpg`,
+        display_resources: [
+          { src: `https://cdn.example/${n}-3071.jpg`, config_width: 3071 },
+          { src: `https://cdn.example/${n}-1080.jpg`, config_width: 1080 },
+          { src: `https://cdn.example/${n}-640.jpg`, config_width: 640 },
+        ],
+      },
+    };
+  }
+  function withIgEmbed(shortcodeMedia, fn) {
+    const seen = [];
+    _mockFetch = async (reqUrl) => {
+      seen.push(String(reqUrl));
+      if (String(reqUrl).includes("/embed/captioned/")) {
+        if (shortcodeMedia instanceof Error) throw shortcodeMedia;
+        return { ok: true, status: 200, text: async () => igEmbedHtml(shortcodeMedia) };
+      }
+      throw new Error(`unexpected fetch ${reqUrl}`);
+    };
+    return fn(seen).finally(() => { _mockFetch = null; });
+  }
+
+  await it("instagram photo carousel → own full-size gallery (no viewer mosaic)", async () => {
+    await withIgEmbed(
+      {
+        shortcode: "DfjqcJlkj07",
+        owner: { username: "lamia.cosplay", profile_pic_url: "https://cdn.example/a.jpg" },
+        edge_media_to_caption: { edges: [{ node: { text: "こんひばな" } }] },
+        edge_sidecar_to_children: { edges: [1, 2, 3, 4, 5].map((n) => igSlide(n)) },
+      },
+      async (seen) => {
+        const p = await buildInstagramPayload("https://www.instagram.com/p/DfjqcJlkj07/?igsh=x");
+        assert.equal(seen[0], "https://www.instagram.com/p/DfjqcJlkj07/embed/captioned/");
+        assert.equal(p.content, undefined, "no viewer link");
+        assert.equal(p.embeds.length, 4, "capped at INSTAGRAM_MAX_IMAGES");
+        const lead = p.embeds[0].data;
+        assert.equal(lead.author.name, "@lamia.cosplay");
+        assert.equal(lead.description, "こんひばな");
+        // the uncropped 1080px rendition, not the 3071px original or a crop
+        assert.equal(lead.image.url, "https://cdn.example/1-1080.jpg");
+        assert.ok(p.embeds.every((e) => e.data.url === "https://www.instagram.com/p/DfjqcJlkj07/"));
+        assert.ok(p.embeds[3].data.description.includes("還有 1 張"));
+        assert.equal(p.sourceUrl, "https://www.instagram.com/p/DfjqcJlkj07/");
+      },
+    );
+  });
+
+  await it("instagram single photo → one-image gallery card", async () => {
+    await withIgEmbed(
+      { owner: { username: "u" }, ...igSlide(9).node },
+      async () => {
+        const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+        assert.equal(p.embeds.length, 1);
+        assert.equal(p.embeds[0].data.image.url, "https://cdn.example/9-1080.jpg");
+        assert.equal(p.embeds[0].data.description, undefined);
+      },
+    );
+  });
+
+  await it("instagram carousel with a video slide → viewer chain", async () => {
+    await withIgEmbed(
+      { owner: { username: "u" }, edge_sidecar_to_children: { edges: [igSlide(1), igSlide(2, true)] } },
+      async () => {
+        const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+        assert.equal(p.content, "https://oginstagram.com/p/ABC/");
+        assert.equal(p.viewerValidation, "instagram");
+      },
+    );
+  });
+
+  await it("instagram embed page fails / has no post → viewer chain", async () => {
+    await withIgEmbed(new Error("ECONNRESET"), async () => {
+      const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+      assert.equal(p.content, "https://oginstagram.com/p/ABC/");
+    });
+    _mockFetch = async () => ({ ok: true, status: 200, text: async () => "<html>login</html>" });
+    try {
+      const p = await buildInstagramPayload("https://www.instagram.com/p/ABC/");
+      assert.equal(p.content, "https://oginstagram.com/p/ABC/");
+    } finally {
+      _mockFetch = null;
+    }
+  });
+
   await it("instagram story (with owner, display-name probe fails) → owner-only message", async () => {
     _mockProbeError = new Error("not allowed"); // simulate probe failure for display name lookup
     try {
