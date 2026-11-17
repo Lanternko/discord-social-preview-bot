@@ -3,7 +3,7 @@
 ## 連結預覽
 - 貼連結就會自動回預覽，不用叫我。支援：Threads、X/Twitter、Instagram（貼文、Reels）、Reddit、Pixiv、Bluesky、Bilibili、Facebook、Pinterest、巴哈姆特、PTT。
 - 影片會盡量下載後直接上傳成能在 Discord 播的影片（Threads、Bilibili、Pinterest 等）；太大放不下就改貼能播的轉址連結。
-- 多圖貼文會做成相簿：Threads 顯示前 3 張、X 和 Pixiv 前 4 張，放不下的會寫還有幾張。
+- 多圖貼文會做成相簿：Threads 顯示前 3 張、X、Pixiv、Instagram 前 4 張，放不下的會寫還有幾張。
 - 切成好幾張的長圖（全景圖）會自動拼回完整的一張。
 - Threads 的回覆貼文會一起帶上被回覆的原文；巴哈姆特連場外文章都能預覽。
 - X 的 R18 圖會打碼後上傳；Pixiv 的 R18 也走打碼卡。

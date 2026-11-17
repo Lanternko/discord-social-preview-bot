@@ -208,6 +208,36 @@ function buildPixivCarouselEmbeds(url, metadata) {
   });
 }
 
+const INSTAGRAM_EMBED_COLOR = 0xe1306c;
+
+// An Instagram photo post as the bot's own gallery: @user + caption on the
+// lead, one full-size image per embed. The images stay remote (cdninstagram).
+function buildInstagramGalleryEmbeds(url, meta) {
+  const lead = new EmbedBuilder()
+    .setColor(INSTAGRAM_EMBED_COLOR)
+    .setURL(url)
+    .setFooter({ text: "Instagram" });
+  const handle = meta.username ? `@${meta.username}` : "";
+  const name = [meta.fullName, handle && (meta.fullName ? `(${handle})` : handle)]
+    .filter(Boolean)
+    .join(" ");
+  if (name) {
+    lead.setAuthor({
+      name: trimDescription(name, 256),
+      url: meta.username ? `https://www.instagram.com/${meta.username}/` : url,
+      ...(meta.avatar ? { iconURL: meta.avatar } : {}),
+    });
+  }
+  if (meta.caption) lead.setDescription(trimDescription(meta.caption, 1024));
+  return buildGalleryEmbeds({
+    url,
+    leadEmbed: lead,
+    images: meta.images,
+    hidden: meta.imageCount - meta.images.length,
+    color: INSTAGRAM_EMBED_COLOR,
+  });
+}
+
 // One embed per image, all carrying the post URL — that shared URL is what
 // makes Discord render them as a single album rather than stacked cards. The
 // lead embed holds the text; a truncated gallery says so on the last one.
@@ -241,4 +271,5 @@ module.exports = {
   buildPttEmbed,
   buildPinterestEmbed,
   buildBilibiliEmbed,
+  buildInstagramGalleryEmbeds,
 };
