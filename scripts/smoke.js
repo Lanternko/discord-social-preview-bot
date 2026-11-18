@@ -730,6 +730,53 @@ it("rejects empty, login-wall, Join Threads, and generic Thread(s) embeds", () =
     false,
   );
 });
+it("reads components-v2 viewer cards (text in TextDisplay, media in gallery)", () => {
+  // Shape Discord returned for fzthreads / fixthreads on 2026-11-19.
+  const textCard = {
+    type: "components",
+    url: "https://fixthreads.seria.moe/@a/post/X",
+    components: [
+      {
+        type: 17,
+        components: [
+          {
+            type: 9,
+            components: [
+              { type: 10, content: "### [@a](https://www.threads.com/@a)" },
+              { type: 10, content: "我以為是方便男娘穿的時候不用過度擠壓生殖器官OAO" },
+            ],
+            accessory: { type: 11, media: { url: "https://v.example/m/X/a.jpg" } },
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal(isViewerPreviewUseful([textCard], "threads"), true);
+  assert.equal(
+    classifyViewerPreview([textCard], "threads").reason,
+    "ok",
+  );
+  // Avatar accessory alone is not post media: IG still wants a cover.
+  assert.equal(classifyViewerPreview([textCard], "instagram").quality, "weak");
+  const galleryCard = {
+    type: "components",
+    components: [
+      {
+        type: 17,
+        components: [
+          { type: 10, content: "<:ig:1> **@a** caption" },
+          { type: 12, items: [{ media: { url: "https://v.example/p.jpg" } }] },
+        ],
+      },
+    ],
+  };
+  assert.equal(isViewerPreviewUseful([galleryCard], "instagram"), true);
+  const errorCard = {
+    type: "components",
+    components: [{ type: 10, content: "Couldn't load this post right now" }],
+  };
+  assert.equal(isViewerPreviewUseful([errorCard], "threads"), false);
+});
 it("accepts meaningful Threads text or media and preserves other platforms", () => {
   assert.equal(
     isViewerPreviewUseful(

@@ -82,9 +82,59 @@ function readEmbedValue(embed, key) {
   return embed?.[key] ?? embed?.data?.[key] ?? null;
 }
 
+// Discord now unfurls some viewers (fzthreads, fixthreads, …) as a
+// components-v2 embed: `type: "components"` with the card laid out as
+// components — text in type-10 TextDisplay `content`, post media in a type-12
+// MediaGallery. title/description/author are all empty, so reading only the
+// classic fields called a full preview an empty card and threw it away
+// (Threads Df3svx0Ad-A, 2026-11-19). Containers / sections nest, so walk them.
+const COMPONENT_TEXT = 10;
+const COMPONENT_MEDIA_GALLERY = 12;
+
+function walkComponents(components, visit) {
+  for (const component of Array.isArray(components) ? components : []) {
+    if (!component || typeof component !== "object") continue;
+    visit(component);
+    walkComponents(component.components, visit);
+  }
+}
+
+// Custom emoji tokens and the `###` / `-#` markdown prefixes carry no text.
+function cleanComponentText(text) {
+  return String(text)
+    .replace(/<a?:\w+:\d+>/g, "")
+    .replace(/^\s*(?:#{1,3}|-#)\s+/gm, "")
+    .trim();
+}
+
+function componentText(embed) {
+  const parts = [];
+  walkComponents(readEmbedValue(embed, "components"), (component) => {
+    if (component.type === COMPONENT_TEXT && component.content) {
+      const text = cleanComponentText(component.content);
+      if (text) parts.push(text);
+    }
+  });
+  return parts.join("\n");
+}
+
+// Only gallery items count as the post's media: a section's thumbnail
+// accessory (type 11) is the author's avatar on the viewers seen so far.
+function componentMediaUrl(embed) {
+  let url = null;
+  walkComponents(readEmbedValue(embed, "components"), (component) => {
+    if (url || component.type !== COMPONENT_MEDIA_GALLERY) return;
+    const item = (component.items || []).find((entry) => entry?.media?.url);
+    url = item ? item.media.url : null;
+  });
+  return url;
+}
+
 function collectEmbedText(embed) {
   const title = String(readEmbedValue(embed, "title") || "").trim();
-  const description = String(readEmbedValue(embed, "description") || "").trim();
+  const description = String(
+    readEmbedValue(embed, "description") || componentText(embed) || "",
+  ).trim();
   const author = String(readEmbedValue(embed, "author")?.name || "").trim();
   const fieldText = (readEmbedValue(embed, "fields") || [])
     .flatMap((field) => [field?.name, field?.value])
@@ -107,7 +157,7 @@ function mediaUrlOf(embed) {
     readEmbedValue(embed, "video") ||
     readEmbedValue(embed, "image") ||
     readEmbedValue(embed, "thumbnail");
-  if (!media) return null;
+  if (!media) return componentMediaUrl(embed);
   return typeof media === "string"
     ? media
     : media.url || media.proxyURL || null;
