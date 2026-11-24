@@ -4546,9 +4546,10 @@ function recapMsg({
     createdTimestamp: ts,
     reactions: {
       cache: recapColl(
-        reactions.map(([name, count]) => ({
+        reactions.map(([name, count, me = false]) => ({
           emoji: { id: null, name },
           count,
+          me,
         })),
       ),
     },
@@ -4650,6 +4651,21 @@ it("buildRecapStats: top-reacted message carries chronological context with the 
   assert.ok(ctx.every((l) => !l.includes("別的頻道")));
   // Only the target line carries the marker.
   assert.equal(ctx.filter((l) => l.includes("就是這句拿到反應")).length, 1);
+});
+
+it("buildRecapStats: 西寶's own seeded reactions are not counted as votes", () => {
+  const quiz = recapMsg({
+    id: "q", author: "西寶", bot: true, ts: 1,
+    reactions: [["🇦", 3, true], ["🇧", 1, true], ["🇨", 1, true], ["🇩", 1, true]],
+  });
+  const seedOnly = recapMsg({ id: "s", ts: 2, reactions: [["🇦", 1, true]] });
+  const human = recapMsg({ id: "h", ts: 3, reactions: [["😂", 3]] });
+  const top = buildRecapStats([quiz, seedOnly, human]).topReacted;
+  assert.strictEqual(top.length, 2, "seed-only message must drop out");
+  assert.strictEqual(top[0].authorName, "小翔");
+  const q = top.find((e) => e.isBot);
+  assert.strictEqual(q.reactionStr, "🇦×2");
+  assert.strictEqual(q.totalReactions, 2);
 });
 
 it("buildRecapStats: short punchline widens context window", () => {

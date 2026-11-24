@@ -7,6 +7,7 @@ const {
   extractEmbedContext,
   formatGroupMessage,
 } = require("./ai/group-context");
+const { humanReactionCount } = require("./utils");
 
 const MAX_FETCH_PER_CHANNEL = 200;
 const LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -237,14 +238,15 @@ function buildRecapStats(messages) {
   const REACTION_WEIGHTS = [0.7, 0.3, 0.1];
 
   const reactedMessages = messages
-    .filter((m) => m.reactions.cache.size > 0)
     .map((m) => {
       const reactionList = [];
       const counts = [];
       for (const r of m.reactions.cache.values()) {
+        const count = humanReactionCount(r);
+        if (count === 0) continue;
         const emojiStr = r.emoji.id ? `[${r.emoji.name}]` : r.emoji.name;
-        reactionList.push(`${emojiStr}×${r.count}`);
-        counts.push(r.count);
+        reactionList.push(`${emojiStr}×${count}`);
+        counts.push(count);
       }
       counts.sort((a, b) => b - a);
       const score = REACTION_WEIGHTS.reduce(
@@ -252,6 +254,7 @@ function buildRecapStats(messages) {
         0,
       );
       const totalReactions = counts.reduce((a, b) => a + b, 0);
+      if (totalReactions === 0) return null;
       const isLinkPreview = isBotLinkPreview(m);
       const authorName = isLinkPreview
         ? "連結預覽"
@@ -271,6 +274,7 @@ function buildRecapStats(messages) {
         _msg: m,
       };
     })
+    .filter(Boolean)
     .sort((a, b) => b.score - a.score)
     .slice(0, 8)
     .map(({ _msg, ...entry }) => {
