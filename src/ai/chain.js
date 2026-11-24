@@ -106,6 +106,7 @@ const {
   buildEmojiPromptBlock,
 } = require("./emoji-resolver");
 const { buildStickerPromptBlock } = require("./sticker-resolver");
+const { extractReactions, buildReactionPromptBlock } = require("./reaction-resolver");
 const { loadVisionImages, buildImageNote } = require("./vision");
 const {
   callGemini,
@@ -810,6 +811,11 @@ async function generateAIReply(message, userText, options = {}) {
     // paths that can actually attach a sticker pass one; everything else omits
     // it and she never sees the table, so she never emits [貼圖:…] into a recap.
     stickerCatalog = null,
+    // Array the CALLER owns: when given, 西寶 is told she may write [反應:…]
+    // and the reactions she asked for are pushed into it (stripped from the
+    // returned text). Only the mention path passes one — a recap has no
+    // message to react to.
+    reactionSink = null,
     providerOptions = {},
   } = options;
   const tierConfig = getTierConfig(message.guildId);
@@ -860,6 +866,7 @@ async function generateAIReply(message, userText, options = {}) {
   );
   if (includeEmojiPrompt) persona += buildEmojiPromptBlock(emojiMap);
   if (stickerCatalog) persona += buildStickerPromptBlock(stickerCatalog);
+  if (reactionSink) persona += buildReactionPromptBlock();
 
   // Familiarity roster lists who in this server has spoken how much. Tied to
   // identity (not topic), so it goes in for ALL tiers including brief — the
@@ -1137,7 +1144,14 @@ async function generateAIReply(message, userText, options = {}) {
     const reply = consumeGuildKeyNotice(message.guildId)
       ? `${capped}\n\n${GUILD_KEY_REJECTED_NOTICE}`
       : capped;
-    return resolveEmojis ? resolveCustomEmojis(reply, emojiMap) : reply;
+    // Before resolveCustomEmojis, which strips Unicode emoji out of the marker.
+    let outText = reply;
+    if (reactionSink) {
+      const { text, reactions } = extractReactions(reply, emojiMap);
+      outText = text;
+      reactionSink.push(...reactions);
+    }
+    return resolveEmojis ? resolveCustomEmojis(outText, emojiMap) : outText;
   }
 
   console.warn(

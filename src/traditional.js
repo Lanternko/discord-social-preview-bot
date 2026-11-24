@@ -16,7 +16,7 @@ const S2T = require("./s2t-map.json");
 // markers, URLs and inline code. Names the caller passes (群友暱稱 can be
 // Simplified on purpose) are protected the same way.
 const EMOJI_NAME = String.raw`[\w\u4e00-\u9fff]+`;
-const FIXED_SPANS = String.raw`<a?:${EMOJI_NAME}:\d+>|:${EMOJI_NAME}:|\[貼圖:[^\]]*\]|https?:\/\/\S+|` + "`[^`]*`";
+const FIXED_SPANS = String.raw`<a?:${EMOJI_NAME}:\d+>|:${EMOJI_NAME}:|\[貼圖:[^\]]*\]|\[反應:[^\]]*\]|https?:\/\/\S+|` + "`[^`]*`";
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -44,6 +44,15 @@ Two sources, merged by [src/stickers.js](../src/stickers.js) into one name→ent
 - **A sticker send is best-effort.** A guild sticker can be deleted between catalog build and send (and a library file can vanish from disk) — either 400s the whole message, so a failure retries once as text-only. Losing the sticker is fine; losing the reply is not. Grep `[sticker]`.
 - Library folder + `index.json` format: [assets/stickers/README.md](../assets/stickers/README.md).
 
+## 按表情（reactions）
+
+西寶 can react to the message she's answering by writing `[反應:名字]` in her reply. [src/ai/reaction-resolver.js](../src/ai/reaction-resolver.js) parses it; names resolve against the same emoji map as inline `:emoji:` (guild + her application emoji), plus a fixed Unicode whitelist (`UNICODE_REACTIONS`: 👍😂❤️… — the only place Unicode emoji are allowed). Max 2, deduped; unknown names are dropped and logged.
+
+- **Only the mention path offers it.** The prompt block appears only when the caller passes `reactionSink` (an array) to `generateAIReply`; recap / story / voice don't, so they never see the rule.
+- **Extraction runs inside the chain, BEFORE `resolveCustomEmojis`** — that pass strips Unicode emoji and would leave `[反應:]`. `enforceTraditional` protects the marker too.
+- **Reaction-only replies are not offered** (an @ answered with only an emoji reads as being ignored). The prompt demands text; if a reply is nothing but markers anyway, the chain returns `""` and mention.js sends its usual fallback line, then still reacts.
+- **Best-effort, after the reply.** Missing `AddReactions` / a deleted emoji only logs `[react] failed`. The daily recap subtracts her own reactions (`humanReactionCount`), so they never count as popularity. Grep `[react]`.
+
 ## 西寶自己的 emoji 庫（application emoji）
 
 A guild only has 50-100 emoji slots, shared with the humans. An **application-owned** emoji costs the server nothing, works in every guild the bot can speak in, only 西寶 can use it, and the app gets **2000** of them. [scripts/app-emoji.js](../scripts/app-emoji.js) uploads/lists/deletes them.

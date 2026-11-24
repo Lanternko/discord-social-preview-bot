@@ -2,6 +2,7 @@ const { pickRandom } = require("./utils");
 const { generateAIReply, isQuotaReply } = require("./ai/chain");
 const { detectSkill, buildSkillContext } = require("./ai/skills");
 const { extractSticker } = require("./ai/sticker-resolver");
+const { reactionIdentifier } = require("./ai/reaction-resolver");
 const { withTyping } = require("./typing");
 const {
   buildStickerCatalog,
@@ -70,6 +71,21 @@ async function sendAIReply(message, aiReply, stickerCatalog) {
   }
 }
 
+// React to the user's message with what 西寶 asked for. Best-effort and after
+// the reply: a missing AddReactions permission or a deleted emoji must never
+// cost the reply itself.
+async function applyReactions(message, reactions) {
+  for (const entry of reactions) {
+    const id = reactionIdentifier(entry);
+    try {
+      await message.react(id);
+      console.log(`[react] added ${id} msg=${message.id}`);
+    } catch (err) {
+      console.warn(`[react] failed ${id} msg=${message.id}: ${err.message}`);
+    }
+  }
+}
+
 async function handleMention(message, client) {
   const text = message.content
     .replace(/<@!?\d+>/g, "")
@@ -108,8 +124,10 @@ async function handleMention(message, client) {
     console.log(`[skill] hit id=${skill.id} user=${message.author.id}`);
   }
 
+  const reactions = [];
   const aiReply = await withTyping(message.channel, () => generateAIReply(message, text, {
     stickerCatalog,
+    reactionSink: reactions,
     ...(skillCtx
       ? {
           personaSuffix: skillCtx.personaSuffix,
@@ -133,7 +151,15 @@ async function handleMention(message, client) {
     }
     console.log(`[ai] reply len=${finalReply.length} user=${message.author.id}`);
     await sendAIReply(message, finalReply, stickerCatalog);
+    await applyReactions(message, reactions);
     return;
+  }
+
+  // A reply that was nothing but [反應:…] comes back empty. Reaction-only isn't
+  // offered, so she still says something (the fallback below) — and keeps the
+  // reaction she chose.
+  if (reactions.length > 0) {
+    console.log(`[react] reaction-only reply, sending fallback text user=${message.author.id}`);
   }
 
   if (text === "") {
@@ -141,6 +167,7 @@ async function handleMention(message, client) {
       content: pickRandom(t("mention.greeting")),
       allowedMentions: { repliedUser: false },
     });
+    await applyReactions(message, reactions);
     return;
   }
 
@@ -148,6 +175,7 @@ async function handleMention(message, client) {
     content: t("mention.calledMe"),
     allowedMentions: { repliedUser: false },
   });
+  await applyReactions(message, reactions);
 }
 
 function isMentioningBot(message, client) {
