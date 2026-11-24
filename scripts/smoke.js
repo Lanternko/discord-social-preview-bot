@@ -112,6 +112,12 @@ const {
   resolveStickerEntry,
 } = require("../src/ai/sticker-resolver");
 const {
+  extractReactions,
+  reactionIdentifier,
+  buildReactionPromptBlock,
+} = require("../src/ai/reaction-resolver");
+const { enforceTraditional } = require("../src/traditional");
+const {
   loadStickerLibrary,
   resetStickerLibraryCache,
   mergeStickerSources,
@@ -4983,6 +4989,51 @@ it("loadStickerLibrary on a missing folder is empty, not a throw", () => {
   resetStickerLibraryCache();
   assert.equal(lib.size, 0);
 });
+
+console.log("");
+console.log("extractReactions");
+{
+  const emojiMap = new Map([
+    ["Ha_seal", { id: "111111", animated: false }],
+    ["Waku_bocchi", { id: "222222", animated: true }],
+  ]);
+  it("pulls [反應:name] out and resolves guild emoji in any spelling", () => {
+    const out = extractReactions("哈哈太好笑 [反應:Ha_seal]", emojiMap);
+    assert.equal(out.text, "哈哈太好笑");
+    assert.equal(out.reactions.length, 1);
+    assert.equal(reactionIdentifier(out.reactions[0]), "Ha_seal:111111");
+    for (const spelled of ["[反應::ha_seal:]", "【反應：<:Ha_seal:999999>】", "[react:Ha_seal]"]) {
+      assert.equal(extractReactions(`嗯 ${spelled}`, emojiMap).reactions[0]?.id, "111111", spelled);
+    }
+    assert.equal(
+      reactionIdentifier(extractReactions("[反應:Waku_bocchi] 好", emojiMap).reactions[0]),
+      "a:Waku_bocchi:222222",
+    );
+  });
+  it("allows the unicode whitelist only, drops unknown names", () => {
+    const out = extractReactions("笑死 [反應:😂] [反應:🦄] [反應:Fake_emoji]", emojiMap);
+    assert.equal(out.text, "笑死");
+    assert.deepEqual(out.reactions.map(reactionIdentifier), ["😂"]);
+    assert.equal(extractReactions("讚 [反應:❤]", emojiMap).reactions[0].emoji, "❤️");
+  });
+  it("dedupes and caps at 2", () => {
+    const out = extractReactions("[反應:👍][反應:👍][反應:Ha_seal][反應:🔥] 好", emojiMap);
+    assert.deepEqual(out.reactions.map(reactionIdentifier), ["👍", "Ha_seal:111111"]);
+    assert.equal(out.text, "好");
+  });
+  it("leaves prose without a bracketed marker alone", () => {
+    const out = extractReactions("他的反應：超好笑", emojiMap);
+    assert.equal(out.text, "他的反應：超好笑");
+    assert.equal(out.reactions.length, 0);
+  });
+  it("prompt block forbids reaction-only replies", () => {
+    assert.match(buildReactionPromptBlock(), /一定還要回文字/);
+  });
+  it("s2t pass leaves the marker intact", () => {
+    const out = enforceTraditional("这个 [反應:Ha_seal]", { language: "zh-TW" });
+    assert.match(out, /\[反應:Ha_seal\]/);
+  });
+}
 
 console.log("");
 console.log("extractSticker");
