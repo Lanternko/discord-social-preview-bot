@@ -25,4 +25,12 @@ function sanitizeName(raw) {
     .slice(0, NAME_MAX_LEN);
 }
 
-module.exports = { trimDescription, pickRandom, sanitizeName };
+// Reactions people actually added. 西寶 pre-seeds some herself (story-quiz
+// A–D options), and Discord counts her own reaction in `count` — without this
+// the recap reads her seeds as votes / popularity.
+function humanReactionCount(reaction) {
+  const count = reaction?.count || 0;
+  return Math.max(0, count - (reaction?.me ? 1 : 0));
+}
+
+module.exports = { trimDescription, pickRandom, sanitizeName, humanReactionCount };

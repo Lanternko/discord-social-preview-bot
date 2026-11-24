@@ -1,5 +1,5 @@
 const { updateSchedule } = require("./schedule-store");
-const { trimDescription, sanitizeName } = require("./utils");
+const { trimDescription, sanitizeName, humanReactionCount } = require("./utils");
 const { collectFromMessage } = require("./ai/vision");
 const { buildStoryQuizBlock } = require("./story-quiz");
 const { languageSpec } = require("./reply-language");
@@ -33,7 +33,7 @@ function messageReactionCount(message) {
   if (!message?.reactions?.cache) return 0;
   let total = 0;
   for (const reaction of message.reactions.cache.values()) {
-    total += reaction.count || 0;
+    total += humanReactionCount(reaction);
   }
   return total;
 }
