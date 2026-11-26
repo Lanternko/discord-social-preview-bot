@@ -27,9 +27,11 @@ const REACTION_TOKEN_RE =
 const UNICODE_REACTIONS = ["👍", "😂", "❤️", "😭", "😮", "🙏", "👀", "🔥", "🤔", "😳"];
 const UNICODE_SET = new Set(UNICODE_REACTIONS.map((e) => e.replace(/️/g, "")));
 
-// One reaction is the norm; two lets her pair e.g. 😂 with a guild emoji.
+// Not a behavioural cap — restraint lives in the prompt (usually 0-1). This is
+// Discord's own ceiling: a message holds at most 20 distinct reactions, so
+// anything past it would only 400. Lets her honour "按我五個" literally.
 // More reads as spam.
-const MAX_REACTIONS = 2;
+const MAX_REACTIONS = 20;
 
 function resolveReaction(raw, emojiMap) {
   const token = String(raw || "").normalize("NFC").trim();
@@ -102,7 +104,8 @@ function buildReactionPromptBlock() {
     "## 按表情（反應）",
     "你可以在對方那則訊息上按表情，就像大家看到好笑的會按 😂 一樣：在回覆裡寫 `[反應:名字]`，系統會幫你按，這段字不會出現在訊息裡。",
     `名字可以是上面群組 emoji 表裡的名字（例如 \`[反應:名字]\` 不用加冒號），或這幾個系統表情：${UNICODE_REACTIONS.join(" ")}（只有按表情能用系統表情，句子裡照樣禁止）。`,
-    `規則：最多 ${MAX_REACTIONS} 個，通常 1 個就夠；**一定還要回文字，不能只按表情不講話**；不是每則都要按，對方講到讓你有明顯情緒（好笑、感動、驚訝、被誇）時才按。名字表裡沒有的別硬掰，掰了會直接消失。`,
+    "規則：**一定還要回文字，不能只按表情不講話**；平常不是每則都要按，對方講到讓你有明顯情緒（好笑、感動、驚訝、被誇）時按 1 個就好，別一次按一排。",
+    `對方明確叫你按（「按我一個 XX」「按三個」）就照做，按幾個照他說的，你說按了就真的要寫出標記；Discord 一則訊息最多 ${MAX_REACTIONS} 種，超過才講做不到，別自己編「群規只能按兩個」之類的理由。名字表裡沒有的別硬掰，掰了會直接消失。`,
   ].join("\n");
 }
 

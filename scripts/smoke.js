@@ -115,6 +115,7 @@ const {
   extractReactions,
   reactionIdentifier,
   buildReactionPromptBlock,
+  MAX_REACTIONS,
 } = require("../src/ai/reaction-resolver");
 const { enforceTraditional } = require("../src/traditional");
 const {
@@ -5016,9 +5017,17 @@ console.log("extractReactions");
     assert.deepEqual(out.reactions.map(reactionIdentifier), ["😂"]);
     assert.equal(extractReactions("讚 [反應:❤]", emojiMap).reactions[0].emoji, "❤️");
   });
-  it("dedupes and caps at 2", () => {
+  it("dedupes and keeps every distinct reaction she asked for", () => {
     const out = extractReactions("[反應:👍][反應:👍][反應:Ha_seal][反應:🔥] 好", emojiMap);
-    assert.deepEqual(out.reactions.map(reactionIdentifier), ["👍", "Ha_seal:111111"]);
+    assert.deepEqual(out.reactions.map(reactionIdentifier), ["👍", "Ha_seal:111111", "🔥"]);
+    assert.equal(out.text, "好");
+  });
+  it("caps at Discord's per-message limit", () => {
+    const many = new Map(Array.from({ length: 25 }, (_, i) => [`e${i}`, { id: String(1000 + i), animated: false }]));
+    const text = Array.from({ length: 25 }, (_, i) => `[反應:e${i}]`).join("") + " 好";
+    const out = extractReactions(text, many);
+    assert.equal(out.reactions.length, MAX_REACTIONS);
+    assert.equal(MAX_REACTIONS, 20);
     assert.equal(out.text, "好");
   });
   it("leaves prose without a bracketed marker alone", () => {
